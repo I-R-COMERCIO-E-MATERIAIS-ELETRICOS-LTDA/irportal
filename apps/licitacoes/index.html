@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Licitações - I.R. Comércio</title>
+    <title>Licitações</title>
     <link rel="icon" type="image/png" href="I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-PRETO.png">
     <link rel="stylesheet" href="styles.css">
     <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body>
+    <!-- Splash Screen -->
     <div class="splash-screen" id="splashScreen">
         <div class="loader"></div>
     </div>
 
     <div class="app-content">
         <div class="container">
+            <!-- HEADER -->
             <div class="header">
                 <div class="header-left">
                     <h1>Licitações</h1>
@@ -31,6 +33,7 @@
                 </button>
             </div>
 
+            <!-- DASHBOARD CARDS -->
             <div class="dashboard-grid">
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-default">
@@ -40,8 +43,8 @@
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value stat-value-info" id="totalLicitacoes">0</div>
-                        <div class="stat-label">Total de Licitações</div>
+                        <div class="stat-value stat-value-info" id="totalPregoes">0</div>
+                        <div class="stat-label">Total de Pregões</div>
                     </div>
                 </div>
                 <div class="stat-card">
@@ -82,17 +85,18 @@
                 </div>
             </div>
 
+            <!-- SEARCH BAR COM FILTRO DE MÊS -->
             <div class="search-bar-wrapper">
                 <div class="search-bar">
                     <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <circle cx="11" cy="11" r="8"></circle>
                         <path d="m21 21-4.35-4.35"></path>
                     </svg>
-                    <input type="text" id="search" placeholder="Pesquisar" oninput="filterLicitacoes()">
+                    <input type="text" id="search" placeholder="Pesquisar" oninput="filterPregoes()">
 
                     <div class="search-bar-filters">
                         <div class="filter-dropdown-inline">
-                            <select id="filterResponsavel" onchange="filterLicitacoes()">
+                            <select id="filterResponsavel" onchange="filterPregoes()">
                                 <option value="">Responsável</option>
                                 <option value="ROBERTO">ROBERTO</option>
                                 <option value="ISAQUE">ISAQUE</option>
@@ -103,7 +107,7 @@
                             </svg>
                         </div>
                         <div class="filter-dropdown-inline">
-                            <select id="filterStatus" onchange="filterLicitacoes()">
+                            <select id="filterStatus" onchange="filterPregoes()">
                                 <option value="">Todos os Status</option>
                                 <option value="ABERTO">ABERTO</option>
                                 <option value="GANHO">GANHO</option>
@@ -113,6 +117,7 @@
                                 <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
                         </div>
+                        <!-- Navegação de Mês (como Ordem de Compra) -->
                         <div class="month-navigation-inline">
                             <button onclick="changeMonth(-1)" class="month-nav-arrow" title="Mês anterior">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -155,6 +160,7 @@
                 </div>
             </div>
 
+            <!-- CALENDAR MODAL (igual ao Ordem de Compra) -->
             <div class="calendar-modal" id="calendarModal">
                 <div class="calendar-content">
                     <div class="calendar-header">
@@ -174,6 +180,7 @@
                 </div>
             </div>
 
+            <!-- TABELA PRINCIPAL -->
             <div class="card table-card">
                 <div style="overflow-x: auto;">
                     <table>
@@ -183,20 +190,20 @@
                                 <th>Responsável</th>
                                 <th>Data</th>
                                 <th>Hora</th>
-                                <th>Nº Licitação</th>
+                                <th>Nº Pregão</th>
                                 <th>UASG</th>
                                 <th>Status</th>
                                 <th style="text-align: center;">Ações</th>
                             </tr>
                         </thead>
-                        <tbody id="licitacoesContainer"></tbody>
+                        <tbody id="pregoesContainer"></tbody>
                     </table>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- MODAL NOVO/EDITAR -->
+    <!-- MODAL NOVO PREGÃO (mantido) -->
     <div class="modal-overlay" id="formModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -226,11 +233,11 @@
                         </div>
                         <div class="form-group">
                             <label>Data *</label>
-                            <input type="date" id="dataLicitacao" required>
+                            <input type="date" id="dataPregao" required>
                         </div>
                         <div class="form-group">
                             <label>Hora</label>
-                            <input type="time" id="horaLicitacao">
+                            <input type="time" id="horaPregao">
                         </div>
                         <div class="form-group">
                             <label>Disputar por</label>
@@ -245,8 +252,8 @@
                 <div class="tab-content" id="tab-orgao">
                     <div class="form-grid">
                         <div class="form-group">
-                            <label>Nº Licitação *</label>
-                            <input type="text" id="numeroLicitacao" required>
+                            <label>Nº Pregão *</label>
+                            <input type="text" id="numeroPregao" required>
                         </div>
                         <div class="form-group">
                             <label>UASG</label>
@@ -342,13 +349,13 @@
             <div class="modal-actions">
                 <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display: none;">Anterior</button>
                 <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo</button>
-                <button type="button" id="btnSave" onclick="salvarLicitacao()" class="success" style="display: none;">Salvar</button>
+                <button type="button" id="btnSave" onclick="salvarPregao()" class="success" style="display: none;">Salvar</button>
                 <button type="button" id="btnCancel" onclick="closeFormModal(true)" class="danger">Cancelar</button>
             </div>
         </div>
     </div>
 
-    <!-- MODAL VISUALIZAR -->
+    <!-- MODAL VISUALIZAR (mantido) -->
     <div class="modal-overlay" id="infoModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -379,11 +386,11 @@
         </div>
     </div>
 
-    <!-- MODAL EXCLUIR -->
+    <!-- MODAL EXCLUIR (mantido) -->
     <div class="modal-overlay" id="deleteModal">
         <div class="modal-content modal-delete">
             <button class="close-modal" onclick="closeDeleteModal()">✕</button>
-            <div class="modal-message-delete">Deseja realmente excluir esta licitação?</div>
+            <div class="modal-message-delete">Deseja realmente excluir este pregão?</div>
             <div class="modal-actions modal-actions-no-border">
                 <button class="secondary" onclick="closeDeleteModal()">Cancelar</button>
                 <button class="danger" onclick="confirmarExclusao()">Excluir</button>
@@ -403,7 +410,7 @@
         </div>
     </div>
 
-    <!-- MODAL ASSINATURA PROPOSTA -->
+    <!-- MODAL ASSINATURA PROPOSTA (mantido) -->
     <div class="modal-overlay" id="modalAssinatura">
         <div class="modal-content modal-delete">
             <button class="close-modal" onclick="fecharModalAssinatura()">✕</button>
@@ -415,7 +422,7 @@
         </div>
     </div>
 
-    <!-- MODAL CONFIGURAÇÃO DA PROPOSTA -->
+    <!-- MODAL CONFIGURAÇÃO DA PROPOSTA (novo) -->
     <div class="modal-overlay" id="modalConfigProposta">
         <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
@@ -466,7 +473,7 @@
         </div>
     </div>
 
-    <!-- MODAL COTAÇÃO -->
+    <!-- MODAL COTAÇÃO (novo) -->
     <div class="modal-overlay" id="modalCotacao">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
