@@ -110,7 +110,7 @@ app.post('/api/login', async (req, res) => {
         }
 
         const { data: users, error } = await supabase
-            .from('usuarios')
+            .from('users')
             .select('*')
             .eq('username', username.toLowerCase().trim())
             .eq('active', true)
@@ -142,7 +142,7 @@ app.post('/api/login', async (req, res) => {
             sessionToken,
             username:    user.username,
             name:        user.name || user.username,
-            sector:      user.sector || 'Usuário',
+            sector:      user.sector || 'user',
             deviceToken: req.body.deviceToken || null,
             createdAt:   new Date(agora).toISOString(),
             expiresAt:   agora + SESSION_TTL_MS,
