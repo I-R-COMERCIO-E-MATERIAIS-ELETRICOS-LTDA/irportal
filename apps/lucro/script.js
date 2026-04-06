@@ -40,29 +40,8 @@ function updateConnectionStatus() {
     }
 }
 
-// (Opcional) Função de sincronização – se não existir no backend, remova o botão do HTML
-async function syncData() {
-    const btnSync = document.getElementById('btnSync');
-    if (btnSync) {
-        btnSync.classList.add('syncing');
-        btnSync.disabled = true;
-    }
-    try {
-        await fetch(`${API_URL}/monitorar-pedidos`);  // sem token
-        await loadLucroReal();
-        showMessage('DADOS SINCRONIZADOS', 'success');
-    } catch (error) {
-        showMessage('ERRO AO SINCRONIZAR', 'error');
-    } finally {
-        if (btnSync) {
-            btnSync.classList.remove('syncing');
-            btnSync.disabled = false;
-        }
-    }
-}
-
 // ============================================
-// CARREGAR LUCRO REAL E CUSTO FIXO
+// CARREGAR LUCRO REAL E CUSTO FIXO DO MÊS
 // ============================================
 async function loadLucroReal() {
     if (currentFetchController) currentFetchController.abort();
@@ -93,7 +72,13 @@ async function loadLucroReal() {
         lastDataHash = JSON.stringify(lucroData.map(r => r.id));
         currentFetchController = null;
 
-        await loadCustoFixoMensal(mes, ano);
+        // Extrai o custo fixo do mês (todas as linhas do mesmo mês têm o mesmo valor)
+        if (lucroData.length > 0) {
+            custoFixoMensal = lucroData[0].custo_fixo_mensal || 0;
+        } else {
+            // Se não houver registros, tenta buscar o último custo fixo conhecido para o mês/ano
+            await loadCustoFixoMensalFromAnyRecord(mes, ano);
+        }
         updateDisplay();
     } catch (error) {
         if (error.name === 'AbortError') return;
@@ -103,9 +88,10 @@ async function loadLucroReal() {
     }
 }
 
-async function loadCustoFixoMensal(mes, ano) {
+// Busca o custo fixo de um mês/ano consultando qualquer registro (ex: via API específica)
+async function loadCustoFixoMensalFromAnyRecord(mes, ano) {
     try {
-        const response = await fetch(`${API_URL}/custo-fixo?mes=${mes}&ano=${ano}`);
+        const response = await fetch(`${API_URL}/lucro-real/custo-fixo?mes=${mes}&ano=${ano}`);
         if (response.ok) {
             const data = await response.json();
             custoFixoMensal = data.valor || 0;
@@ -118,19 +104,22 @@ async function loadCustoFixoMensal(mes, ano) {
     }
 }
 
+// Salva o custo fixo para todas as linhas do mês atual
 async function saveCustoFixo() {
     const valor = parseFloat(document.getElementById('custoFixoInput').value) || 0;
     const mes = currentMonth.getMonth();
     const ano = currentMonth.getFullYear();
 
     try {
-        const response = await fetch(`${API_URL}/custo-fixo`, {
+        const response = await fetch(`${API_URL}/lucro-real/custo-fixo`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mes, ano, valor })
         });
         if (response.ok) {
             custoFixoMensal = valor;
+            // Atualiza localmente todas as linhas do mês com o novo custo fixo
+            lucroData.forEach(r => r.custo_fixo_mensal = valor);
             updateDashboard();
             closeCustoFixoModal();
             showMessage('CUSTO FIXO ATUALIZADO', 'success');
@@ -438,6 +427,7 @@ async function renderRelatorio() {
             meses[mes].lucroBruto += lucro;
             meses[mes].custoTotal += r.custo || 0;
             meses[mes].impostoTotal += r.imposto_federal || 0;
+            // O custo fixo mensal é o mesmo para todas as linhas do mês
             if (r.custo_fixo_mensal !== undefined && meses[mes].custoFixoMensal === 0) {
                 meses[mes].custoFixoMensal = parseFloat(r.custo_fixo_mensal) || 0;
             }
