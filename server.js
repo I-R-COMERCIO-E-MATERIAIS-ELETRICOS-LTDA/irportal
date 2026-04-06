@@ -103,8 +103,8 @@ async function logLoginAttempt(username, success, reason, deviceToken, ip) {
 // ==========================================
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Token'],
   credentials: true
 }));
 app.options('*', cors());
@@ -157,6 +157,10 @@ app.get('/api/business-hours', (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
+  // ... (mesmo código do portal, inalterado - use o mesmo que já estava funcionando)
+  // Para economizar espaço, mantenha o código do login idêntico ao anterior.
+  // Como é extenso, você pode copiar do seu server.js anterior.
+  // Vou resumir aqui, mas no arquivo final estará completo.
   try {
     const { username, password, deviceToken } = req.body;
     if (!username || !password || !deviceToken) {
@@ -374,6 +378,325 @@ app.post('/api/verify-session', async (req, res) => {
   }
 });
 
+// ==========================================
+// ======== ROTAS DA API - LICITAÇÕES ========
+// ==========================================
+// (cópia das rotas de pregoes, adaptadas para as tabelas licitacoes e licitacoes_itens)
+
+// Middleware de autenticação para licitações
+app.use('/api/licitacoes', async (req, res, next) => {
+  const sessionToken = req.headers['x-session-token'] || req.query.sessionToken;
+  if (!sessionToken) {
+    return res.status(401).json({ error: 'Não autenticado', redirectToLogin: true });
+  }
+  try {
+    const verifyResponse = await fetch(`${process.env.PORTAL_URL || 'https://ir-comercio-portal-zcan.onrender.com'}/api/verify-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionToken })
+    });
+    if (!verifyResponse.ok) return res.status(401).json({ error: 'Sessão inválida', redirectToLogin: true });
+    const sessionData = await verifyResponse.json();
+    if (!sessionData.valid) return res.status(401).json({ error: 'Sessão inválida', redirectToLogin: true });
+    req.user = sessionData.session;
+    req.sessionToken = sessionToken;
+    next();
+  } catch (error) {
+    return res.status(500).json({ error: 'Erro ao verificar autenticação' });
+  }
+});
+
+// HEAD para verificar conectividade
+app.head('/api/licitacoes', (req, res) => res.status(200).end());
+
+// Listar licitações
+app.get('/api/licitacoes', async (req, res) => {
+  try {
+    let query = supabase.from('licitacoes').select('*');
+    const { mes, ano } = req.query;
+    if (mes && ano) {
+      const startDate = `${ano}-${mes.toString().padStart(2,'0')}-01`;
+      const endDate = new Date(ano, mes, 1);
+      endDate.setMonth(endDate.getMonth() + 1);
+      const endDateStr = endDate.toISOString().split('T')[0];
+      query = query.filter('data', 'gte', startDate).filter('data', 'lt', endDateStr);
+    }
+    const { data, error } = await query.order('data', { ascending: false });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) {
+    console.error('❌ Erro ao listar licitações:', error.message);
+    res.status(500).json({ error: 'Erro ao listar licitações' });
+  }
+});
+
+// Buscar uma licitação por ID
+app.get('/api/licitacoes/:id', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('licitacoes')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ error: 'Licitação não encontrada' });
+      throw error;
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('❌ Erro ao buscar licitação:', error.message);
+    res.status(500).json({ error: 'Erro ao buscar licitação' });
+  }
+});
+
+// Criar nova licitação
+app.post('/api/licitacoes', async (req, res) => {
+  try {
+    const { 
+      responsavel, data, hora, numero_licitacao, uasg, nome_orgao, municipio, uf,
+      telefones, emails, validade_proposta, prazo_entrega, prazo_pagamento,
+      detalhes, banco, status, ganho, disputa_por
+    } = req.body;
+
+    const nova = {
+      responsavel,
+      data,
+      hora: hora || null,
+      numero_licitacao,
+      uasg: uasg || null,
+      nome_orgao: nome_orgao || null,
+      municipio: municipio || null,
+      uf: uf || null,
+      telefones: telefones || [],
+      emails: emails || [],
+      validade_proposta: validade_proposta || null,
+      prazo_entrega: prazo_entrega || null,
+      prazo_pagamento: prazo_pagamento || null,
+      detalhes: detalhes || [],
+      banco: banco || null,
+      status: status || 'ABERTO',
+      ganho: ganho || false,
+      disputa_por: disputa_por || 'ITEM'
+    };
+    const { data: inserted, error } = await supabase
+      .from('licitacoes')
+      .insert([nova])
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json(inserted);
+  } catch (error) {
+    console.error('❌ Erro ao criar licitação:', error.message);
+    res.status(500).json({ error: 'Erro ao criar licitação' });
+  }
+});
+
+// Atualizar licitação
+app.put('/api/licitacoes/:id', async (req, res) => {
+  try {
+    const { 
+      responsavel, data, hora, numero_licitacao, uasg, nome_orgao, municipio, uf,
+      telefones, emails, validade_proposta, prazo_entrega, prazo_pagamento,
+      detalhes, banco, status, ganho, disputa_por
+    } = req.body;
+    const atualizada = {
+      responsavel,
+      data,
+      hora: hora || null,
+      numero_licitacao,
+      uasg: uasg || null,
+      nome_orgao: nome_orgao || null,
+      municipio: municipio || null,
+      uf: uf || null,
+      telefones: telefones || [],
+      emails: emails || [],
+      validade_proposta: validade_proposta || null,
+      prazo_entrega: prazo_entrega || null,
+      prazo_pagamento: prazo_pagamento || null,
+      detalhes: detalhes || [],
+      banco: banco || null,
+      status: status || 'ABERTO',
+      ganho: ganho || false,
+      disputa_por: disputa_por || 'ITEM',
+      updated_at: new Date().toISOString()
+    };
+    const { data: updated, error } = await supabase
+      .from('licitacoes')
+      .update(atualizada)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ error: 'Licitação não encontrada' });
+      throw error;
+    }
+    res.json(updated);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar licitação:', error.message);
+    res.status(500).json({ error: 'Erro ao atualizar licitação' });
+  }
+});
+
+// Deletar licitação (e seus itens)
+app.delete('/api/licitacoes/:id', async (req, res) => {
+  try {
+    const { error: itensError } = await supabase
+      .from('licitacoes_itens')
+      .delete()
+      .eq('licitacao_id', req.params.id);
+    if (itensError) console.warn('Erro ao excluir itens:', itensError.message);
+    const { error } = await supabase
+      .from('licitacoes')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Erro ao deletar licitação:', error.message);
+    res.status(500).json({ error: 'Erro ao deletar licitação' });
+  }
+});
+
+// ========== ITENS DA LICITAÇÃO ==========
+// Listar itens
+app.get('/api/licitacoes/:licitacao_id/itens', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('licitacoes_itens')
+      .select('*')
+      .eq('licitacao_id', req.params.licitacao_id)
+      .order('numero', { ascending: true });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (error) {
+    console.error('❌ Erro ao listar itens:', error.message);
+    res.status(500).json({ error: 'Erro ao listar itens' });
+  }
+});
+
+// Criar item
+app.post('/api/licitacoes/:licitacao_id/itens', async (req, res) => {
+  try {
+    const { 
+      numero, descricao, qtd, unidade, marca, modelo,
+      estimado_unt, estimado_total, custo_unt, custo_total,
+      porcentagem, venda_unt, venda_total, ganho,
+      grupo_tipo, grupo_numero
+    } = req.body;
+    const novoItem = {
+      licitacao_id: req.params.licitacao_id,
+      numero: String(numero || 1),
+      descricao: descricao || null,
+      qtd: parseInt(qtd) || 1,
+      unidade: unidade || 'UN',
+      marca: marca || null,
+      modelo: modelo || null,
+      estimado_unt: parseFloat(estimado_unt) || 0,
+      estimado_total: parseFloat(estimado_total) || 0,
+      custo_unt: parseFloat(custo_unt) || 0,
+      custo_total: parseFloat(custo_total) || 0,
+      porcentagem: parseFloat(porcentagem) || 149,
+      venda_unt: parseFloat(venda_unt) || 0,
+      venda_total: parseFloat(venda_total) || 0,
+      ganho: ganho === true || ganho === 'true' || false,
+      grupo_tipo: grupo_tipo || null,
+      grupo_numero: grupo_numero ? parseInt(grupo_numero) : null
+    };
+    const { data, error } = await supabase
+      .from('licitacoes_itens')
+      .insert([novoItem])
+      .select()
+      .single();
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (error) {
+    console.error('❌ Erro ao criar item:', error.message);
+    res.status(500).json({ error: 'Erro ao criar item' });
+  }
+});
+
+// Atualizar item
+app.put('/api/licitacoes/:licitacao_id/itens/:id', async (req, res) => {
+  try {
+    const { 
+      numero, descricao, qtd, unidade, marca, modelo,
+      estimado_unt, estimado_total, custo_unt, custo_total,
+      porcentagem, venda_unt, venda_total, ganho,
+      grupo_tipo, grupo_numero
+    } = req.body;
+    const itemAtualizado = {
+      numero: String(numero || 1),
+      descricao: descricao || null,
+      qtd: parseInt(qtd) || 1,
+      unidade: unidade || 'UN',
+      marca: marca || null,
+      modelo: modelo || null,
+      estimado_unt: parseFloat(estimado_unt) || 0,
+      estimado_total: parseFloat(estimado_total) || 0,
+      custo_unt: parseFloat(custo_unt) || 0,
+      custo_total: parseFloat(custo_total) || 0,
+      porcentagem: parseFloat(porcentagem) || 149,
+      venda_unt: parseFloat(venda_unt) || 0,
+      venda_total: parseFloat(venda_total) || 0,
+      ganho: ganho === true || ganho === 'true' || false,
+      grupo_tipo: grupo_tipo || null,
+      grupo_numero: grupo_numero ? parseInt(grupo_numero) : null,
+      updated_at: new Date().toISOString()
+    };
+    const { data, error } = await supabase
+      .from('licitacoes_itens')
+      .update(itemAtualizado)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+    if (error) {
+      if (error.code === 'PGRST116') return res.status(404).json({ error: 'Item não encontrado' });
+      throw error;
+    }
+    res.json(data);
+  } catch (error) {
+    console.error('❌ Erro ao atualizar item:', error.message);
+    res.status(500).json({ error: 'Erro ao atualizar item' });
+  }
+});
+
+// Deletar item
+app.delete('/api/licitacoes/:licitacao_id/itens/:id', async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('licitacoes_itens')
+      .delete()
+      .eq('id', req.params.id);
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (error) {
+    console.error('❌ Erro ao deletar item:', error.message);
+    res.status(500).json({ error: 'Erro ao deletar item' });
+  }
+});
+
+// Deletar múltiplos itens
+app.post('/api/licitacoes/:licitacao_id/itens/delete-multiple', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'IDs inválidos' });
+    }
+    const { error } = await supabase
+      .from('licitacoes_itens')
+      .delete()
+      .in('id', ids);
+    if (error) throw error;
+    res.json({ success: true, message: `${ids.length} itens removidos` });
+  } catch (error) {
+    console.error('❌ Erro ao deletar itens:', error.message);
+    res.status(500).json({ error: 'Erro ao deletar itens' });
+  }
+});
+
+// ==========================================
+// ======== HEALTH CHECK ====================
+// ==========================================
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -383,16 +706,25 @@ app.get('/health', (req, res) => {
   });
 });
 
+// ==========================================
+// ======== ROTA 404 ========================
+// ==========================================
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
 });
 
+// ==========================================
+// ======== ERROR HANDLER ===================
+// ==========================================
 app.use((err, req, res, next) => {
   console.error('❌ Erro não tratado:', err);
   const errorMessage = process.env.NODE_ENV === 'production' ? 'Erro interno do servidor' : err.message;
   res.status(500).json({ error: errorMessage });
 });
 
+// ==========================================
+// ======== INICIAR SERVIDOR ================
+// ==========================================
 app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`🚀 Portal Central rodando na porta ${PORT}`);
@@ -406,5 +738,6 @@ app.listen(PORT, () => {
   console.log('👤 Verificação de IP: por usuário (com fallback global)');
   console.log('🌟 Usuários com acesso irrestrito: Roberto, Rosemeire');
   console.log('📦 Módulos estáticos servidos:', MODULES.join(', '));
+  console.log('📄 Rotas API de licitações disponíveis em /api/licitacoes');
   console.log('='.repeat(50));
 });
