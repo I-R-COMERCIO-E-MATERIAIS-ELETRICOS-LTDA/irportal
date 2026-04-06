@@ -20,7 +20,7 @@ const AUTHORIZED_IPS = process.env.AUTHORIZED_IPS
 // ======== CONFIGURAÇÃO DO SUPABASE ========
 // ==========================================
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // Alterado para SERVICE_ROLE_KEY
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
@@ -113,16 +113,15 @@ app.use(express.json({ limit: '10mb' }));
 // ==========================================
 // ======== SERVIÇO DE MÓDULOS ESTÁTICOS ====
 // ==========================================
-// Lista de todos os módulos (pastas dentro de apps, exceto portal)
 const MODULES = [
   'licitacoes', 'precos', 'compra', 'transportadoras', 'cotacoes',
   'faturamento', 'estoque', 'frete', 'receber', 'vendas', 'pagar', 'lucro', 'dexter'
 ];
 
-// Servir portal na raiz
+// Portal na raiz
 app.use('/', express.static(path.join(__dirname, 'apps', 'portal')));
 
-// Servir cada módulo em sua própria rota
+// Cada módulo na sua rota
 MODULES.forEach(module => {
   const modulePath = path.join(__dirname, 'apps', module);
   if (fs.existsSync(modulePath)) {
@@ -143,10 +142,7 @@ app.get('/api/ip', (req, res) => {
 app.get('/api/check-ip-access', (req, res) => {
   const cleanIP = getClientIP(req);
   const authorized = AUTHORIZED_IPS.includes(cleanIP);
-  res.json({ 
-    authorized, ip: cleanIP,
-    message: authorized ? 'IP na lista global' : 'IP não está na lista global (pode ser permitido por usuário)'
-  });
+  res.json({ authorized, ip: cleanIP, message: authorized ? 'IP na lista global' : 'IP não está na lista global (pode ser permitido por usuário)' });
 });
 
 app.get('/api/business-hours', (req, res) => {
@@ -198,7 +194,6 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Usuário inativo' });
     }
 
-    // Usuários com acesso irrestrito (ignoram verificação de IP)
     const unrestrictedUsers = ['roberto', 'rosemeire'];
     const isUnrestricted = unrestrictedUsers.includes(userData.username.toLowerCase());
 
@@ -221,7 +216,6 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Usuário ou senha incorretos' });
     }
 
-    // Registro de dispositivo (tabela "authorized")
     const deviceFingerprint = crypto.createHash('sha256')
       .update(sanitizedDeviceToken + cleanIP)
       .digest('hex');
@@ -389,21 +383,16 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Fallback para rotas não encontradas (404)
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
 });
 
-// Error handler global
 app.use((err, req, res, next) => {
   console.error('❌ Erro não tratado:', err);
   const errorMessage = process.env.NODE_ENV === 'production' ? 'Erro interno do servidor' : err.message;
   res.status(500).json({ error: errorMessage });
 });
 
-// ==========================================
-// ======== INICIAR SERVIDOR ================
-// ==========================================
 app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`🚀 Portal Central rodando na porta ${PORT}`);
