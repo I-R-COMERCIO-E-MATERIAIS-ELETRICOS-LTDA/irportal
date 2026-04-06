@@ -110,11 +110,11 @@ app.post('/api/login', async (req, res) => {
         }
 
         const { data: users, error } = await supabase
-            .from('users')
-            .select('*')
-            .eq('username', username.toLowerCase().trim())
-            .eq('active', true)
-            .limit(1);
+    .from('users')
+    .select('*')
+    .eq('username', username.toLowerCase().trim())
+    .eq('is_active', true)   // ← era 'active', corrigido para 'is_active'
+    .limit(1);
 
         if (error) throw error;
 
