@@ -890,15 +890,10 @@ input:focus {
 
         /* ── PERMISSÕES ── */
         const SECTOR_PERMISSIONS = {
-            'Administrador': ['usuarios', 'pregões','tabela-precos','compra','transportadoras','cotacoes-frete','faturamento','estoque','controle-frete','receber','vendas','pagamento','lucro-real', 'financeiro', 'comercial'],
-            'Vendas':        ['pregões','tabela-precos','compra','transportadoras','cotacoes-frete','faturamento','estoque','controle-frete','comercial'],
-            'Financeiro':    ['pregões','transportadoras','faturamento','controle-frete','receber','pagamento','comercial'],
-            'Almoxarifado':  ['transportadoras','cotacoes-frete','faturamento', 'estoque', 'controle-frete','comercial'],
-        };
-        
-        const USER_SPECIFIC_PERMISSIONS = {
-            'vendas2':    ['pregões','tabela-precos','compra','transportadoras','cotacoes-frete','faturamento','estoque','controle-frete','comercial', 'vendas-miguel'],
-            'vendas':     ['pregões','tabela-precos','compra','transportadoras','cotacoes-frete','faturamento','estoque','controle-frete','comercial', 'vendas-isaque'],
+            'Administrador': ['usuarios', 'pregões','precos','compra','transportadoras','cotacoes','faturamento','estoque','frete','receber','vendas','pagamento','lucro-real'],
+            'Vendas':        ['licitacoes','precos','compra','transportadoras','cotacoes','faturamento','estoque','frete'],
+            'Financeiro':    ['licitacoes','transportadoras','faturamento','frete','receber','pagamento'],
+            'Almoxarifado':  ['transportadoras','cotacoes','faturamento', 'estoque', 'frete'],
         };
 
         /* ── ÍCONES ── */
@@ -921,20 +916,18 @@ input:focus {
 
         /* ── MÓDULOS ── */
         const MODULES = [
-            { id: 'pregões',        name: 'Licitações',               url: 'https://pregoes.onrender.com',              available: true  },
-            { id: 'tabela-precos',  name: 'Tabela de Preços',      url: 'https://tabela-precos-udyp.onrender.com',   available: true  },
-            { id: 'compra',         name: 'Ordens de Compra',      url: 'https://ordem-compra.onrender.com',         available: true  },
-            { id: 'transportadoras',name: 'Transportadoras',       url: 'https://transportadoras.onrender.com',      available: true  },
-            { id: 'cotacoes-frete', name: 'Cotações de Frete',     url: 'https://cotacoes-frete-aikc.onrender.com',  available: true  },
-            { id: 'faturamento',    name: 'Pedidos de Faturamento',url: 'https://pedido-faturamento.onrender.com',   available: true  },
-            { id: 'estoque',        name: 'Estoque',               url: 'https://controle-estoque-0eme.onrender.com',available: true  },
-            { id: 'controle-frete', name: 'Controle de Frete',     url: 'https://controle-frete.onrender.com',       available: true  },
-            { id: 'receber',        name: 'Contas a Receber',      url: 'https://contas-receber-m1xw.onrender.com',  available: true  },
-            { id: 'vendas',         name: 'Vendas',                url: 'https://vendas-qdpf.onrender.com',          available: true  },
-            { id: 'vendas-miguel',  name: 'Vendas',                url: 'https://vendas-miguel.onrender.com',        available: true  },
-            { id: 'vendas-isaque',  name: 'Vendas',                url: 'https://vendas-isaque.onrender.com',        available: true  },
-            { id: 'pagamento',      name: 'Contas a Pagar',        url: 'https://contas-a-pagar-ytr6.onrender.com',  available: true  },
-            { id: 'lucro-real',     name: 'Lucro Real',            url: 'https://lucro-real.onrender.com',           available: true  },
+            { id: 'licitacoes',      name: 'Licitações',            url: '/licitacoes',                               available: true  },
+            { id: 'precos',          name: 'Tabela de Preços',      url: '/precos',                                   available: true  },
+            { id: 'compra',          name: 'Ordens de Compra',      url: '/compra',                                   available: true  },
+            { id: 'transportadoras', name: 'Transportadoras',       url: '/transportadoras',                          available: true  },
+            { id: 'cotacoes',        name: 'Cotações de Frete',     url: '/cotacoes',                                 available: true  },
+            { id: 'faturamento',     name: 'Pedidos de Faturamento',url: '/faturamento',                              available: true  },
+            { id: 'estoque',         name: 'Estoque',               url: '/estoque',                                  available: true  },
+            { id: 'frete',           name: 'Controle de Frete',     url: '/frete',                                    available: true  },
+            { id: 'receber',         name: 'Contas a Receber',      url: '/receber',                                  available: true  },
+            { id: 'vendas',          name: 'Vendas',                url: '/vendas',                                   available: true  },
+            { id: 'pagamento',       name: 'Contas a Pagar',        url: '/pagar',                                    available: true  },
+            { id: 'lucro',           name: 'Lucro Real',            url: '/lucro',                                    available: true  },
         ];
 
         let deviceToken        = null;
