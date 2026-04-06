@@ -186,7 +186,7 @@ async function loadOrdensDirectly() {
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
 
         const response = await fetch(
-            `${API_URL}/ordens?mes=${mesFetch}&ano=${anoFetch}`,
+            `${API_URL}/compra?mes=${mesFetch}&ano=${anoFetch}`,
             { method: 'GET', headers, mode: 'cors', cache: 'no-cache', signal }
         );
 
@@ -223,7 +223,7 @@ async function loadFornecedoresGlobal() {
     try {
         const headers = { 'Accept': 'application/json' };
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
-        const response = await fetch(`${API_URL}/fornecedores`, { headers, cache: 'no-cache' });
+       const response = await fetch(`${API_URL}/compra/fornecedores`, { headers, cache: 'no-cache' });
         if (!response.ok) return;
         const lista = await response.json();
         lista.forEach(f => {
@@ -253,7 +253,7 @@ async function loadUltimoNumero() {
     try {
         const headers = { 'Accept': 'application/json' };
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
-        const response = await fetch(`${API_URL}/ordens/ultimo-numero`, { headers, cache: 'no-cache' });
+       const response = await fetch(`${API_URL}/compra/ultimo-numero`, { headers, cache: 'no-cache' });
         if (!response.ok) return;
         const data = await response.json();
         ultimoNumeroGlobal = data.ultimoNumero || 0;
@@ -283,7 +283,7 @@ async function syncData() {
 
         const mes = currentMonth.getMonth();
         const ano = currentMonth.getFullYear();
-        const response = await fetch(`${API_URL}/ordens?mes=${mes}&ano=${ano}`, {
+        const response = await fetch(`${API_URL}/compra?mes=${mes}&ano=${ano}`, {
             method: 'GET',
             headers: headers,
             mode: 'cors',
