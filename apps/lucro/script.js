@@ -6,7 +6,6 @@ const API_URL = window.location.origin + '/api';
 
 let lucroData = [];
 let isOnline = false;
-let sessionToken = null;
 let currentMonth = new Date();
 let lastDataHash = '';
 let currentFetchController = null;
@@ -16,63 +15,14 @@ let relatorioPagina = 1;
 const mesesPorPagina = 3;
 
 let calendarYear = new Date().getFullYear();
-
-let custoFixoMensal = 0; // Valor do custo fixo do mês
+let custoFixoMensal = 0;
 
 // ============================================
-// INICIALIZAÇÃO E AUTENTICAÇÃO
+// INICIALIZAÇÃO (SEM AUTENTICAÇÃO)
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
-    verificarAutenticacao();
-});
-
-async function verificarAutenticacao() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('sessionToken');
-
-    if (tokenFromUrl) {
-        sessionToken = tokenFromUrl;
-        sessionStorage.setItem('lucroSession', tokenFromUrl);
-        window.history.replaceState({}, document.title, window.location.pathname);
-    } else {
-        sessionToken = sessionStorage.getItem('lucroSession');
-    }
-
-    if (!sessionToken) {
-        mostrarTelaAcessoNegado();
-        return;
-    }
-
-    try {
-        const verifyRes = await fetch(`${PORTAL_URL}/api/verify-session`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionToken })
-        });
-        if (!verifyRes.ok) {
-            mostrarTelaAcessoNegado('SUA SESSÃO EXPIROU');
-            return;
-        }
-        const sessionData = await verifyRes.json();
-        if (!sessionData.valid) {
-            mostrarTelaAcessoNegado('SESSÃO INVÁLIDA');
-            return;
-        }
-    } catch (e) {
-        console.warn('Falha ao verificar sessão, usando cache', e);
-    }
     inicializarApp();
-}
-
-function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
-    document.body.innerHTML = `
-        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: var(--bg-primary); color: var(--text-primary); text-align: center; padding: 2rem;">
-            <h1 style="font-size: 2.2rem; margin-bottom: 1rem;">${mensagem}</h1>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem;">Somente usuários autenticados podem acessar esta área.</p>
-            <a href="${PORTAL_URL}" style="display: inline-block; background: var(--btn-register); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">IR PARA O PORTAL</a>
-        </div>
-    `;
-}
+});
 
 function inicializarApp() {
     updateMonthDisplay();
@@ -81,7 +31,7 @@ function inicializarApp() {
 }
 
 // ============================================
-// CONEXÃO COM A API
+// CONEXÃO COM A API (SEM TOKEN)
 // ============================================
 function updateConnectionStatus() {
     const status = document.getElementById('connectionStatus');
@@ -90,6 +40,7 @@ function updateConnectionStatus() {
     }
 }
 
+// (Opcional) Função de sincronização – se não existir no backend, remova o botão do HTML
 async function syncData() {
     const btnSync = document.getElementById('btnSync');
     if (btnSync) {
@@ -97,9 +48,7 @@ async function syncData() {
         btnSync.disabled = true;
     }
     try {
-        await fetch(`${API_URL}/monitorar-pedidos`, {
-            headers: { 'X-Session-Token': sessionToken }
-        });
+        await fetch(`${API_URL}/monitorar-pedidos`);  // sem token
         await loadLucroReal();
         showMessage('DADOS SINCRONIZADOS', 'success');
     } catch (error) {
@@ -124,16 +73,10 @@ async function loadLucroReal() {
 
     try {
         const response = await fetch(`${API_URL}/lucro-real?mes=${mes}&ano=${ano}`, {
-            headers: { 'X-Session-Token': sessionToken },
             cache: 'no-cache',
             signal
         });
 
-        if (response.status === 401) {
-            sessionStorage.removeItem('lucroSession');
-            mostrarTelaAcessoNegado('SUA SESSÃO EXPIROU');
-            return;
-        }
         if (!response.ok) {
             isOnline = false;
             updateConnectionStatus();
@@ -150,7 +93,6 @@ async function loadLucroReal() {
         lastDataHash = JSON.stringify(lucroData.map(r => r.id));
         currentFetchController = null;
 
-        // Carrega o custo fixo do mês
         await loadCustoFixoMensal(mes, ano);
         updateDisplay();
     } catch (error) {
@@ -161,12 +103,9 @@ async function loadLucroReal() {
     }
 }
 
-// Carregar custo fixo do mês
 async function loadCustoFixoMensal(mes, ano) {
     try {
-        const response = await fetch(`${API_URL}/custo-fixo?mes=${mes}&ano=${ano}`, {
-            headers: { 'X-Session-Token': sessionToken }
-        });
+        const response = await fetch(`${API_URL}/custo-fixo?mes=${mes}&ano=${ano}`);
         if (response.ok) {
             const data = await response.json();
             custoFixoMensal = data.valor || 0;
@@ -179,7 +118,6 @@ async function loadCustoFixoMensal(mes, ano) {
     }
 }
 
-// Salvar custo fixo
 async function saveCustoFixo() {
     const valor = parseFloat(document.getElementById('custoFixoInput').value) || 0;
     const mes = currentMonth.getMonth();
@@ -188,10 +126,7 @@ async function saveCustoFixo() {
     try {
         const response = await fetch(`${API_URL}/custo-fixo`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Session-Token': sessionToken
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mes, ano, valor })
         });
         if (response.ok) {
@@ -207,7 +142,6 @@ async function saveCustoFixo() {
     }
 }
 
-// Abrir modal de custo fixo
 function abrirModalCustoFixo() {
     document.getElementById('custoFixoInput').value = custoFixoMensal;
     document.getElementById('editCustoFixoModal').classList.add('show');
@@ -250,7 +184,7 @@ function updateDisplay() {
 
 function updateDashboard() {
     let totalVenda = 0, totalCusto = 0, totalFrete = 0, totalComissao = 0, totalImposto = 0;
-    let totalLucroBruto = 0; // Soma do lucro de cada venda (LUCRO BRUTO)
+    let totalLucroBruto = 0;
 
     lucroData.forEach(r => {
         totalVenda += r.venda || 0;
@@ -258,28 +192,17 @@ function updateDashboard() {
         totalFrete += r.frete || 0;
         totalComissao += r.comissao || 0;
         totalImposto += r.imposto_federal || 0;
-
         const lucro = (r.venda || 0) - (r.custo || 0) - (r.frete || 0) - (r.comissao || 0) - (r.imposto_federal || 0);
         totalLucroBruto += lucro;
     });
 
-    // Atualiza cards fixos
     document.getElementById('totalVenda').innerHTML = `<span class="stat-value-success">${formatarMoeda(totalVenda)}</span>`;
     document.getElementById('totalCusto').innerHTML = `<span style="color: #EF4444; font-weight: 700;">${formatarMoeda(totalCusto)}</span>`;
     document.getElementById('totalFrete').innerHTML = `<span style="color: #3B82F6; font-weight: 700;">${formatarMoeda(totalFrete)}</span>`;
     document.getElementById('totalImposto').innerHTML = `<span style="color: #EF4444;">${formatarMoeda(totalImposto)}</span>`;
+    document.getElementById('totalComissao').innerHTML = formatarMoeda(totalComissao);
+    document.getElementById('totalLucroBruto').innerHTML = formatarMoeda(totalLucroBruto);
 
-    // LUCRO BRUTO - agora sem cor especial (padrão preto)
-    const lucroBrutoElement = document.getElementById('totalLucroBruto');
-    lucroBrutoElement.innerHTML = formatarMoeda(totalLucroBruto);
-    lucroBrutoElement.className = 'stat-value'; // remove qualquer classe de cor
-
-    // COMISSÃO - aplica classe amarela
-    const comissaoElement = document.getElementById('totalComissao');
-    comissaoElement.innerHTML = formatarMoeda(totalComissao);
-    comissaoElement.className = 'stat-value stat-value-commission';
-
-    // LUCRO REAL = LUCRO BRUTO - CUSTO FIXO MENSAL
     const lucroRealCalculado = totalLucroBruto - custoFixoMensal;
     const lucroRealElement = document.getElementById('totalLucroReal');
     const iconLucroReal = document.getElementById('iconLucroReal');
@@ -332,7 +255,6 @@ function updateTable() {
         filtered = filtered.filter(r => (r.vendedor || '') === filterVendedor);
     }
 
-    // Ordenar por NF (crescente)
     filtered.sort((a, b) => {
         const nfA = (a.nf || '').padStart(10, '0');
         const nfB = (b.nf || '').padStart(10, '0');
@@ -412,39 +334,14 @@ function abrirEditModal(codigo) {
 
     currentEditCodigo = codigo;
     document.getElementById('editNF').textContent = registro.nf || '-';
-
     document.getElementById('editCusto').value = registro.custo || 0;
     document.getElementById('editComissao').value = registro.comissao || 0;
     document.getElementById('editImposto').value = registro.imposto_federal || 0;
 
-    // Adiciona listeners para tecla Enter nos inputs
-    const inputs = ['editCusto', 'editComissao', 'editImposto'];
-    inputs.forEach(id => {
-        const input = document.getElementById(id);
-        if (input) {
-            input.addEventListener('keydown', handleEnterKey);
-        }
-    });
-
     document.getElementById('editModal').classList.add('show');
 }
 
-function handleEnterKey(event) {
-    if (event.key === 'Enter') {
-        event.preventDefault();
-        saveEditModal();
-    }
-}
-
 function closeEditModal() {
-    const inputs = ['editCusto', 'editComissao', 'editImposto'];
-    inputs.forEach(id => {
-        const input = document.getElementById(id);
-        if (input) {
-            input.removeEventListener('keydown', handleEnterKey);
-        }
-    });
-
     document.getElementById('editModal').classList.remove('show');
     currentEditCodigo = null;
 }
@@ -459,10 +356,7 @@ async function saveEditModal() {
     try {
         const response = await fetch(`${API_URL}/lucro-real/${currentEditCodigo}`, {
             method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Session-Token': sessionToken
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 custo: novoCusto,
                 comissao: novaComissao,
@@ -521,22 +415,19 @@ async function renderRelatorio() {
     document.getElementById('relatorioAnoTitulo').textContent = relatorioAno;
 
     try {
-        const response = await fetch(`${API_URL}/lucro-real?ano=${relatorioAno}`, {
-            headers: { 'X-Session-Token': sessionToken }
-        });
+        const response = await fetch(`${API_URL}/lucro-real?ano=${relatorioAno}`);
         if (!response.ok) throw new Error();
         const dadosAno = await response.json();
 
         const meses = Array(12).fill().map(() => ({
             freteTotal: 0,
             vendaTotal: 0,
-            lucroBruto: 0,        // soma do lucro de cada venda (venda - custo - frete - comissão - imposto)
+            lucroBruto: 0,
             custoTotal: 0,
             impostoTotal: 0,
             custoFixoMensal: 0
         }));
 
-        // Agrupar por mês
         dadosAno.forEach(r => {
             const data = new Date(r.data_emissao + 'T00:00:00');
             const mes = data.getMonth();
@@ -547,7 +438,6 @@ async function renderRelatorio() {
             meses[mes].lucroBruto += lucro;
             meses[mes].custoTotal += r.custo || 0;
             meses[mes].impostoTotal += r.imposto_federal || 0;
-            // Captura o custo fixo (considera que todas as linhas do mês têm o mesmo valor)
             if (r.custo_fixo_mensal !== undefined && meses[mes].custoFixoMensal === 0) {
                 meses[mes].custoFixoMensal = parseFloat(r.custo_fixo_mensal) || 0;
             }
@@ -570,14 +460,12 @@ async function renderRelatorio() {
             const lucroReal = m.lucroBruto - m.custoFixoMensal;
             const lucroRealClass = lucroReal >= 0 ? 'stat-value-success' : 'stat-value-danger';
             
-            // Tendência baseada no Lucro Bruto (ou pode ser no Lucro Real, tanto faz)
             let tendencia = '';
             if (mesIndex > 0) {
                 const mesAnt = meses[mesIndex - 1];
-                const lucroBrutoAnt = mesAnt.lucroBruto;
-                if (m.lucroBruto > lucroBrutoAnt) {
+                if (m.lucroBruto > mesAnt.lucroBruto) {
                     tendencia = '<span style="color:#22C55E; font-weight:bold; margin-left:0.5rem;">▲</span>';
-                } else if (m.lucroBruto < lucroBrutoAnt) {
+                } else if (m.lucroBruto < mesAnt.lucroBruto) {
                     tendencia = '<span style="color:#EF4444; font-weight:bold; margin-left:0.5rem;">▼</span>';
                 }
             }
@@ -588,44 +476,26 @@ async function renderRelatorio() {
                         <h4 style="margin:0 0 0.5rem 0; color: var(--text-primary);">${nome}</h4>
                         ${tendencia}
                     </div>
-                    <div style="margin-bottom:0.5rem;">
-                        <span style="font-weight: 700;">Frete:</span> 
-                        <span style="color: #3B82F6;">${percentualFrete}%</span>
-                    </div>
-                    <div style="margin-bottom:0.5rem;">
-                        <span style="font-weight: 700;">Lucro Bruto:</span> 
-                        ${formatarMoeda(m.lucroBruto)}
-                    </div>
-                    <div style="margin-bottom:0.5rem;">
-                        <span style="font-weight: 700;">Custo:</span> 
-                        ${formatarMoeda(m.custoTotal)}
-                    </div>
-                    <div style="margin-bottom:0.5rem;">
-                        <span style="font-weight: 700;">Lucro Real:</span> 
-                        <span class="${lucroRealClass}">${formatarMoeda(lucroReal)}</span>
-                    </div>
-                    <div>
-                        <span style="font-weight: 700;">Custo Fixo:</span> 
-                        ${formatarMoeda(m.custoFixoMensal)}
-                    </div>
+                    <div><span style="font-weight: 700;">Frete:</span> <span style="color:#3B82F6;">${percentualFrete}%</span></div>
+                    <div><span style="font-weight: 700;">Lucro Bruto:</span> ${formatarMoeda(m.lucroBruto)}</div>
+                    <div><span style="font-weight: 700;">Custo:</span> ${formatarMoeda(m.custoTotal)}</div>
+                    <div><span style="font-weight: 700;">Lucro Real:</span> <span class="${lucroRealClass}">${formatarMoeda(lucroReal)}</span></div>
+                    <div><span style="font-weight: 700;">Custo Fixo:</span> ${formatarMoeda(m.custoFixoMensal)}</div>
                 </div>
             `;
         });
 
         html += '</div>';
-
-        // Restante do código (paginação e cards anuais) permanece igual
         html += `
             <div style="display: flex; justify-content: center; gap: 1rem; margin-bottom: 1.5rem;">
                 <button onclick="changeRelatorioPagina(-1)" ${relatorioPagina === 1 ? 'disabled' : ''} 
-                        style="background: transparent; border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: 6px; color: var(--text-secondary);">‹</button>
+                        style="background: transparent; border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: 6px;">‹</button>
                 <span style="font-weight: 600;">${relatorioPagina}</span>
                 <button onclick="changeRelatorioPagina(1)" ${relatorioPagina === totalPaginas ? 'disabled' : ''}
-                        style="background: transparent; border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: 6px; color: var(--text-secondary);">›</button>
+                        style="background: transparent; border: 1px solid var(--border-color); padding: 0.5rem 1rem; border-radius: 6px;">›</button>
             </div>
         `;
 
-        // Totais anuais
         const totalFreteAno = meses.reduce((acc, m) => acc + m.freteTotal, 0);
         const totalImpostoAno = meses.reduce((acc, m) => acc + m.impostoTotal, 0);
         const lucroRealAnual = meses.reduce((acc, m) => acc + (m.lucroBruto - m.custoFixoMensal), 0);
@@ -634,38 +504,16 @@ async function renderRelatorio() {
         html += `
             <div style="display: flex; gap: 1rem; justify-content: center; margin: 2rem 0 0; flex-wrap: wrap;">
                 <div class="stat-card" style="flex:1; min-width:150px;">
-                    <div class="stat-icon stat-icon-default" style="background:rgba(107,114,128,0.1);">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="10" />
-                            <path d="M12 6v6l4 2" />
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value" style="color:#3B82F6;">${formatarMoeda(totalFreteAno)}</div>
-                        <div class="stat-label">TOTAL FRETE</div>
-                    </div>
+                    <div class="stat-icon stat-icon-default"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div>
+                    <div class="stat-content"><div class="stat-value" style="color:#3B82F6;">${formatarMoeda(totalFreteAno)}</div><div class="stat-label">TOTAL FRETE</div></div>
                 </div>
                 <div class="stat-card" style="flex:1; min-width:150px;">
-                    <div class="stat-icon stat-icon-default">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 10h18M3 14h18" />
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value">${formatarMoeda(totalImpostoAno)}</div>
-                        <div class="stat-label">TOTAL IMPOSTO</div>
-                    </div>
+                    <div class="stat-icon stat-icon-default"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10h18M3 14h18"/></svg></div>
+                    <div class="stat-content"><div class="stat-value">${formatarMoeda(totalImpostoAno)}</div><div class="stat-label">TOTAL IMPOSTO</div></div>
                 </div>
                 <div class="stat-card" style="flex:1; min-width:150px;">
-                    <div class="stat-icon stat-icon-default">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M20 12H4M12 4v16" />
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value ${lucroRealAnualClass}" style="font-weight:700;">${formatarMoeda(lucroRealAnual)}</div>
-                        <div class="stat-label">LUCRO REAL DO ANO</div>
-                    </div>
+                    <div class="stat-icon stat-icon-default"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 12H4M12 4v16"/></svg></div>
+                    <div class="stat-content"><div class="stat-value ${lucroRealAnualClass}">${formatarMoeda(lucroRealAnual)}</div><div class="stat-label">LUCRO REAL DO ANO</div></div>
                 </div>
             </div>
         `;
