@@ -1200,7 +1200,7 @@ async function confirmDelete(id) {
             headers['X-Session-Token'] = sessionToken;
         }
 
-        const response = await fetch(`${API_URL}/ordens/${id}`, {
+        const response = await fetch(`${API_URL}/compra/${id}`, {
             method: 'DELETE',
             headers: headers,
             mode: 'cors'
@@ -1250,7 +1250,7 @@ async function toggleStatus(id) {
                 headers['X-Session-Token'] = sessionToken;
             }
 
-            const response = await fetch(`${API_URL}/ordens/${id}/status`, {
+            const response = await fetch(`${API_URL}/compra/${id}/status`, {
                 method: 'PATCH',
                 headers: headers,
                 body: JSON.stringify({ status: novoStatus }),
