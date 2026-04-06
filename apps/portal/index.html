@@ -55,7 +55,11 @@
     }
 }
 
+/* ─── RESET ─── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ─── CLASSE HIDDEN — definida logo no início para garantir precedência ─── */
+.hidden { display: none !important; }
 
 body {
     font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -80,7 +84,7 @@ body {
     font-family: 'DM Sans', sans-serif;
 }
 
-/* Linhas animadas */
+/* ── Linhas animadas passando por toda a tela ── */
 .login-line {
     position: absolute;
     pointer-events: none;
@@ -109,6 +113,7 @@ body {
 @keyframes lineSlideH { from { transform: translateX(0); } to { transform: translateX(200%); } }
 @keyframes lineSlideV { from { transform: translateY(0); } to { transform: translateY(200%); } }
 
+/* ── Formulário centralizado ── */
 .login-form-area {
     position: relative;
     z-index: 20;
@@ -119,6 +124,7 @@ body {
     align-items: center;
 }
 
+/* Logo */
 .login-logo-wrapper {
     display: flex;
     align-items: center;
@@ -127,22 +133,38 @@ body {
     margin-bottom: 1rem;
     animation: portalFadeIn 1.8s ease forwards;
 }
+
 .login-logo-light,
 .login-logo-dark {
     height: auto;
     display: block;
 }
+
 .login-logo-light { max-width: 185px; }
 .login-logo-dark  { max-width: 148px; }
+
 .login-logo-light { display: block; }
 .login-logo-dark  { display: none;  }
+
 @media (prefers-color-scheme: dark) {
     .login-logo-light { display: none;  }
     .login-logo-dark  { display: block; }
 }
+
 @keyframes portalFadeIn {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0);   }
+}
+
+.login-portal-sub {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: #6B7280;
+    text-align: center;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    animation: portalFadeIn 1.8s ease 0.15s both;
 }
 
 .login-portal-headline {
@@ -156,6 +178,7 @@ body {
     animation: portalFadeIn 1.8s ease 0.25s both;
 }
 
+/* Campos */
 .login-fields { width: 100%; }
 .form-group { margin-bottom: 1.4rem; }
 
@@ -209,6 +232,7 @@ input:focus {
 }
 .toggle-password:hover { color: var(--primary); }
 
+/* Botão Entrar */
 .btn-login {
     width: 100%;
     padding: 15px;
@@ -244,6 +268,7 @@ input:focus {
 .btn-login:active:not(:disabled) { transform: translateY(0); }
 .btn-login:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Mensagens */
 .message {
     position: absolute;
     top: -3.8rem;
@@ -278,6 +303,7 @@ input:focus {
     z-index: 20;
 }
 
+/* ── CARD CORPORATIVO ── */
 .login-card {
     background: #ffffff;
     border-radius: 20px;
@@ -290,6 +316,7 @@ input:focus {
     animation: portalFadeIn 0.6s ease forwards;
 }
 
+/* ── INPUT COM ÍCONE ── */
 .input-icon-wrapper { position: relative; }
 .input-icon {
     position: absolute;
@@ -310,6 +337,7 @@ input:focus {
 .input-icon-wrapper input:focus ~ .input-icon,
 .input-icon-wrapper:focus-within .input-icon { color: #F97316; }
 
+/* ── SPINNER NO BOTÃO ── */
 .btn-spinner {
     display: inline-block;
     width: 14px; height: 14px;
@@ -321,11 +349,13 @@ input:focus {
     margin-right: 6px;
 }
 
+/* ── TEMA ESCURO ── */
 @media (prefers-color-scheme: dark) {
     .login-screen    { background: linear-gradient(160deg, #0c0c0e 0%, #111114 100%); }
     .login-card      { background: #1a1a1a; box-shadow: 0 4px 6px rgba(0,0,0,0.2), 0 12px 40px rgba(0,0,0,0.4); }
     .input-icon      { color: rgba(255,255,255,0.25); }
     .login-version-footer { color: rgba(255,255,255,0.18); }
+    .login-portal-sub    { color: rgba(255,255,255,0.3); }
     .login-portal-headline { color: rgba(255,255,255,0.7); }
     label { color: rgba(255,255,255,0.4); }
     input {
@@ -358,6 +388,7 @@ input:focus {
 /* ─── DASHBOARD ─── */
 .dashboard-screen { display: none; height: 100vh; overflow: hidden; }
 
+/* SPLASH */
 .splash-welcome {
     position: fixed; top: 0; left: 0;
     width: 100%; height: 100%;
@@ -365,6 +396,8 @@ input:focus {
     display: flex; align-items: center; justify-content: center;
     z-index: 99999;
 }
+
+/* Spinner */
 .splash-spinner {
     width: 52px; height: 52px;
     border: 4px solid rgba(255, 82, 29, 0.15);
@@ -375,8 +408,10 @@ input:focus {
 @keyframes splashSpin { to { transform: rotate(360deg); } }
 @keyframes fadeOut { to { opacity:0; visibility:hidden; } }
 
+/* ─── LAYOUT PRINCIPAL ─── */
 .dashboard-container { display: flex; height: 100vh; overflow: hidden; }
 
+/* ─── SIDEBAR ─── */
 .sidebar {
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border-color);
@@ -406,6 +441,7 @@ input:focus {
     height: 70px; min-height: 70px; max-height: 70px;
     overflow: hidden;
 }
+
 .user-initial-circle {
     background: #6B7280;
     color: white;
@@ -417,12 +453,14 @@ input:focus {
     font-size: 1.1rem; font-weight: 700;
     flex-shrink: 0; text-transform: uppercase;
 }
+
 .sidebar-title {
     display: flex; flex-direction: column; gap: 0.25rem;
     flex: 1; min-width: 0; overflow: hidden; white-space: nowrap;
     opacity: 0; transition: opacity 0.2s ease;
 }
 .sidebar.visible.expanded .sidebar-title { opacity: 1; }
+
 .user-name-sidebar { font-size: 1.05rem; font-weight: 700; color: var(--text-primary); line-height: 1.3; }
 .user-sector-sidebar { font-size: 0.9rem; color: var(--text-secondary); line-height: 1.2; }
 
@@ -478,6 +516,7 @@ input:focus {
     stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
 }
 
+/* ─── MODULE ITEMS ─── */
 .module-item {
     padding: 0.75rem 1rem;
     display: flex; align-items: center; gap: 0.75rem;
@@ -527,12 +566,15 @@ input:focus {
     stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
 }
 
+/* ─── MAIN CONTENT ─── */
 .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+
 .content-area {
     flex: 1; overflow: hidden; display: flex; flex-direction: column;
     height: 100%; width: 100%; position: relative;
 }
 
+/* ─── TELA DE BOAS-VINDAS ─── */
 .welcome-screen {
     position: absolute; inset: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -546,6 +588,7 @@ input:focus {
 .welcome-greeting-text { font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; }
 .welcome-title { font-size: 1rem; font-weight: 400; color: var(--text-secondary); text-align: center; }
 
+/* GRID DE CARDS - 5 COLUNAS POR LINHA */
 .welcome-modules-grid {
     display: grid;
     grid-template-columns: repeat(5, 1fr);
@@ -585,6 +628,7 @@ input:focus {
 .welcome-module-card:active { transform: translateY(-1px); }
 .welcome-module-card.unavailable { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
+/* Badge "Novo" */
 .badge-new {
     display: inline-flex;
     align-items: center;
@@ -614,6 +658,7 @@ input:focus {
 .welcome-module-card:hover .card-icon { transform: scale(1.15); }
 .card-icon svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
+/* ─── BOTÃO SAIR FLUTUANTE ─── */
 .logout-btn-floating {
     position: fixed; top: 1.25rem; right: 1.25rem; z-index: 200;
     display: flex; align-items: center; gap: 0.5rem;
@@ -628,6 +673,7 @@ input:focus {
 .logout-btn-floating.hidden-smooth { opacity: 0; visibility: hidden; pointer-events: none; }
 .logout-btn-floating svg { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
+/* ─── APP LOADER ─── */
 .app-loader {
     position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
     background: var(--bg-primary); z-index: 5; opacity: 1;
@@ -636,6 +682,7 @@ input:focus {
 .app-loader.done { opacity: 0; }
 .app-loader-spinner { width: 52px; height: 52px; border: 4px solid rgba(255, 82, 29, 0.15); border-top-color: var(--primary); border-radius: 50%; animation: splashSpin 0.8s linear infinite; }
 
+/* ─── IFRAMES ─── */
 #iframesContainer { flex: 1; width: 100%; height: 100%; position: relative; }
 .iframe-container {
     display: block; width: 100%; height: 100%; position: absolute; inset: 0;
@@ -645,6 +692,7 @@ input:focus {
 .iframe-container.active { opacity: 1; visibility: visible; transform: scale(1); }
 .iframe-container iframe { width: 100%; height: 100%; border: none; }
 
+/* ─── MODAL LOGOUT ─── */
 .modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
     backdrop-filter: blur(4px); align-items: center; justify-content: center;
@@ -679,14 +727,14 @@ input:focus {
 .modal-actions button.secondary { background: #6B7280; color: white; }
 .modal-actions button.secondary:hover { opacity: 0.9; transform: translateY(-1px); }
 
-.hidden { display: none !important; }
-
+/* ─── RESPONSIVO ─── */
 @media (max-width: 1200px) {
     .welcome-modules-grid {
         grid-template-columns: repeat(3, 1fr);
         max-width: 1000px;
     }
 }
+
 @media (max-width: 768px) {
     .welcome-modules-grid {
         grid-template-columns: repeat(2, 1fr);
@@ -699,6 +747,7 @@ input:focus {
         position: fixed; left: 0; top: 0; height: 100vh; z-index: 1000;
     }
 }
+
 @media (max-width: 480px) {
     .welcome-modules-grid {
         grid-template-columns: 1fr;
@@ -709,8 +758,9 @@ input:focus {
 </head>
 <body>
 
-    <!-- LOGIN -->
+    <!-- ── LOGIN ── -->
     <div id="loginScreen" class="login-screen">
+
         <div class="login-line login-line-h"></div>
         <div class="login-line login-line-h"></div>
         <div class="login-line login-line-h"></div>
@@ -720,26 +770,35 @@ input:focus {
 
         <div class="login-card">
         <div class="login-form-area">
+
             <div id="messageBox" class="message"></div>
+
             <div class="login-logo-wrapper">
-                <img src="IR CLARO.png" alt="IR Comércio e Materiais Elétricos" class="login-logo-light">
+                <img src="IR CLARO.png"  alt="IR Comércio e Materiais Elétricos" class="login-logo-light">
                 <img src="IR ESCURO.png" alt="IR Comércio e Materiais Elétricos" class="login-logo-dark">
             </div>
             <div class="login-portal-headline">IDENTIFIQUE-SE PARA CONTINUAR</div>
+
             <div class="login-fields">
                 <form id="loginForm">
                     <div class="form-group">
                         <label for="username">Usuário</label>
                         <div class="input-icon-wrapper">
-                            <span class="input-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg></span>
-                            <input type="text" id="username" name="username" required autofocus placeholder="Digite seu usuário" autocomplete="username" style="padding-left:2.6rem;">
+                            <span class="input-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+                            </span>
+                            <input type="text" id="username" name="username" required autofocus
+                                   placeholder="Digite seu usuário" autocomplete="username" style="padding-left:2.6rem;">
                         </div>
                     </div>
                     <div class="form-group">
                         <label for="password">Senha</label>
                         <div class="password-container input-icon-wrapper">
-                            <span class="input-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
-                            <input type="password" id="password" name="password" required placeholder="Digite sua senha" autocomplete="current-password" style="padding-left:2.6rem;">
+                            <span class="input-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            </span>
+                            <input type="password" id="password" name="password" required
+                                   placeholder="Digite sua senha" autocomplete="current-password" style="padding-left:2.6rem;">
                             <button type="button" class="toggle-password" onclick="togglePassword()">MOSTRAR</button>
                         </div>
                     </div>
@@ -747,15 +806,29 @@ input:focus {
                 </form>
             </div>
         </div>
-        </div>
+        </div><!-- /.login-card -->
+
         <div class="login-version-footer">© 2026 IR<span style="color: rgba(255, 140, 60, 0.55);">2</span> COMÉRCIO E MATERIAIS ELÉTRICOS LTDA &nbsp;·&nbsp; USO INTERNO</div>
     </div>
 
-    <!-- DASHBOARD -->
+    <!-- ── DASHBOARD ── -->
     <div id="dashboardScreen" class="dashboard-screen">
-        <div class="splash-welcome" id="splashWelcome"><div class="splash-spinner"></div></div>
-        <button class="logout-btn-floating" id="logoutFloatingBtn" onclick="showLogoutModal()"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Sair</button>
+
+        <div class="splash-welcome" id="splashWelcome">
+            <div class="splash-spinner"></div>
+        </div>
+
+        <button class="logout-btn-floating" id="logoutFloatingBtn" onclick="showLogoutModal()">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+            Sair
+        </button>
+
         <div class="dashboard-container">
+
             <div id="sidebar" class="sidebar">
                 <div class="sidebar-header">
                     <div class="user-initial-circle" id="userInitial"></div>
@@ -764,14 +837,23 @@ input:focus {
                         <div class="user-sector-sidebar" id="sidebarUserSector"></div>
                     </div>
                 </div>
+
                 <div class="sidebar-modules" id="sidebarModules"></div>
+
                 <div class="sidebar-footer">
                     <button class="logout-btn-footer" onclick="showLogoutModal()">
-                        <span class="logout-icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></span>
+                        <span class="logout-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                                <polyline points="16 17 21 12 16 7"/>
+                                <line x1="21" y1="12" x2="9" y2="12"/>
+                            </svg>
+                        </span>
                         <span class="logout-label">Sair</span>
                     </button>
                 </div>
             </div>
+
             <div class="main-content">
                 <div class="content-area">
                     <div id="welcomeScreen" class="welcome-screen">
@@ -781,6 +863,7 @@ input:focus {
                         </div>
                         <div id="welcomeModulesGrid" class="welcome-modules-grid"></div>
                     </div>
+
                     <div id="iframesContainer"></div>
                 </div>
             </div>
@@ -800,32 +883,39 @@ input:focus {
     </div>
 
     <script>
-        // CONFIGURAÇÃO
         const API_URL = window.location.origin + '/api';
 
-        // PERMISSÕES
+        /* ── PERMISSÕES POR SETOR ── */
         const SECTOR_PERMISSIONS = {
-            'Administrador': ['licitacoes','precos','compra','transportadoras','cotacoes','faturamento','estoque','frete','receber','vendas','pagamento','lucro-real'],
+            'Administrador': ['usuarios','pregões','precos','compra','transportadoras','cotacoes','faturamento','estoque','frete','receber','vendas','pagamento','lucro-real'],
             'Vendas':        ['licitacoes','precos','compra','transportadoras','cotacoes','faturamento','estoque','frete'],
             'Financeiro':    ['licitacoes','transportadoras','faturamento','frete','receber','pagamento'],
             'Almoxarifado':  ['transportadoras','cotacoes','faturamento','estoque','frete'],
         };
 
+        /* ── ÍCONES ── */
         const MODULE_ICONS = {
+            'pregões':          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-8.381 8.38a 1 1 0 0 1-3.001-3l8.384-8.381"/><path d="m16 16 6-6"/><path d="m21.5 10.5-8-8"/><path d="m8 8 6-6"/><path d="m8.5 7.5 8 8"/></svg>',
             'licitacoes':       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m14 13-8.381 8.38a 1 1 0 0 1-3.001-3l8.384-8.381"/><path d="m16 16 6-6"/><path d="m21.5 10.5-8-8"/><path d="m8 8 6-6"/><path d="m8.5 7.5 8 8"/></svg>',
+            'tabela-precos':    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 13H7"/><path d="M19 9h-4"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/><rect x="15" y="5" width="4" height="12" rx="1"/><rect x="7" y="8" width="4" height="9" rx="1"/></svg>',
             'precos':           '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 13H7"/><path d="M19 9h-4"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/><rect x="15" y="5" width="4" height="12" rx="1"/><rect x="7" y="8" width="4" height="9" rx="1"/></svg>',
             'compra':           '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>',
             'transportadoras':  '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>',
             'cotacoes':         '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/><circle cx="18.5" cy="15.5" r="2.5"/><path d="M20.27 17.27 22 19"/></svg>',
+            'cotacoes-frete':   '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/><circle cx="18.5" cy="15.5" r="2.5"/><path d="M20.27 17.27 22 19"/></svg>',
             'faturamento':      '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M2 15h10"/><path d="m9 18 3-3-3-3"/></svg>',
             'estoque':          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
             'frete':            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>',
+            'controle-frete':   '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>',
             'receber':          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5"/><path d="m16 19 3 3 3-3"/><path d="M18 12h.01"/><path d="M19 16v6"/><path d="M6 12h.01"/><circle cx="12" cy="12" r="2"/></svg>',
             'vendas':           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
             'pagamento':        '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5"/><path d="M18 12h.01"/><path d="M19 22v-6"/><path d="m22 19-3-3-3 3"/><path d="M6 12h.01"/><circle cx="12" cy="12" r="2"/></svg>',
-            'lucro':           '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="5" y1="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>',
+            'lucro-real':       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="5" y1="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>',
+            'lucro':            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="5" y1="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>',
+            'usuarios':         '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
         };
 
+        /* ── MÓDULOS ── */
         const MODULES = [
             { id: 'licitacoes',      name: 'Licitações',             url: '/licitacoes',    available: true },
             { id: 'precos',          name: 'Tabela de Preços',       url: '/precos',        available: true },
@@ -842,11 +932,13 @@ input:focus {
         ];
 
         let deviceToken        = null;
+        let publicIP           = null;
         let currentSessionInfo = null;
-        let sidebarRevealed    = false;
+        let activeModuleId     = null;
         let hoverTimeout       = null;
+        let sidebarRevealed    = false;
 
-        // HELPERS
+        /* ── HELPERS ── */
         function getUserPermissions(sessionInfo) {
             const sector = sessionInfo.sector || '';
             return SECTOR_PERMISSIONS[sector] || [];
@@ -869,6 +961,14 @@ input:focus {
             return token;
         }
 
+        async function getPublicIP() {
+            try {
+                const res = await fetch(`${API_URL}/ip`);
+                const data = await res.json();
+                return data.ip;
+            } catch { return null; }
+        }
+
         function showMessage(message, type = 'error') {
             const box = document.getElementById('messageBox');
             box.textContent = message;
@@ -883,7 +983,7 @@ input:focus {
             else                           { input.type = 'password'; btn.textContent = 'MOSTRAR'; }
         }
 
-        // LOGOUT
+        /* ── LOGOUT ── */
         function showLogoutModal()  { document.getElementById('logoutModal').classList.add('show'); }
         function closeLogoutModal() { document.getElementById('logoutModal').classList.remove('show'); }
 
@@ -917,6 +1017,7 @@ input:focus {
             if (wg) wg.textContent = '';
         }
 
+        /* ── SETUP SIDEBAR HOVER ── */
         function setupSidebarHover() {
             const sidebar = document.getElementById('sidebar');
             sidebar.addEventListener('mouseenter', () => {
@@ -928,6 +1029,7 @@ input:focus {
             });
         }
 
+        /* ── CARREGAR MÓDULOS NA SIDEBAR ── */
         function loadSidebarModules(sessionInfo) {
             const sidebarModules = document.getElementById('sidebarModules');
             sidebarModules.innerHTML = '';
@@ -952,6 +1054,7 @@ input:focus {
             });
         }
 
+        /* ── CARREGAR CARDS NA TELA INICIAL ── */
         function loadWelcomeModules(sessionInfo) {
             const grid = document.getElementById('welcomeModulesGrid');
             grid.innerHTML = '';
@@ -972,6 +1075,7 @@ input:focus {
             });
         }
 
+        /* ── ABRIR MÓDULO ── */
         function openModule(module) {
             if (!sidebarRevealed) {
                 sidebarRevealed = true;
@@ -1012,10 +1116,11 @@ input:focus {
 
             document.querySelectorAll('.iframe-container').forEach(c => c.classList.remove('active'));
             setTimeout(() => iframeContainer.classList.add('active'), 50);
+            activeModuleId = module.id;
         }
 
+        /* ── SHOW DASHBOARD ── */
         function showDashboard(sessionInfo) {
-            console.log('✅ showDashboard chamado', sessionInfo);
             document.getElementById('loginScreen').classList.add('hidden');
             document.getElementById('dashboardScreen').style.display = 'block';
 
@@ -1044,58 +1149,39 @@ input:focus {
             }
         }
 
-        // LOGIN
+        /* ── LOGIN ── */
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const username = document.getElementById('username').value.toLowerCase().trim();
             const password = document.getElementById('password').value;
             const loginBtn = document.getElementById('loginBtn');
-
-            // Garantir deviceToken antes de enviar
-            if (!deviceToken) {
-                deviceToken = getOrCreateDeviceToken();
-            }
-
             loginBtn.disabled = true;
             loginBtn.innerHTML = '<span class="btn-spinner"></span> Autenticando...';
-
             try {
-                console.log('📤 Enviando login para:', `${API_URL}/login`);
-                const res = await fetch(`${API_URL}/login`, {
+                const res  = await fetch(`${API_URL}/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password, deviceToken })
                 });
-
-                console.log('📥 Status:', res.status);
                 const data = await res.json();
-                console.log('📦 Resposta completa:', data);
-
                 if (!res.ok) {
-                    const msg = data.message || data.error || 'Erro ao fazer login';
-                    showMessage(msg, 'error');
+                    showMessage(data.message || data.error || 'Erro ao fazer login', 'error');
                     return;
                 }
-
                 if (data.success && data.session) {
                     sessionStorage.setItem('irUserSession', JSON.stringify(data.session));
                     currentSessionInfo = data.session;
-                    console.log('✅ Login OK, chamando showDashboard');
                     showDashboard(data.session);
-                } else {
-                    console.error('❌ Resposta sem session:', data);
-                    showMessage('Resposta inválida do servidor', 'error');
                 }
-            } catch (error) {
-                console.error('❌ Erro no login:', error);
-                showMessage('Erro ao realizar login. Verifique sua conexão.', 'error');
+            } catch {
+                showMessage('Erro ao realizar login. Tente novamente.', 'error');
             } finally {
                 loginBtn.disabled = false;
                 loginBtn.innerHTML = 'ENTRAR';
             }
         });
 
-        // VERIFY SESSION
+        /* ── VERIFY SESSION ── */
         async function verifySession(token) {
             try {
                 const res  = await fetch(`${API_URL}/verify-session`, {
@@ -1108,21 +1194,17 @@ input:focus {
             } catch { return false; }
         }
 
-        // INIT
+        /* ── INIT ── */
         async function init() {
             try {
                 deviceToken = getOrCreateDeviceToken();
-                console.log('🔑 deviceToken:', deviceToken);
+                publicIP    = await getPublicIP();
                 const stored = sessionStorage.getItem('irUserSession');
                 if (stored) {
                     const session = JSON.parse(stored);
                     const valid   = await verifySession(session.sessionToken);
-                    if (valid) {
-                        currentSessionInfo = session;
-                        showDashboard(session);
-                    } else {
-                        sessionStorage.removeItem('irUserSession');
-                    }
+                    if (valid) { currentSessionInfo = session; showDashboard(session); }
+                    else sessionStorage.removeItem('irUserSession');
                 }
             } catch (e) { console.error('Erro na inicialização:', e); }
         }
