@@ -905,7 +905,7 @@ async function handleSubmit(event) {
     }
 
     try {
-        const url = editingId ? `${API_URL}/ordens/${editingId}` : `${API_URL}/ordens`;
+        const url = editingId ? `${API_URL}/compra/${editingId}` : `${API_URL}/compra`;
         const method = editingId ? 'PUT' : 'POST';
 
         const headers = {
