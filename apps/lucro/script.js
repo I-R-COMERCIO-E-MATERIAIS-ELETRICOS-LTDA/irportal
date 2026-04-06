@@ -7,15 +7,13 @@ const API_URL = window.location.origin + '/api';
 let lucroData = [];
 let isOnline = false;
 let currentMonth = new Date();
-let lastDataHash = '';
 let currentFetchController = null;
 
 let relatorioAno = new Date().getFullYear();
 let relatorioPagina = 1;
 const mesesPorPagina = 3;
 
-let calendarYear = new Date().getFullYear();
-let custoFixoMensal = 0;
+let custoFixoMensal = 0;  // valor do campo custo_fixo_mensal do mês
 
 // ============================================
 // INICIALIZAÇÃO (SEM AUTENTICAÇÃO)
@@ -26,13 +24,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function inicializarApp() {
     updateMonthDisplay();
-    loadLucroReal();
-    setInterval(() => { if (isOnline) loadLucroReal(); }, 30000);
+    carregarDados();
+    setInterval(() => { if (isOnline) carregarDados(); }, 30000);
 }
 
-// ============================================
-// CONEXÃO COM A API (SEM TOKEN)
-// ============================================
 function updateConnectionStatus() {
     const status = document.getElementById('connectionStatus');
     if (status) {
@@ -41,9 +36,9 @@ function updateConnectionStatus() {
 }
 
 // ============================================
-// CARREGAR LUCRO REAL E CUSTO FIXO DO MÊS
+// CARREGAR DADOS DO MÊS (VIA API)
 // ============================================
-async function loadLucroReal() {
+async function carregarDados() {
     if (currentFetchController) currentFetchController.abort();
     currentFetchController = new AbortController();
     const signal = currentFetchController.signal;
@@ -51,7 +46,7 @@ async function loadLucroReal() {
     const ano = currentMonth.getFullYear();
 
     try {
-        const response = await fetch(`${API_URL}/lucro-real?mes=${mes}&ano=${ano}`, {
+        const response = await fetch(`${API_URL}/lucro?mes=${mes}&ano=${ano}`, {
             cache: 'no-cache',
             signal
         });
@@ -59,7 +54,7 @@ async function loadLucroReal() {
         if (!response.ok) {
             isOnline = false;
             updateConnectionStatus();
-            setTimeout(() => loadLucroReal(), 5000);
+            setTimeout(() => carregarDados(), 5000);
             return;
         }
 
@@ -69,56 +64,40 @@ async function loadLucroReal() {
         lucroData = data;
         isOnline = true;
         updateConnectionStatus();
-        lastDataHash = JSON.stringify(lucroData.map(r => r.id));
         currentFetchController = null;
 
-        // Extrai o custo fixo do mês (todas as linhas do mesmo mês têm o mesmo valor)
+        // O custo fixo do mês é o mesmo para todas as linhas (campo custo_fixo_mensal)
         if (lucroData.length > 0) {
             custoFixoMensal = lucroData[0].custo_fixo_mensal || 0;
         } else {
-            // Se não houver registros, tenta buscar o último custo fixo conhecido para o mês/ano
-            await loadCustoFixoMensalFromAnyRecord(mes, ano);
+            custoFixoMensal = 0;
         }
         updateDisplay();
     } catch (error) {
         if (error.name === 'AbortError') return;
         isOnline = false;
         updateConnectionStatus();
-        setTimeout(() => loadLucroReal(), 5000);
+        setTimeout(() => carregarDados(), 5000);
     }
 }
 
-// Busca o custo fixo de um mês/ano consultando qualquer registro (ex: via API específica)
-async function loadCustoFixoMensalFromAnyRecord(mes, ano) {
-    try {
-        const response = await fetch(`${API_URL}/lucro-real/custo-fixo?mes=${mes}&ano=${ano}`);
-        if (response.ok) {
-            const data = await response.json();
-            custoFixoMensal = data.valor || 0;
-        } else {
-            custoFixoMensal = 0;
-        }
-    } catch (error) {
-        console.warn('Erro ao carregar custo fixo', error);
-        custoFixoMensal = 0;
-    }
-}
-
-// Salva o custo fixo para todas as linhas do mês atual
-async function saveCustoFixo() {
+// ============================================
+// CUSTO FIXO MENSAL (atualiza todas as linhas do mês)
+// ============================================
+async function salvarCustoFixo() {
     const valor = parseFloat(document.getElementById('custoFixoInput').value) || 0;
     const mes = currentMonth.getMonth();
     const ano = currentMonth.getFullYear();
 
     try {
-        const response = await fetch(`${API_URL}/lucro-real/custo-fixo`, {
+        const response = await fetch(`${API_URL}/lucro/custo-fixo`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mes, ano, valor })
         });
         if (response.ok) {
             custoFixoMensal = valor;
-            // Atualiza localmente todas as linhas do mês com o novo custo fixo
+            // Atualiza o campo localmente em todas as linhas do mês
             lucroData.forEach(r => r.custo_fixo_mensal = valor);
             updateDashboard();
             closeCustoFixoModal();
@@ -147,10 +126,8 @@ function changeMonth(direction) {
     if (currentFetchController) currentFetchController.abort();
     currentMonth.setMonth(currentMonth.getMonth() + direction);
     lucroData = [];
-    lastDataHash = '';
     updateMonthDisplay();
-    updateTable();
-    loadLucroReal();
+    carregarDados();
 }
 
 function updateMonthDisplay() {
@@ -162,13 +139,13 @@ function updateMonthDisplay() {
 }
 
 // ============================================
-// ATUALIZAR DISPLAY
+// ATUALIZAÇÃO DA TELA
 // ============================================
 function updateDisplay() {
     updateMonthDisplay();
     updateDashboard();
-    updateTable();
-    updateVendedoresFilter();
+    updateTabela();
+    atualizarFiltroVendedor();
 }
 
 function updateDashboard() {
@@ -181,35 +158,35 @@ function updateDashboard() {
         totalFrete += r.frete || 0;
         totalComissao += r.comissao || 0;
         totalImposto += r.imposto_federal || 0;
-        const lucro = (r.venda || 0) - (r.custo || 0) - (r.frete || 0) - (r.comissao || 0) - (r.imposto_federal || 0);
-        totalLucroBruto += lucro;
+        const lucroBruto = (r.venda || 0) - (r.custo || 0) - (r.frete || 0) - (r.comissao || 0) - (r.imposto_federal || 0);
+        totalLucroBruto += lucroBruto;
     });
 
     document.getElementById('totalVenda').innerHTML = `<span class="stat-value-success">${formatarMoeda(totalVenda)}</span>`;
-    document.getElementById('totalCusto').innerHTML = `<span style="color: #EF4444; font-weight: 700;">${formatarMoeda(totalCusto)}</span>`;
-    document.getElementById('totalFrete').innerHTML = `<span style="color: #3B82F6; font-weight: 700;">${formatarMoeda(totalFrete)}</span>`;
-    document.getElementById('totalImposto').innerHTML = `<span style="color: #EF4444;">${formatarMoeda(totalImposto)}</span>`;
+    document.getElementById('totalCusto').innerHTML = `<span style="color:#EF4444;">${formatarMoeda(totalCusto)}</span>`;
+    document.getElementById('totalFrete').innerHTML = `<span style="color:#3B82F6;">${formatarMoeda(totalFrete)}</span>`;
+    document.getElementById('totalImposto').innerHTML = `<span style="color:#EF4444;">${formatarMoeda(totalImposto)}</span>`;
     document.getElementById('totalComissao').innerHTML = formatarMoeda(totalComissao);
     document.getElementById('totalLucroBruto').innerHTML = formatarMoeda(totalLucroBruto);
 
-    const lucroRealCalculado = totalLucroBruto - custoFixoMensal;
+    const lucroReal = totalLucroBruto - custoFixoMensal;
     const lucroRealElement = document.getElementById('totalLucroReal');
-    const iconLucroReal = document.getElementById('iconLucroReal');
+    const icon = document.getElementById('iconLucroReal');
 
-    lucroRealElement.innerHTML = formatarMoeda(lucroRealCalculado);
+    lucroRealElement.innerHTML = formatarMoeda(lucroReal);
     lucroRealElement.className = 'stat-value';
-    iconLucroReal.className = 'stat-icon';
+    icon.className = 'stat-icon';
 
-    if (lucroRealCalculado >= 0) {
+    if (lucroReal >= 0) {
         lucroRealElement.classList.add('stat-value-success');
-        iconLucroReal.classList.add('stat-icon-success');
+        icon.classList.add('stat-icon-success');
     } else {
         lucroRealElement.classList.add('stat-value-danger');
-        iconLucroReal.classList.add('stat-icon-danger');
+        icon.classList.add('stat-icon-danger');
     }
 }
 
-function updateVendedoresFilter() {
+function atualizarFiltroVendedor() {
     const vendedores = new Set(lucroData.map(r => r.vendedor).filter(Boolean));
     const select = document.getElementById('filterVendedor');
     const current = select.value;
@@ -223,42 +200,42 @@ function updateVendedoresFilter() {
     select.value = current;
 }
 
-function filterLucroReal() {
-    updateTable();
+function filtrarDados() {
+    updateTabela();
 }
 
-function updateTable() {
+function updateTabela() {
     const container = document.getElementById('lucroContainer');
-    let filtered = [...lucroData];
+    let filtrados = [...lucroData];
 
     const search = document.getElementById('search').value.toLowerCase();
     const filterVendedor = document.getElementById('filterVendedor').value;
 
     if (search) {
-        filtered = filtered.filter(r =>
+        filtrados = filtrados.filter(r =>
             (r.nf || '').toLowerCase().includes(search) ||
             (r.vendedor || '').toLowerCase().includes(search)
         );
     }
     if (filterVendedor) {
-        filtered = filtered.filter(r => (r.vendedor || '') === filterVendedor);
+        filtrados = filtrados.filter(r => (r.vendedor || '') === filterVendedor);
     }
 
-    filtered.sort((a, b) => {
+    filtrados.sort((a, b) => {
         const nfA = (a.nf || '').padStart(10, '0');
         const nfB = (b.nf || '').padStart(10, '0');
         return nfA.localeCompare(nfB);
     });
 
-    if (filtered.length === 0) {
-        container.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhum registro encontrado</td></tr>';
+    if (filtrados.length === 0) {
+        container.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhum registro encontrado</td></tr>`;
         return;
     }
 
     let lastMonthYear = null;
     let html = '';
 
-    filtered.forEach(r => {
+    filtrados.forEach(r => {
         const data = new Date(r.data_emissao + 'T00:00:00');
         const mesAno = `${data.getMonth()+1}/${data.getFullYear()}`;
         if (mesAno !== lastMonthYear) {
@@ -271,20 +248,20 @@ function updateTable() {
             lastMonthYear = mesAno;
         }
 
-        const lucroReal = (r.venda || 0) - (r.custo || 0) - (r.frete || 0) - (r.comissao || 0) - (r.imposto_federal || 0);
-        const margem = r.venda ? (lucroReal / r.venda) * 100 : 0;
-        const lucroClass = lucroReal >= 0 ? 'stat-value-success' : 'stat-value-danger';
+        const lucroBruto = (r.venda || 0) - (r.custo || 0) - (r.frete || 0) - (r.comissao || 0) - (r.imposto_federal || 0);
+        const margem = r.venda ? (lucroBruto / r.venda) * 100 : 0;
+        const lucroClass = lucroBruto >= 0 ? 'stat-value-success' : 'stat-value-danger';
         
         html += `
         <tr onclick="abrirEditModal('${r.codigo}')">
             <td>${(r.nf || '-').toUpperCase()}</td>
             <td>${(r.vendedor || '-').toUpperCase()}</td>
             <td>${formatarMoeda(r.venda)}</td>
-            <td style="color: #EF4444; font-weight: 700;">${formatarMoeda(r.custo)}</td>
+            <td style="color: #EF4444;">${formatarMoeda(r.custo)}</td>
             <td>${formatarMoeda(r.frete)}</td>
             <td>${formatarMoeda(r.comissao)}</td>
-            <td style="color: #EF4444; font-weight: 700;">${formatarMoeda(r.imposto_federal)}</td>
-            <td style="font-weight: 700;" class="${lucroClass}">${formatarMoeda(lucroReal)}</td>
+            <td style="color: #EF4444;">${formatarMoeda(r.imposto_federal)}</td>
+            <td class="${lucroClass}">${formatarMoeda(lucroBruto)}</td>
             <td>${margem.toFixed(2)}%</td>
         </tr>`;
     });
@@ -293,27 +270,7 @@ function updateTable() {
 }
 
 // ============================================
-// FUNÇÕES AUXILIARES
-// ============================================
-function formatarMoeda(valor) {
-    if (valor === null || valor === undefined) return 'R$ 0,00';
-    const num = parseFloat(valor);
-    return 'R$ ' + num.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-}
-
-function showMessage(message, type = 'success') {
-    const div = document.createElement('div');
-    div.className = `floating-message ${type}`;
-    div.textContent = message;
-    document.body.appendChild(div);
-    setTimeout(() => {
-        div.style.animation = 'slideOut 0.3s ease forwards';
-        setTimeout(() => div.remove(), 300);
-    }, 2000);
-}
-
-// ============================================
-// MODAL DE EDIÇÃO (CUSTO, COMISSÃO, IMPOSTO)
+// EDIÇÃO DE CUSTO, COMISSÃO, IMPOSTO
 // ============================================
 let currentEditCodigo = null;
 
@@ -343,7 +300,7 @@ async function saveEditModal() {
     const novoImposto = parseFloat(document.getElementById('editImposto').value) || 0;
 
     try {
-        const response = await fetch(`${API_URL}/lucro-real/${currentEditCodigo}`, {
+        const response = await fetch(`${API_URL}/lucro/${currentEditCodigo}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -365,7 +322,7 @@ async function saveEditModal() {
             registro.imposto_federal = novoImposto;
         }
 
-        updateTable();
+        updateTabela();
         updateDashboard();
         closeEditModal();
         showMessage('VALORES ATUALIZADOS', 'success');
@@ -404,7 +361,7 @@ async function renderRelatorio() {
     document.getElementById('relatorioAnoTitulo').textContent = relatorioAno;
 
     try {
-        const response = await fetch(`${API_URL}/lucro-real?ano=${relatorioAno}`);
+        const response = await fetch(`${API_URL}/lucro?ano=${relatorioAno}`);
         if (!response.ok) throw new Error();
         const dadosAno = await response.json();
 
@@ -427,13 +384,12 @@ async function renderRelatorio() {
             meses[mes].lucroBruto += lucro;
             meses[mes].custoTotal += r.custo || 0;
             meses[mes].impostoTotal += r.imposto_federal || 0;
-            // O custo fixo mensal é o mesmo para todas as linhas do mês
             if (r.custo_fixo_mensal !== undefined && meses[mes].custoFixoMensal === 0) {
                 meses[mes].custoFixoMensal = parseFloat(r.custo_fixo_mensal) || 0;
             }
         });
 
-        const mesesNomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+        const mesesNomes = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                            'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
         const totalPaginas = Math.ceil(12 / mesesPorPagina);
@@ -513,4 +469,24 @@ async function renderRelatorio() {
         console.error('Erro ao carregar dados anuais', error);
         document.getElementById('relatorioBody').innerHTML = '<p style="text-align:center;">ERRO AO CARREGAR DADOS.</p>';
     }
+}
+
+// ============================================
+// AUXILIARES
+// ============================================
+function formatarMoeda(valor) {
+    if (valor === null || valor === undefined) return 'R$ 0,00';
+    const num = parseFloat(valor);
+    return 'R$ ' + num.toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+function showMessage(message, type = 'success') {
+    const div = document.createElement('div');
+    div.className = `floating-message ${type}`;
+    div.textContent = message;
+    document.body.appendChild(div);
+    setTimeout(() => {
+        div.style.animation = 'slideOut 0.3s ease forwards';
+        setTimeout(() => div.remove(), 300);
+    }, 2000);
 }
