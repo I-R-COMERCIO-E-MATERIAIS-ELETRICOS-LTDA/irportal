@@ -3,7 +3,6 @@
 const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
-const crypto  = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
@@ -11,6 +10,7 @@ const app = express();
 // ============================================
 // SUPABASE
 // ============================================
+
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -25,11 +25,13 @@ console.log('✅ Supabase configurado:', supabaseUrl);
 // ============================================
 // MIDDLEWARES GLOBAIS
 // ============================================
+
 app.use(cors({
     origin: '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Token']
 }));
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -39,283 +41,146 @@ app.use((req, res, next) => {
 });
 
 // ============================================
-// FUNÇÕES AUXILIARES PARA AUTENTICAÇÃO
-// ============================================
-function getClientIP(req) {
-    const xForwardedFor = req.headers['x-forwarded-for'];
-    const clientIP = xForwardedFor
-        ? xForwardedFor.split(',')[0].trim()
-        : req.socket.remoteAddress;
-    return clientIP.replace('::ffff:', '');
-}
-
-function generateSecureToken() {
-    return 'sess_' + crypto.randomBytes(32).toString('hex');
-}
-
-function sanitizeString(str) {
-    if (typeof str !== 'string') return '';
-    return str.trim().replace(/[<>]/g, '');
-}
-
-// Rate limiting simples
-const loginAttempts = new Map();
-function checkRateLimit(ip) {
-    const now = Date.now();
-    const attempt = loginAttempts.get(ip);
-    if (!attempt) {
-        loginAttempts.set(ip, { count: 1, resetTime: now + 5 * 60 * 1000 });
-        return true;
-    }
-    if (now > attempt.resetTime) {
-        loginAttempts.set(ip, { count: 1, resetTime: now + 5 * 60 * 1000 });
-        return true;
-    }
-    if (attempt.count >= 5) return false;
-    attempt.count++;
-    return true;
-}
-
-setInterval(() => {
-    const now = Date.now();
-    for (const [ip, attempt] of loginAttempts.entries()) {
-        if (now > attempt.resetTime) loginAttempts.delete(ip);
-    }
-}, 60 * 60 * 1000);
-
-async function logLoginAttempt(username, success, reason, deviceToken, ip) {
-    try {
-        await supabase.from('login').insert({
-            username: sanitizeString(username),
-            ip_address: ip,
-            device_token: sanitizeString(deviceToken),
-            success: success,
-            failure_reason: reason,
-            timestamp: new Date().toISOString()
-        });
-    } catch (error) {
-        console.error('❌ Erro ao registrar log:', error);
-    }
-}
-
-// ============================================
-// ROTAS DE AUTENTICAÇÃO (PORTAL)
-// ============================================
-app.post('/api/login', async (req, res) => {
-    try {
-        const { username, password, deviceToken } = req.body;
-        if (!username || !password || !deviceToken) {
-            return res.status(400).json({ error: 'Campos obrigatórios ausentes' });
-        }
-
-        const cleanIP = getClientIP(req);
-        if (!checkRateLimit(cleanIP)) {
-            return res.status(429).json({ error: 'Muitas tentativas de login', message: 'Tente novamente em 5 minutos.' });
-        }
-
-        const { data: user, error } = await supabase
-            .from('users')
-            .select('id, username, password, name, is_admin, is_active, sector')
-            .eq('username', username.toLowerCase())
-            .single();
-
-        if (error || !user) {
-            await logLoginAttempt(username, false, 'Usuário não encontrado', deviceToken, cleanIP);
-            return res.status(401).json({ error: 'Usuário ou senha incorretos' });
-        }
-
-        if (!user.is_active) {
-            await logLoginAttempt(username, false, 'Usuário inativo', deviceToken, cleanIP);
-            return res.status(401).json({ error: 'Usuário inativo' });
-        }
-
-        if (password !== user.password) {
-            await logLoginAttempt(username, false, 'Senha incorreta', deviceToken, cleanIP);
-            return res.status(401).json({ error: 'Usuário ou senha incorretos' });
-        }
-
-        // Registrar dispositivo
-        await supabase.from('authorized').upsert({
-            user_id: user.id,
-            device_token: deviceToken,
-            ip_address: cleanIP,
-            user_agent: req.headers['user-agent'] || 'Unknown',
-            is_active: true,
-            last_access: new Date().toISOString()
-        }, { onConflict: 'device_token' });
-
-        // Criar sessão
-        const sessionToken = generateSecureToken();
-        const expiresAt = new Date();
-        expiresAt.setHours(expiresAt.getHours() + 24);
-
-        // Desativar sessões antigas do mesmo dispositivo
-        await supabase.from('active').update({ is_active: false }).eq('user_id', user.id).eq('device_token', deviceToken);
-        
-        await supabase.from('active').insert({
-            user_id: user.id,
-            device_token: deviceToken,
-            ip_address: cleanIP,
-            session_token: sessionToken,
-            expires_at: expiresAt.toISOString(),
-            is_active: true,
-            last_activity: new Date().toISOString()
-        });
-
-        await logLoginAttempt(username, true, null, deviceToken, cleanIP);
-
-        res.json({
-            success: true,
-            session: {
-                userId: user.id,
-                username: user.username,
-                name: user.name,
-                sector: user.sector,
-                isAdmin: user.is_admin,
-                sessionToken: sessionToken,
-                deviceToken: deviceToken,
-                ip: cleanIP,
-                expiresAt: expiresAt.toISOString()
-            }
-        });
-    } catch (err) {
-        console.error('❌ Erro no login:', err);
-        res.status(500).json({ error: 'Erro interno no servidor' });
-    }
-});
-
-app.post('/api/logout', async (req, res) => {
-    try {
-        const { sessionToken } = req.body;
-        if (!sessionToken) return res.status(400).json({ error: 'Session token ausente' });
-        await supabase.from('active').update({ is_active: false, logout_at: new Date().toISOString() }).eq('session_token', sessionToken);
-        res.json({ success: true });
-    } catch (err) {
-        console.error('❌ Erro no logout:', err);
-        res.status(500).json({ error: 'Erro ao fazer logout' });
-    }
-});
-
-app.post('/api/verify-session', async (req, res) => {
-    try {
-        const { sessionToken } = req.body;
-        if (!sessionToken) return res.status(401).json({ valid: false, reason: 'token_missing' });
-
-        const { data: session, error } = await supabase
-            .from('active')
-            .select(`
-                *,
-                users:user_id (id, username, name, sector, is_admin, is_active)
-            `)
-            .eq('session_token', sessionToken)
-            .eq('is_active', true)
-            .single();
-
-        if (error || !session) {
-            return res.status(401).json({ valid: false, reason: 'session_not_found' });
-        }
-
-        if (!session.users.is_active) {
-            await supabase.from('active').update({ is_active: false }).eq('session_token', sessionToken);
-            return res.status(401).json({ valid: false, reason: 'user_inactive' });
-        }
-
-        if (new Date(session.expires_at) < new Date()) {
-            await supabase.from('active').update({ is_active: false }).eq('session_token', sessionToken);
-            return res.status(401).json({ valid: false, reason: 'session_expired' });
-        }
-
-        // Atualizar última atividade
-        await supabase.from('active').update({ last_activity: new Date().toISOString() }).eq('session_token', sessionToken);
-
-        res.json({
-            valid: true,
-            session: {
-                userId: session.users.id,
-                username: session.users.username,
-                name: session.users.name,
-                sector: session.users.sector,
-                isAdmin: session.users.is_admin
-            }
-        });
-    } catch (err) {
-        console.error('❌ Erro ao verificar sessão:', err);
-        res.status(500).json({ valid: false, reason: 'server_error' });
-    }
-});
-
-app.get('/api/ip', (req, res) => {
-    res.json({ ip: getClientIP(req) });
-});
-
-// ============================================
 // ARQUIVOS ESTÁTICOS — CADA MÓDULO NA SUA PASTA
 // ============================================
+
+// Portal (raiz — acesso direto em /)
+app.use('/', express.static(path.join(__dirname, 'apps', 'portal'), {
+    setHeaders: setStaticHeaders
+}));
+
+// Módulos
 const MODULOS = [
-    'licitacoes', 'precos', 'compra', 'transportadoras',
+    'licitacoes', 'compra', 'precos', 'transportadoras',
     'cotacoes', 'faturamento', 'estoque', 'frete',
     'receber', 'vendas', 'pagar', 'lucro'
 ];
 
-// Portal (raiz)
-app.use('/', express.static(path.join(__dirname, 'apps', 'portal'), {
-    setHeaders: (res, filepath) => {
-        if (filepath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript');
-        if (filepath.endsWith('.css')) res.setHeader('Content-Type', 'text/css');
-        if (filepath.endsWith('.html')) res.setHeader('Content-Type', 'text/html');
-    }
-}));
-
-// Módulos
 MODULOS.forEach(modulo => {
     app.use(`/${modulo}`, express.static(path.join(__dirname, 'apps', modulo), {
-        setHeaders: (res, filepath) => {
-            if (filepath.endsWith('.js')) res.setHeader('Content-Type', 'application/javascript');
-            if (filepath.endsWith('.css')) res.setHeader('Content-Type', 'text/css');
-            if (filepath.endsWith('.html')) res.setHeader('Content-Type', 'text/html');
-        }
+        setHeaders: setStaticHeaders
     }));
 });
 
+function setStaticHeaders(res, filepath) {
+    if (filepath.endsWith('.js'))   res.setHeader('Content-Type', 'application/javascript');
+    if (filepath.endsWith('.css'))  res.setHeader('Content-Type', 'text/css');
+    if (filepath.endsWith('.html')) res.setHeader('Content-Type', 'text/html');
+}
+
 // ============================================
-// MIDDLEWARE DE AUTENTICAÇÃO PARA APIS DOS MÓDULOS
+// AUTENTICAÇÃO CENTRALIZADA
 // ============================================
+
+const PORTAL_URL = process.env.PORTAL_URL || 'https://irportal.onrender.com';
+
 async function verificarAutenticacao(req, res, next) {
     const sessionToken = req.headers['x-session-token'] || req.query.sessionToken;
+
     if (!sessionToken) {
         return res.status(401).json({ error: 'Não autenticado', redirectToLogin: true });
     }
+
     try {
-        const { data: session, error } = await supabase
-            .from('active')
-            .select('*, users:user_id (is_active)')
-            .eq('session_token', sessionToken)
-            .eq('is_active', true)
-            .single();
-        if (error || !session) {
+        const verifyResponse = await fetch(`${PORTAL_URL}/api/verify-session`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ sessionToken })
+        });
+
+        if (!verifyResponse.ok) {
             return res.status(401).json({ error: 'Sessão inválida', redirectToLogin: true });
         }
-        if (!session.users.is_active) {
-            return res.status(401).json({ error: 'Usuário inativo', redirectToLogin: true });
+
+        const sessionData = await verifyResponse.json();
+
+        if (!sessionData.valid) {
+            return res.status(401).json({ error: 'Sessão inválida', redirectToLogin: true });
         }
-        if (new Date(session.expires_at) < new Date()) {
-            await supabase.from('active').update({ is_active: false }).eq('session_token', sessionToken);
-            return res.status(401).json({ error: 'Sessão expirada', redirectToLogin: true });
-        }
-        req.user = session;
+
+        req.user         = sessionData.session;
         req.sessionToken = sessionToken;
         next();
     } catch (err) {
-        console.error('❌ Erro ao verificar autenticação:', err.message);
+        console.error('❌ Erro ao verificar sessão:', err.message);
         return res.status(500).json({ error: 'Erro ao verificar autenticação' });
     }
 }
 
 // ============================================
-// MÓDULO: LICITAÇÕES (APENAS AS ROTAS CRÍTICAS – O RESTO É IGUAL AO SEU SERVER.JS ORIGINAL)
+// DADOS BANCÁRIOS PROTEGIDOS (BACKEND ONLY)
+// ============================================
+
+function getDadosBancarios(banco) {
+    const dadosBancarios = {
+        'BANCO DO BRASIL': 'BANCO DO BRASIL - AG: 3167-4 / CONTA CORRENTE: 130115-2',
+        'BRADESCO':        'BRADESCO - AG: 0000-0 / CONTA CORRENTE: 000000-0',
+        'SICOOB':          'SICOOB - AG: 0000 / CONTA CORRENTE: 00000-0'
+    };
+    return dadosBancarios[banco] || null;
+}
+
+// ============================================
+// PORTAL — ROTAS DE AUTENTICAÇÃO (PROXY)
+// ============================================
+
+app.post('/api/login', async (req, res) => {
+    try {
+        const r = await fetch(`${PORTAL_URL}/api/login`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(req.body)
+        });
+        const d = await r.json();
+        res.status(r.status).json(d);
+    } catch (err) {
+        res.status(502).json({ error: 'Portal indisponível', message: err.message });
+    }
+});
+
+app.post('/api/verify-session', async (req, res) => {
+    try {
+        const r = await fetch(`${PORTAL_URL}/api/verify-session`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(req.body)
+        });
+        const d = await r.json();
+        res.status(r.status).json(d);
+    } catch (err) {
+        res.status(502).json({ error: 'Portal indisponível', message: err.message });
+    }
+});
+
+app.post('/api/logout', async (req, res) => {
+    try {
+        const r = await fetch(`${PORTAL_URL}/api/logout`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(req.body)
+        });
+        const d = await r.json();
+        res.status(r.status).json(d);
+    } catch (err) {
+        res.status(502).json({ error: 'Portal indisponível', message: err.message });
+    }
+});
+
+app.get('/api/ip', async (req, res) => {
+    try {
+        const r = await fetch(`${PORTAL_URL}/api/ip`);
+        const d = await r.json();
+        res.status(r.status).json(d);
+    } catch {
+        const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || '';
+        res.json({ ip });
+    }
+});
+
+// ============================================
+// MÓDULO: LICITAÇÕES
 // ============================================
 app.use('/api/licitacoes', verificarAutenticacao);
-
 app.head('/api/licitacoes', (req, res) => res.status(200).end());
 
 app.get('/api/licitacoes', async (req, res) => {
@@ -327,7 +192,7 @@ app.get('/api/licitacoes', async (req, res) => {
             const anoNum = parseInt(ano);
             if (!isNaN(mesNum) && !isNaN(anoNum)) {
                 const startDate = `${anoNum}-${mesNum.toString().padStart(2,'0')}-01`;
-                const endDate = mesNum === 12 ? `${anoNum+1}-01-01` : `${anoNum}-${(mesNum+1).toString().padStart(2,'0')}-01`;
+                const endDate   = mesNum === 12 ? `${anoNum+1}-01-01` : `${anoNum}-${(mesNum+1).toString().padStart(2,'0')}-01`;
                 query = query.filter('data', 'gte', startDate).filter('data', 'lt', endDate);
             }
         }
@@ -335,22 +200,331 @@ app.get('/api/licitacoes', async (req, res) => {
         if (error) throw error;
         res.json(data || []);
     } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao listar licitações', message: err.message });
+        res.status(500).json({ error: 'Erro ao listar licitações' });
     }
 });
 
-// As demais rotas (GET/:id, POST, PUT, DELETE, e rotas de itens) você já tem no seu server.js original.
-// Vou mantê-las como estão, mas certifique-se de que estão presentes.
-
-// ... (aqui viriam todas as outras rotas que você já possui: /api/compra, etc.)
-
-// ============================================
-// ROTAS DE SAÚDE E FALLBACK
-// ============================================
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString(), modulos: ['portal', ...MODULOS] });
+app.get('/api/licitacoes/:id', async (req, res) => {
+    try {
+        const { data, error } = await supabase.from('licitacoes').select('*').eq('id', req.params.id).single();
+        if (error) {
+            if (error.code === 'PGRST116') return res.status(404).json({ error: 'Licitação não encontrada' });
+            throw error;
+        }
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao buscar licitação' });
+    }
 });
 
+app.post('/api/licitacoes', async (req, res) => {
+    try {
+        const { responsavel, data, hora, numero_pregao, uasg, nome_orgao, municipio, uf,
+                telefones, emails, validade_proposta, prazo_entrega, prazo_pagamento,
+                detalhes, banco, status, ganho, disputa_por } = req.body;
+        const novaLicitacao = {
+            responsavel, data, hora: hora || null, numero_pregao,
+            uasg: uasg || null, nome_orgao: nome_orgao || null,
+            municipio: municipio || null, uf: uf || null,
+            telefones: telefones || [], emails: emails || [],
+            validade_proposta: validade_proposta || null,
+            prazo_entrega: prazo_entrega || null,
+            prazo_pagamento: prazo_pagamento || null,
+            detalhes: detalhes || [], banco: banco || null,
+            status: status || 'ABERTO', ganho: ganho || false,
+            disputa_por: disputa_por || 'ITEM'
+        };
+        const { data: inserted, error } = await supabase.from('licitacoes').insert([novaLicitacao]).select().single();
+        if (error) throw error;
+        res.status(201).json(inserted);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao criar licitação' });
+    }
+});
+
+app.put('/api/licitacoes/:id', async (req, res) => {
+    try {
+        const { responsavel, data, hora, numero_pregao, uasg, nome_orgao, municipio, uf,
+                telefones, emails, validade_proposta, prazo_entrega, prazo_pagamento,
+                detalhes, banco, status, ganho, disputa_por } = req.body;
+        const atualizada = {
+            responsavel, data, hora: hora || null, numero_pregao,
+            uasg: uasg || null, nome_orgao: nome_orgao || null,
+            municipio: municipio || null, uf: uf || null,
+            telefones: telefones || [], emails: emails || [],
+            validade_proposta: validade_proposta || null,
+            prazo_entrega: prazo_entrega || null,
+            prazo_pagamento: prazo_pagamento || null,
+            detalhes: detalhes || [], banco: banco || null,
+            status: status || 'ABERTO', ganho: ganho !== undefined ? ganho : false,
+            disputa_por: disputa_por || 'ITEM', updated_at: new Date().toISOString()
+        };
+        const { data: updated, error } = await supabase.from('licitacoes').update(atualizada).eq('id', req.params.id).select().single();
+        if (error) {
+            if (error.code === 'PGRST116') return res.status(404).json({ error: 'Licitação não encontrada' });
+            throw error;
+        }
+        res.json(updated);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao atualizar licitação' });
+    }
+});
+
+app.delete('/api/licitacoes/:id', async (req, res) => {
+    try {
+        await supabase.from('itens').delete().eq('licitacao_id', req.params.id);
+        const { error } = await supabase.from('licitacoes').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao deletar licitação' });
+    }
+});
+
+app.get('/api/licitacoes/:id/dados-bancarios', verificarAutenticacao, async (req, res) => {
+    try {
+        const { data, error } = await supabase.from('licitacoes').select('banco').eq('id', req.params.id).single();
+        if (error) return res.status(404).json({ error: 'Licitação não encontrada' });
+        res.json({ dados_bancarios: getDadosBancarios(data.banco) });
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao buscar dados bancários' });
+    }
+});
+
+// Rotas de itens de licitação (tabela "itens")
+app.get('/api/licitacoes/:licitacao_id/itens', verificarAutenticacao, async (req, res) => {
+    const { data, error } = await supabase.from('itens').select('*').eq('licitacao_id', req.params.licitacao_id).order('numero', { ascending: true });
+    if (error) return res.status(500).json({ error: 'Erro ao listar itens' });
+    res.json(data || []);
+});
+app.post('/api/licitacoes/:licitacao_id/itens', verificarAutenticacao, async (req, res) => {
+    const novoItem = { ...req.body, licitacao_id: req.params.licitacao_id };
+    const { data, error } = await supabase.from('itens').insert([novoItem]).select().single();
+    if (error) return res.status(500).json({ error: 'Erro ao criar item' });
+    res.status(201).json(data);
+});
+app.put('/api/licitacoes/:licitacao_id/itens/:id', verificarAutenticacao, async (req, res) => {
+    const { data, error } = await supabase.from('itens').update(req.body).eq('id', req.params.id).select().single();
+    if (error) return res.status(500).json({ error: 'Erro ao atualizar item' });
+    res.json(data);
+});
+app.delete('/api/licitacoes/:licitacao_id/itens/:id', verificarAutenticacao, async (req, res) => {
+    const { error } = await supabase.from('itens').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: 'Erro ao deletar item' });
+    res.json({ success: true });
+});
+app.post('/api/licitacoes/:licitacao_id/itens/delete-multiple', verificarAutenticacao, async (req, res) => {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'IDs inválidos' });
+    const { error } = await supabase.from('itens').delete().in('id', ids);
+    if (error) return res.status(500).json({ error: 'Erro ao deletar itens' });
+    res.json({ success: true });
+});
+
+// ============================================
+// MÓDULO: COMPRA (ORDENS DE COMPRA)
+// Tabela: compra
+// ============================================
+
+app.use('/api/compra', verificarAutenticacao);
+app.head('/api/compra', (req, res) => res.status(200).end());
+
+// Listar ordens com filtro de mês/ano
+app.get('/api/compra', async (req, res) => {
+    try {
+        let query = supabase.from('compra').select('*');
+        const { mes, ano } = req.query;
+        if (mes && ano) {
+            const mesNum = parseInt(mes);
+            const anoNum = parseInt(ano);
+            if (!isNaN(mesNum) && !isNaN(anoNum)) {
+                const startDate = `${anoNum}-${mesNum.toString().padStart(2,'0')}-01`;
+                const endDate   = mesNum === 12 ? `${anoNum+1}-01-01` : `${anoNum}-${(mesNum+1).toString().padStart(2,'0')}-01`;
+                query = query.filter('data_ordem', 'gte', startDate).filter('data_ordem', 'lt', endDate);
+            }
+        }
+        const { data, error } = await query.order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json(data || []);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao listar ordens' });
+    }
+});
+
+// Obter o último número de ordem (global)
+app.get('/api/compra/ultimo-numero', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('compra')
+            .select('numero_ordem')
+            .order('numero_ordem', { ascending: false })
+            .limit(1);
+        if (error) throw error;
+        const ultimoNumero = data && data.length > 0 ? parseInt(data[0].numero_ordem) : 0;
+        res.json({ ultimoNumero });
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao buscar último número' });
+    }
+});
+
+// Listar fornecedores distintos (para autocomplete)
+app.get('/api/compra/fornecedores', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('compra')
+            .select('razao_social, nome_fantasia, cnpj, endereco_fornecedor, site, contato, telefone, email')
+            .not('razao_social', 'is', null);
+        if (error) throw error;
+        // Remove duplicatas baseado na razão social
+        const unique = {};
+        data.forEach(f => {
+            const razao = (f.razao_social || '').trim().toUpperCase();
+            if (razao && !unique[razao]) unique[razao] = f;
+        });
+        res.json(Object.values(unique));
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao buscar fornecedores' });
+    }
+});
+
+// Obter uma ordem por ID
+app.get('/api/compra/:id', async (req, res) => {
+    try {
+        const { data, error } = await supabase.from('compra').select('*').eq('id', req.params.id).single();
+        if (error) {
+            if (error.code === 'PGRST116') return res.status(404).json({ error: 'Ordem não encontrada' });
+            throw error;
+        }
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao buscar ordem' });
+    }
+});
+
+// Criar nova ordem
+app.post('/api/compra', async (req, res) => {
+    try {
+        const { numeroOrdem, responsavel, dataOrdem, razaoSocial, nomeFantasia,
+                cnpj, enderecoFornecedor, site, contato, telefone, email, items,
+                valorTotal, frete, localEntrega, prazoEntrega, transporte,
+                formaPagamento, prazoPagamento, dadosBancarios, status } = req.body;
+        const novaOrdem = {
+            numero_ordem: numeroOrdem,
+            responsavel,
+            data_ordem: dataOrdem,
+            razao_social: razaoSocial,
+            nome_fantasia: nomeFantasia || null,
+            cnpj,
+            endereco_fornecedor: enderecoFornecedor || null,
+            site: site || null,
+            contato: contato || null,
+            telefone: telefone || null,
+            email: email || null,
+            items: items || [],
+            valor_total: valorTotal || 'R$ 0,00',
+            frete: frete || null,
+            local_entrega: localEntrega || null,
+            prazo_entrega: prazoEntrega || null,
+            transporte: transporte || null,
+            forma_pagamento: formaPagamento,
+            prazo_pagamento: prazoPagamento,
+            dados_bancarios: dadosBancarios || null,
+            status: status || 'aberta'
+        };
+        const { data, error } = await supabase.from('compra').insert([novaOrdem]).select().single();
+        if (error) throw error;
+        res.status(201).json(data);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao criar ordem' });
+    }
+});
+
+// Atualizar ordem
+app.put('/api/compra/:id', async (req, res) => {
+    try {
+        const { numeroOrdem, responsavel, dataOrdem, razaoSocial, nomeFantasia,
+                cnpj, enderecoFornecedor, site, contato, telefone, email, items,
+                valorTotal, frete, localEntrega, prazoEntrega, transporte,
+                formaPagamento, prazoPagamento, dadosBancarios, status } = req.body;
+        const ordemAtualizada = {
+            numero_ordem: numeroOrdem,
+            responsavel,
+            data_ordem: dataOrdem,
+            razao_social: razaoSocial,
+            nome_fantasia: nomeFantasia || null,
+            cnpj,
+            endereco_fornecedor: enderecoFornecedor || null,
+            site: site || null,
+            contato: contato || null,
+            telefone: telefone || null,
+            email: email || null,
+            items: items || [],
+            valor_total: valorTotal || 'R$ 0,00',
+            frete: frete || null,
+            local_entrega: localEntrega || null,
+            prazo_entrega: prazoEntrega || null,
+            transporte: transporte || null,
+            forma_pagamento: formaPagamento,
+            prazo_pagamento: prazoPagamento,
+            dados_bancarios: dadosBancarios || null,
+            status: status || 'aberta',
+            updated_at: new Date().toISOString()
+        };
+        const { data, error } = await supabase.from('compra').update(ordemAtualizada).eq('id', req.params.id).select().single();
+        if (error) {
+            if (error.code === 'PGRST116') return res.status(404).json({ error: 'Ordem não encontrada' });
+            throw error;
+        }
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao atualizar ordem' });
+    }
+});
+
+// Atualizar status da ordem (PATCH)
+app.patch('/api/compra/:id/status', async (req, res) => {
+    try {
+        const { status } = req.body;
+        const { data, error } = await supabase
+            .from('compra')
+            .update({ status, updated_at: new Date().toISOString() })
+            .eq('id', req.params.id)
+            .select()
+            .single();
+        if (error) {
+            if (error.code === 'PGRST116') return res.status(404).json({ error: 'Ordem não encontrada' });
+            throw error;
+        }
+        res.json(data);
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao atualizar status' });
+    }
+});
+
+// Deletar ordem
+app.delete('/api/compra/:id', async (req, res) => {
+    try {
+        const { error } = await supabase.from('compra').delete().eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Erro ao deletar ordem' });
+    }
+});
+
+// ============================================
+// HEALTH CHECK
+// ============================================
+
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        modulos: ['portal', ...MODULOS]
+    });
+});
+
+// Fallback para rotas não encontradas
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'apps', 'portal', 'index.html'));
 });
@@ -361,12 +535,21 @@ MODULOS.forEach(modulo => {
     });
 });
 
+// ============================================
+// TRATAMENTO GLOBAL DE ERROS
+// ============================================
+
 app.use((err, req, res, next) => {
     console.error('❌ Erro não tratado:', err);
-    res.status(500).json({ success: false, error: 'Erro interno do servidor', message: err.message });
+    res.status(500).json({ error: 'Erro interno do servidor', message: err.message });
 });
 
+// ============================================
+// INICIAR SERVIDOR
+// ============================================
+
 const PORT = process.env.PORT || 10000;
+
 app.listen(PORT, '0.0.0.0', () => {
     console.log('');
     console.log('===============================================');
@@ -374,6 +557,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('===============================================');
     console.log(`✅ Porta:    ${PORT}`);
     console.log(`✅ Supabase: ${supabaseUrl}`);
+    console.log(`✅ Portal:   ${PORTAL_URL}`);
     console.log('');
     console.log('📦 Módulos servidos:');
     console.log('   • Portal         → /');
