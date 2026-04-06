@@ -1,8 +1,6 @@
 const DEVELOPMENT_MODE = false;
-const PORTAL_URL = 'https://ir-comercio-portal-zcan.onrender.com';
-const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:10000/api'
-    : `${window.location.origin}/api`;
+const PORTAL_URL = window.location.origin;
+const API_URL = window.location.origin + '/api';
 
 let ordens = [];
 let currentMonth = new Date();
@@ -188,7 +186,7 @@ async function loadOrdensDirectly() {
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
 
         const response = await fetch(
-            `${API_URL}/compra?mes=${mesFetch}&ano=${anoFetch}`,
+            `${API_URL}/ordens?mes=${mesFetch}&ano=${anoFetch}`,
             { method: 'GET', headers, mode: 'cors', cache: 'no-cache', signal }
         );
 
@@ -225,7 +223,7 @@ async function loadFornecedoresGlobal() {
     try {
         const headers = { 'Accept': 'application/json' };
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
-        const response = await fetch(`${API_URL}/compra/fornecedores`, { headers, cache: 'no-cache' });
+        const response = await fetch(`${API_URL}/fornecedores`, { headers, cache: 'no-cache' });
         if (!response.ok) return;
         const lista = await response.json();
         lista.forEach(f => {
@@ -255,7 +253,7 @@ async function loadUltimoNumero() {
     try {
         const headers = { 'Accept': 'application/json' };
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
-        const response = await fetch(`${API_URL}/compra/ultimo-numero`, { headers, cache: 'no-cache' });
+        const response = await fetch(`${API_URL}/ordens/ultimo-numero`, { headers, cache: 'no-cache' });
         if (!response.ok) return;
         const data = await response.json();
         ultimoNumeroGlobal = data.ultimoNumero || 0;
@@ -285,7 +283,7 @@ async function syncData() {
 
         const mes = currentMonth.getMonth();
         const ano = currentMonth.getFullYear();
-        const response = await fetch(`${API_URL}/compra?mes=${mes}&ano=${ano}`, {
+        const response = await fetch(`${API_URL}/ordens?mes=${mes}&ano=${ano}`, {
             method: 'GET',
             headers: headers,
             mode: 'cors',
@@ -870,7 +868,7 @@ async function handleSubmit(event) {
             quantidade: parseFloat(row.querySelector('.item-qtd').value) || 0,
             unidade: toUpperCase(row.querySelector('.item-unid').value),
             valorUnitario: parseFloat(row.querySelector('.item-valor').value) || 0,
-            ipi: row.querySelector('.item-ipi').value,
+            ipi: row.querySelector('.item-ipi').value, // mantém como string
             st: toUpperCase(row.querySelector('.item-st').value || ''),
             valorTotal: row.querySelector('.item-total').value
         });
@@ -907,7 +905,7 @@ async function handleSubmit(event) {
     }
 
     try {
-        const url = editingId ? `${API_URL}/compra/${editingId}` : `${API_URL}/compra`;
+        const url = editingId ? `${API_URL}/ordens/${editingId}` : `${API_URL}/ordens`;
         const method = editingId ? 'PUT' : 'POST';
 
         const headers = {
@@ -1143,9 +1141,10 @@ async function editOrdem(id) {
                 row.querySelector('.item-qtd').value = item.quantidade || 1;
                 row.querySelector('.item-unid').value = toUpperCase(item.unidade || 'UN');
                 row.querySelector('.item-valor').value = item.valorUnitario || item.valor_unitario || 0;
-                row.querySelector('.item-ipi').value = item.ipi || '';
+                row.querySelector('.item-ipi').value = item.ipi || '';  // valor original
                 row.querySelector('.item-st').value = toUpperCase(item.st || '');
-                calculateItemTotal(row.querySelector('.item-valor'));
+                // Recalcula o total do item (incluindo IPI) e atualiza o campo
+                calculateItemTotal(row.querySelector('.item-valor')); // qualquer input serve para acionar
             }
         });
     } else {
@@ -1201,7 +1200,7 @@ async function confirmDelete(id) {
             headers['X-Session-Token'] = sessionToken;
         }
 
-        const response = await fetch(`${API_URL}/compra/${id}`, {
+        const response = await fetch(`${API_URL}/ordens/${id}`, {
             method: 'DELETE',
             headers: headers,
             mode: 'cors'
@@ -1251,7 +1250,7 @@ async function toggleStatus(id) {
                 headers['X-Session-Token'] = sessionToken;
             }
 
-            const response = await fetch(`${API_URL}/compra/${id}/status`, {
+            const response = await fetch(`${API_URL}/ordens/${id}/status`, {
                 method: 'PATCH',
                 headers: headers,
                 body: JSON.stringify({ status: novoStatus }),
@@ -1466,8 +1465,9 @@ function updateTable() {
     }
     
     if (filteredOrdens.length === 0) {
+        // Só mostra 'vazio' se não há fetch ativo para este mês
         if (currentFetchController) return;
-        container.innerHTML = `<td><td colspan="8" style="text-align:center;padding:2rem;">Nenhuma ordem encontrada</td></tr>`;
+        container.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;">Nenhuma ordem encontrada</td></tr>`;
         return;
     }
     
@@ -2011,6 +2011,9 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
             xPos += colWidths.valorUn;
             doc.line(xPos, y, xPos, y + necessaryHeight);
             
+            // ------------------------------------------------------------
+            // CAMPO IPI: se for numérico, exibe como moeda; senão, exibe o texto original
+            // ------------------------------------------------------------
             const ipiValor = item.ipi;
             let ipiDisplay = '-';
             if (ipiValor && ipiValor.trim() !== '') {
@@ -2124,6 +2127,7 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
             y = addPageWithHeader();
         }
         
+        // DATA ATUAL (NÃO A DATA DA ORDEM) - CORREÇÃO PRINCIPAL
         const dataAtual = new Date();
         const dia = dataAtual.getDate();
         const meses = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 
