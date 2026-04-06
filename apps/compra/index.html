@@ -40,7 +40,7 @@
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value" id="totalOrdens">0</div>
+                        <div class="stat-value" id="totalOrdens">58</div>
                         <div class="stat-label">Total de Ordens</div>
                     </div>
                 </div>
@@ -51,7 +51,7 @@
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value stat-value-success" id="totalFechadas">0</div>
+                        <div class="stat-value stat-value-success" id="totalFechadas">14</div>
                         <div class="stat-label">Fechadas</div>
                     </div>
                 </div>
@@ -63,7 +63,7 @@
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value stat-value-warning" id="totalAbertas">0</div>
+                        <div class="stat-value stat-value-warning" id="totalAbertas">28</div>
                         <div class="stat-label">Abertas</div>
                     </div>
                 </div>
@@ -90,6 +90,7 @@
                     </svg>
                     <input type="text" id="search" placeholder="Pesquisar" oninput="filterOrdens()">
                     
+                    <!-- Filters integrated in search bar -->
                     <div class="search-bar-filters">
                         <div class="filter-dropdown-inline">
                             <select id="filterResponsavel" onchange="filterOrdens()">
@@ -169,7 +170,9 @@
                     <table>
                         <thead>
                             <tr>
-                                <th style="width: 40px; text-align: center;">✓</th>
+                                <th style="width: 40px; text-align: center;">
+                                    <span style="font-size: 1.1rem;">✓</span>
+                                </th>
                                 <th>Nº Ordem</th>
                                 <th>Responsável</th>
                                 <th>Fornecedor</th>
@@ -193,6 +196,7 @@
                 <h3 class="modal-title">Ordem Nº <span id="modalNumero"></span></h3>
                 <button class="close-modal" onclick="closeInfoModal()">✕</button>
             </div>
+            
             <div class="tabs-container">
                 <div class="tabs-nav">
                     <button class="tab-btn active" onclick="switchInfoTab('info-tab-geral')">Geral</button>
@@ -201,12 +205,14 @@
                     <button class="tab-btn" onclick="switchInfoTab('info-tab-entrega')">Entrega</button>
                     <button class="tab-btn" onclick="switchInfoTab('info-tab-pagamento')">Pagamento</button>
                 </div>
+
                 <div class="tab-content active" id="info-tab-geral"></div>
                 <div class="tab-content" id="info-tab-fornecedor"></div>
                 <div class="tab-content" id="info-tab-pedido"></div>
                 <div class="tab-content" id="info-tab-entrega"></div>
                 <div class="tab-content" id="info-tab-pagamento"></div>
             </div>
+
             <div class="modal-actions">
                 <button type="button" id="btnInfoPrevious" onclick="previousInfoTab()" class="secondary" style="display: none;">Anterior</button>
                 <button type="button" id="btnInfoNext" onclick="nextInfoTab()" class="secondary">Próximo</button>
@@ -214,7 +220,6 @@
             </div>
         </div>
     </div>
-
     <script src="script.js"></script>
     <script src="calendar.js"></script>
 </body>
