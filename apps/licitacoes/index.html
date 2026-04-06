@@ -9,14 +9,12 @@
     <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 </head>
 <body>
-    <!-- Splash Screen -->
     <div class="splash-screen" id="splashScreen">
         <div class="loader"></div>
     </div>
 
     <div class="app-content">
         <div class="container">
-            <!-- HEADER -->
             <div class="header">
                 <div class="header-left">
                     <h1>Licitações</h1>
@@ -33,7 +31,6 @@
                 </button>
             </div>
 
-            <!-- DASHBOARD CARDS (igual ao pregoes) -->
             <div class="dashboard-grid">
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-default">
@@ -85,7 +82,6 @@
                 </div>
             </div>
 
-            <!-- SEARCH BAR (igual ao pregoes) -->
             <div class="search-bar-wrapper">
                 <div class="search-bar">
                     <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -117,7 +113,6 @@
                                 <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
                         </div>
-                        <!-- Navegação de Mês -->
                         <div class="month-navigation-inline">
                             <button onclick="changeMonth(-1)" class="month-nav-arrow" title="Mês anterior">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -160,7 +155,6 @@
                 </div>
             </div>
 
-            <!-- CALENDAR MODAL (igual) -->
             <div class="calendar-modal" id="calendarModal">
                 <div class="calendar-content">
                     <div class="calendar-header">
@@ -180,7 +174,6 @@
                 </div>
             </div>
 
-            <!-- TABELA PRINCIPAL -->
             <div class="card table-card">
                 <div style="overflow-x: auto;">
                     <table>
@@ -203,13 +196,314 @@
         </div>
     </div>
 
-    <!-- MODAIS (idênticos aos do pregoes, apenas com textos ajustados) -->
-    <!-- Form Modal, Info Modal, Delete Modal, etc. -->
-    <!-- Vou omitir o HTML completo por brevidade, mas é o mesmo do pregoes, trocando "Pregão" por "Licitação" e "pregoes" por "licitacoes". -->
-    <!-- No arquivo final, você deve copiar o conteúdo do index.html do pregoes e fazer essas substituições. -->
+    <!-- MODAL NOVO/EDITAR -->
+    <div class="modal-overlay" id="formModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="formTitle">Nova Licitação</h3>
+                <button class="close-modal" onclick="closeFormModal(true)">✕</button>
+            </div>
+            
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchTab('tab-geral')">Geral</button>
+                    <button class="tab-btn" onclick="switchTab('tab-orgao')">Órgão</button>
+                    <button class="tab-btn" onclick="switchTab('tab-contato')">Contato</button>
+                    <button class="tab-btn" onclick="switchTab('tab-prazos')">Prazos</button>
+                    <button class="tab-btn" onclick="switchTab('tab-detalhes')">Detalhes</button>
+                </div>
+
+                <div class="tab-content active" id="tab-geral">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Responsável</label>
+                            <select id="responsavel">
+                                <option value="">SELECIONE</option>
+                                <option value="ROBERTO">ROBERTO</option>
+                                <option value="ISAQUE">ISAQUE</option>
+                                <option value="MIGUEL">MIGUEL</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Data *</label>
+                            <input type="date" id="dataLicitacao" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Hora</label>
+                            <input type="time" id="horaLicitacao">
+                        </div>
+                        <div class="form-group">
+                            <label>Disputar por</label>
+                            <select id="disputaPor">
+                                <option value="ITEM">ITEM</option>
+                                <option value="GRUPO">GRUPO</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-orgao">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nº Licitação *</label>
+                            <input type="text" id="numeroLicitacao" required>
+                        </div>
+                        <div class="form-group">
+                            <label>UASG</label>
+                            <input type="text" id="uasg">
+                        </div>
+                        <div class="form-group">
+                            <label>Nome do Órgão</label>
+                            <input type="text" id="nomeOrgao">
+                        </div>
+                        <div class="form-group">
+                            <label>Município</label>
+                            <input type="text" id="municipio">
+                        </div>
+                        <div class="form-group">
+                            <label>UF</label>
+                            <select id="uf">
+                                <option value="">SELECIONE</option>
+                                <option value="AC">AC</option><option value="AL">AL</option><option value="AP">AP</option>
+                                <option value="AM">AM</option><option value="BA">BA</option><option value="CE">CE</option>
+                                <option value="DF">DF</option><option value="ES">ES</option><option value="GO">GO</option>
+                                <option value="MA">MA</option><option value="MT">MT</option><option value="MS">MS</option>
+                                <option value="MG">MG</option><option value="PA">PA</option><option value="PB">PB</option>
+                                <option value="PR">PR</option><option value="PE">PE</option><option value="PI">PI</option>
+                                <option value="RJ">RJ</option><option value="RN">RN</option><option value="RS">RS</option>
+                                <option value="RO">RO</option><option value="RR">RR</option><option value="SC">SC</option>
+                                <option value="SP">SP</option><option value="SE">SE</option><option value="TO">TO</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-contato">
+                    <div class="form-group">
+                        <label>Telefones</label>
+                        <div id="telefonesContainer">
+                            <div class="input-with-button">
+                                <input type="text" class="telefone-input" placeholder="TELEFONE">
+                                <button type="button" onclick="addTelefone()" class="btn-add">+</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>E-mails</label>
+                        <div id="emailsContainer">
+                            <div class="input-with-button">
+                                <input type="email" class="email-input" placeholder="E-MAIL">
+                                <button type="button" onclick="addEmail()" class="btn-add">+</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-prazos">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Validade da Proposta</label>
+                            <input type="text" id="validadeProposta" placeholder="EX: 60 DIAS">
+                        </div>
+                        <div class="form-group">
+                            <label>Prazo de Entrega</label>
+                            <input type="text" id="prazoEntrega">
+                        </div>
+                        <div class="form-group">
+                            <label>Prazo de Pagamento</label>
+                            <input type="text" id="prazoPagamento">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-detalhes">
+                    <div class="detalhes-grid">
+                        <div class="detalhe-item" onclick="toggleDetalhe(this, 'CERTIFICADO IBAMA/CTF')">CERTIFICADO IBAMA/CTF</div>
+                        <div class="detalhe-item" onclick="toggleDetalhe(this, 'REGISTRO DE PREÇO')">REGISTRO DE PREÇO</div>
+                        <div class="detalhe-item" onclick="toggleDetalhe(this, 'INSTALAÇÃO/INSPEÇÃO')">INSTALAÇÃO/INSPEÇÃO</div>
+                        <div class="detalhe-item" onclick="toggleDetalhe(this, 'VISITA TÉCNICA')">VISITA TÉCNICA</div>
+                        <div class="detalhe-item" onclick="toggleDetalhe(this, 'AMOSTRA')">AMOSTRA</div>
+                        <div class="detalhe-item" onclick="toggleDetalhe(this, 'ATESTADO')">ATESTADO</div>
+                        <div class="detalhe-item" onclick="toggleDetalhe(this, 'CADASTRAR ACIMA DO ESTIMADO')">CADASTRAR ACIMA DO ESTIMADO</div>
+                        <div class="detalhe-item" onclick="toggleDetalhe(this, 'DIFAL/EQUALIZAÇÃO')">DIFAL/EQUALIZAÇÃO</div>
+                    </div>
+                    <div class="form-group" style="margin-top: 1.5rem;">
+                        <label>Banco</label>
+                        <select id="banco">
+                            <option value="">SELECIONE</option>
+                            <option value="BANCO DO BRASIL">BANCO DO BRASIL</option>
+                            <option value="BRADESCO">BRADESCO</option>
+                            <option value="SICOOB">SICOOB</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display: none;">Anterior</button>
+                <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo</button>
+                <button type="button" id="btnSave" onclick="salvarLicitacao()" class="success" style="display: none;">Salvar</button>
+                <button type="button" id="btnCancel" onclick="closeFormModal(true)" class="danger">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL VISUALIZAR -->
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Licitação Nº <span id="modalNumero"></span></h3>
+                <button class="close-modal" onclick="closeInfoModal()">✕</button>
+            </div>
+            
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchInfoTab('info-tab-geral')">Geral</button>
+                    <button class="tab-btn" onclick="switchInfoTab('info-tab-orgao')">Órgão</button>
+                    <button class="tab-btn" onclick="switchInfoTab('info-tab-contato')">Contato</button>
+                    <button class="tab-btn" onclick="switchInfoTab('info-tab-prazos')">Prazos</button>
+                    <button class="tab-btn" onclick="switchInfoTab('info-tab-detalhes')">Detalhes</button>
+                </div>
+                <div class="tab-content active" id="info-tab-geral"></div>
+                <div class="tab-content" id="info-tab-orgao"></div>
+                <div class="tab-content" id="info-tab-contato"></div>
+                <div class="tab-content" id="info-tab-prazos"></div>
+                <div class="tab-content" id="info-tab-detalhes"></div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" id="btnInfoPrevious" onclick="previousInfoTab()" class="secondary" style="display: none;">Anterior</button>
+                <button type="button" id="btnInfoNext" onclick="nextInfoTab()" class="secondary">Próximo</button>
+                <button type="button" id="btnInfoClose" onclick="closeInfoModal()" class="secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL EXCLUIR -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal-content modal-delete">
+            <button class="close-modal" onclick="closeDeleteModal()">✕</button>
+            <div class="modal-message-delete">Deseja realmente excluir esta licitação?</div>
+            <div class="modal-actions modal-actions-no-border">
+                <button class="secondary" onclick="closeDeleteModal()">Cancelar</button>
+                <button class="danger" onclick="confirmarExclusao()">Excluir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ASSINATURA EXEQUIBILIDADE (mantido) -->
+    <div class="modal-overlay" id="modalAssinaturaExe">
+        <div class="modal-content modal-delete">
+            <button class="close-modal" onclick="fecharModalAssinaturaExe()">✕</button>
+            <div class="modal-message-delete">Deseja incluir a assinatura padrão no comprovante?</div>
+            <div class="modal-actions modal-actions-no-border">
+                <button class="success" onclick="confirmarAssinaturaExe(true)">Sim</button>
+                <button class="danger" onclick="confirmarAssinaturaExe(false)">Não</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ASSINATURA PROPOSTA -->
+    <div class="modal-overlay" id="modalAssinatura">
+        <div class="modal-content modal-delete">
+            <button class="close-modal" onclick="fecharModalAssinatura()">✕</button>
+            <div class="modal-message-delete">Deseja incluir a assinatura padrão na proposta?</div>
+            <div class="modal-actions modal-actions-no-border">
+                <button class="success" onclick="gerarPDFsProposta(true)">Sim</button>
+                <button class="danger" onclick="gerarPDFsProposta(false)">Não</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONFIGURAÇÃO DA PROPOSTA -->
+    <div class="modal-overlay" id="modalConfigProposta">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Configurações da Proposta</h3>
+                <button class="close-modal" onclick="fecharModalConfigProposta()">✕</button>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Imposto Federal (%)</label>
+                    <input type="number" id="configImpostoFederal" step="0.1" value="9.7">
+                </div>
+                <div class="form-group">
+                    <label>Frete Venda (%)</label>
+                    <input type="number" id="configFreteVenda" step="0.1" value="5">
+                </div>
+                <div class="form-group">
+                    <label>Frete Compra (R$)</label>
+                    <input type="number" id="configFreteCompra" step="0.01" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Validade da Proposta (texto)</label>
+                    <input type="text" id="configValidade" placeholder="Ex: 60 DIAS">
+                </div>
+                <div class="form-group">
+                    <label>Prazo de Entrega (texto)</label>
+                    <input type="text" id="configPrazoEntrega" placeholder="Ex: IMEDIATO">
+                </div>
+                <div class="form-group">
+                    <label>Prazo de Pagamento (texto)</label>
+                    <input type="text" id="configPrazoPagamento" placeholder="Ex: 30 DIAS">
+                </div>
+                <div class="form-group">
+                    <label>Dados Bancários</label>
+                    <textarea id="configDadosBancarios" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Incluir assinatura?</label>
+                    <select id="configAssinatura">
+                        <option value="true">Sim</option>
+                        <option value="false">Não</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="success" onclick="salvarConfigProposta()">Salvar</button>
+                <button class="danger" onclick="fecharModalConfigProposta()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL COTAÇÃO -->
+    <div class="modal-overlay" id="modalCotacao">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Cotação</h3>
+                <button class="close-modal" onclick="fecharModalCotacao()">✕</button>
+            </div>
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>Fornecedor (marca)</label>
+                    <select id="cotacaoFornecedor" onchange="gerarMensagemCotacao()">
+                        <option value="">Selecione...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tipo</label>
+                    <select id="cotacaoTipo" onchange="gerarMensagemCotacao()">
+                        <option value="descricao">Por Descrição</option>
+                        <option value="modelo">Por Modelo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Mensagem</label>
+                    <textarea id="cotacaoMensagem" rows="10" readonly style="background: var(--input-bg); font-family: monospace;"></textarea>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="success" onclick="copiarMensagemCotacao()">Copiar</button>
+                <button class="danger" onclick="fecharModalCotacao()">Fechar</button>
+            </div>
+        </div>
+    </div>
 
     <script>
-        // O script.js será carregado separadamente
+        setTimeout(() => {
+            const splash = document.getElementById('splashScreen');
+            if (splash) splash.style.display = 'none';
+        }, 3000);
     </script>
     <script src="script.js"></script>
     <script src="calendar.js"></script>
