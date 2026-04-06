@@ -72,103 +72,134 @@ MODULOS.forEach(modulo => {
 });
 
 // ============================================
-// AUTENTICAÇÃO CENTRALIZADA
+// AUTENTICAÇÃO — SESSÕES EM MEMÓRIA
 // ============================================
 
-async function verificarAutenticacao(req, res, next) {
+const crypto = require('crypto');
+const activeSessions = new Map(); // token → objeto de sessão
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 horas
+
+function gerarToken() {
+    return crypto.randomBytes(32).toString('hex');
+}
+
+function limparSessoesExpiradas() {
+    const agora = Date.now();
+    for (const [token, s] of activeSessions) {
+        if (s.expiresAt < agora) activeSessions.delete(token);
+    }
+}
+
+// ============================================
+// PORTAL — AUTENTICAÇÃO DIRETA (sem proxy)
+// ============================================
+
+app.get('/api/ip', (req, res) => {
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+             || req.socket.remoteAddress
+             || '';
+    res.json({ ip });
+});
+
+app.post('/api/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({ success: false, message: 'Usuário e senha são obrigatórios.' });
+        }
+
+        const { data: users, error } = await supabase
+            .from('usuarios')
+            .select('*')
+            .eq('username', username.toLowerCase().trim())
+            .eq('active', true)
+            .limit(1);
+
+        if (error) throw error;
+
+        if (!users || users.length === 0) {
+            return res.status(401).json({ success: false, message: 'Usuário ou senha incorretos.' });
+        }
+
+        const user = users[0];
+
+        // Comparação de senha em texto puro (coluna "password").
+        // Se usar hash SHA-256 na coluna "password_hash", troque pela linha abaixo:
+        // const hash = crypto.createHash('sha256').update(password).digest('hex');
+        // const senhaCorreta = (user.password_hash === hash);
+        const senhaCorreta = (user.password === password);
+
+        if (!senhaCorreta) {
+            return res.status(401).json({ success: false, message: 'Usuário ou senha incorretos.' });
+        }
+
+        limparSessoesExpiradas();
+
+        const sessionToken = gerarToken();
+        const agora = Date.now();
+        const session = {
+            sessionToken,
+            username:    user.username,
+            name:        user.name || user.username,
+            sector:      user.sector || 'Usuário',
+            deviceToken: req.body.deviceToken || null,
+            createdAt:   new Date(agora).toISOString(),
+            expiresAt:   agora + SESSION_TTL_MS,
+        };
+
+        activeSessions.set(sessionToken, session);
+
+        console.log(`✅ Login: ${user.username} (${user.sector})`);
+        return res.json({ success: true, session });
+
+    } catch (err) {
+        console.error('❌ Erro no login:', err.message);
+        return res.status(500).json({ success: false, message: 'Erro interno. Tente novamente.' });
+    }
+});
+
+app.post('/api/verify-session', (req, res) => {
+    const { sessionToken } = req.body;
+    if (!sessionToken) return res.status(400).json({ valid: false });
+
+    const session = activeSessions.get(sessionToken);
+    if (!session)                          return res.json({ valid: false });
+    if (session.expiresAt < Date.now()) {
+        activeSessions.delete(sessionToken);
+        return res.json({ valid: false });
+    }
+    return res.json({ valid: true, session });
+});
+
+app.post('/api/logout', (req, res) => {
+    const { sessionToken } = req.body;
+    if (sessionToken) activeSessions.delete(sessionToken);
+    res.json({ success: true });
+});
+
+// ============================================
+// MIDDLEWARE DE AUTENTICAÇÃO (verifica Map local)
+// ============================================
+
+function verificarAutenticacao(req, res, next) {
     const sessionToken = req.headers['x-session-token'] || req.query.sessionToken;
 
     if (!sessionToken) {
         return res.status(401).json({ error: 'Não autenticado', redirectToLogin: true });
     }
 
-    try {
-        const verifyResponse = await fetch(`${PORTAL_URL}/api/verify-session`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ sessionToken })
-        });
+    const session = activeSessions.get(sessionToken);
 
-        if (!verifyResponse.ok) {
-            return res.status(401).json({ error: 'Sessão inválida', redirectToLogin: true });
-        }
-
-        const sessionData = await verifyResponse.json();
-
-        if (!sessionData.valid) {
-            return res.status(401).json({ error: 'Sessão inválida', redirectToLogin: true });
-        }
-
-        req.user         = sessionData.session;
-        req.sessionToken = sessionToken;
-        next();
-    } catch (err) {
-        console.error('❌ Erro ao verificar sessão:', err.message);
-        return res.status(500).json({ error: 'Erro ao verificar autenticação' });
+    if (!session || session.expiresAt < Date.now()) {
+        activeSessions.delete(sessionToken);
+        return res.status(401).json({ error: 'Sessão inválida ou expirada', redirectToLogin: true });
     }
+
+    req.user         = session;
+    req.sessionToken = sessionToken;
+    next();
 }
-
-// ============================================
-// PORTAL — AUTENTICAÇÃO (proxy ou direto)
-// ============================================
-
-// Estas rotas são usadas tanto pelo portal quanto pelos iframes filhos.
-// Se o portal rodar no mesmo processo (mesma instância), as rotas de auth
-// devem estar definidas aqui. Se rodar como serviço separado, funcionam
-// como proxy transparente.
-
-app.post('/api/login', async (req, res) => {
-    try {
-        const r = await fetch(`${PORTAL_URL}/api/login`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify(req.body)
-        });
-        const d = await r.json();
-        res.status(r.status).json(d);
-    } catch (err) {
-        res.status(502).json({ error: 'Portal indisponível', message: err.message });
-    }
-});
-
-app.post('/api/verify-session', async (req, res) => {
-    try {
-        const r = await fetch(`${PORTAL_URL}/api/verify-session`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify(req.body)
-        });
-        const d = await r.json();
-        res.status(r.status).json(d);
-    } catch (err) {
-        res.status(502).json({ error: 'Portal indisponível', message: err.message });
-    }
-});
-
-app.post('/api/logout', async (req, res) => {
-    try {
-        const r = await fetch(`${PORTAL_URL}/api/logout`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify(req.body)
-        });
-        const d = await r.json();
-        res.status(r.status).json(d);
-    } catch (err) {
-        res.status(502).json({ error: 'Portal indisponível', message: err.message });
-    }
-});
-
-app.get('/api/ip', async (req, res) => {
-    try {
-        const r = await fetch(`${PORTAL_URL}/api/ip`);
-        const d = await r.json();
-        res.status(r.status).json(d);
-    } catch {
-        const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress || '';
-        res.json({ ip });
-    }
-});
 
 // ============================================
 // MÓDULO: LICITAÇÕES
@@ -1382,7 +1413,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('===============================================');
     console.log(`✅ Porta:    ${PORT}`);
     console.log(`✅ Supabase: ${supabaseUrl}`);
-    console.log(`✅ Portal:   ${PORTAL_URL}`);
     console.log('');
     console.log('📦 Módulos:');
     console.log('   • Portal            → /');
