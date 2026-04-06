@@ -9,23 +9,14 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ==========================================
-// ======== CONFIGURAÇÃO - IPS AUTORIZADOS ==
-// ==========================================
 const AUTHORIZED_IPS = process.env.AUTHORIZED_IPS 
   ? process.env.AUTHORIZED_IPS.split(',').map(ip => ip.trim())
   : ['187.36.172.217'];
 
-// ==========================================
-// ======== CONFIGURAÇÃO DO SUPABASE ========
-// ==========================================
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// ==========================================
-// ======== RATE LIMITING MANUAL ============
-// ==========================================
 const loginAttempts = new Map();
 
 function checkRateLimit(ip) {
@@ -51,9 +42,6 @@ setInterval(() => {
   }
 }, 60 * 60 * 1000);
 
-// ==========================================
-// ======== FUNÇÕES AUXILIARES ==============
-// ==========================================
 function getClientIP(req) {
   const xForwardedFor = req.headers['x-forwarded-for'];
   const clientIP = xForwardedFor
@@ -98,9 +86,6 @@ async function logLoginAttempt(username, success, reason, deviceToken, ip) {
   }
 }
 
-// ==========================================
-// ======== MIDDLEWARES =====================
-// ==========================================
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
@@ -110,18 +95,12 @@ app.use(cors({
 app.options('*', cors());
 app.use(express.json({ limit: '10mb' }));
 
-// ==========================================
-// ======== SERVIÇO DE MÓDULOS ESTÁTICOS ====
-// ==========================================
 const MODULES = [
   'licitacoes', 'precos', 'compra', 'transportadoras', 'cotacoes',
   'faturamento', 'estoque', 'frete', 'receber', 'vendas', 'pagar', 'lucro', 'dexter'
 ];
 
-// Portal na raiz
 app.use('/', express.static(path.join(__dirname, 'apps', 'portal')));
-
-// Cada módulo na sua rota
 MODULES.forEach(module => {
   const modulePath = path.join(__dirname, 'apps', module);
   if (fs.existsSync(modulePath)) {
@@ -133,7 +112,7 @@ MODULES.forEach(module => {
 });
 
 // ==========================================
-// ======== ROTAS DA API (PORTAL) ===========
+// ROTAS DO PORTAL (login, logout, etc.)
 // ==========================================
 app.get('/api/ip', (req, res) => {
   res.json({ ip: getClientIP(req) });
@@ -157,10 +136,6 @@ app.get('/api/business-hours', (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
-  // ... (mesmo código do portal, inalterado - use o mesmo que já estava funcionando)
-  // Para economizar espaço, mantenha o código do login idêntico ao anterior.
-  // Como é extenso, você pode copiar do seu server.js anterior.
-  // Vou resumir aqui, mas no arquivo final estará completo.
   try {
     const { username, password, deviceToken } = req.body;
     if (!username || !password || !deviceToken) {
@@ -379,11 +354,8 @@ app.post('/api/verify-session', async (req, res) => {
 });
 
 // ==========================================
-// ======== ROTAS DA API - LICITAÇÕES ========
+// ROTAS DA API - LICITAÇÕES
 // ==========================================
-// (cópia das rotas de pregoes, adaptadas para as tabelas licitacoes e licitacoes_itens)
-
-// Middleware de autenticação para licitações
 app.use('/api/licitacoes', async (req, res, next) => {
   const sessionToken = req.headers['x-session-token'] || req.query.sessionToken;
   if (!sessionToken) {
@@ -406,10 +378,8 @@ app.use('/api/licitacoes', async (req, res, next) => {
   }
 });
 
-// HEAD para verificar conectividade
 app.head('/api/licitacoes', (req, res) => res.status(200).end());
 
-// Listar licitações
 app.get('/api/licitacoes', async (req, res) => {
   try {
     let query = supabase.from('licitacoes').select('*');
@@ -430,7 +400,6 @@ app.get('/api/licitacoes', async (req, res) => {
   }
 });
 
-// Buscar uma licitação por ID
 app.get('/api/licitacoes/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -449,7 +418,6 @@ app.get('/api/licitacoes/:id', async (req, res) => {
   }
 });
 
-// Criar nova licitação
 app.post('/api/licitacoes', async (req, res) => {
   try {
     const { 
@@ -491,7 +459,6 @@ app.post('/api/licitacoes', async (req, res) => {
   }
 });
 
-// Atualizar licitação
 app.put('/api/licitacoes/:id', async (req, res) => {
   try {
     const { 
@@ -537,7 +504,6 @@ app.put('/api/licitacoes/:id', async (req, res) => {
   }
 });
 
-// Deletar licitação (e seus itens)
 app.delete('/api/licitacoes/:id', async (req, res) => {
   try {
     const { error: itensError } = await supabase
@@ -557,8 +523,7 @@ app.delete('/api/licitacoes/:id', async (req, res) => {
   }
 });
 
-// ========== ITENS DA LICITAÇÃO ==========
-// Listar itens
+// ITENS
 app.get('/api/licitacoes/:licitacao_id/itens', async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -574,7 +539,6 @@ app.get('/api/licitacoes/:licitacao_id/itens', async (req, res) => {
   }
 });
 
-// Criar item
 app.post('/api/licitacoes/:licitacao_id/itens', async (req, res) => {
   try {
     const { 
@@ -615,7 +579,6 @@ app.post('/api/licitacoes/:licitacao_id/itens', async (req, res) => {
   }
 });
 
-// Atualizar item
 app.put('/api/licitacoes/:licitacao_id/itens/:id', async (req, res) => {
   try {
     const { 
@@ -660,7 +623,6 @@ app.put('/api/licitacoes/:licitacao_id/itens/:id', async (req, res) => {
   }
 });
 
-// Deletar item
 app.delete('/api/licitacoes/:licitacao_id/itens/:id', async (req, res) => {
   try {
     const { error } = await supabase
@@ -675,7 +637,6 @@ app.delete('/api/licitacoes/:licitacao_id/itens/:id', async (req, res) => {
   }
 });
 
-// Deletar múltiplos itens
 app.post('/api/licitacoes/:licitacao_id/itens/delete-multiple', async (req, res) => {
   try {
     const { ids } = req.body;
@@ -694,9 +655,6 @@ app.post('/api/licitacoes/:licitacao_id/itens/delete-multiple', async (req, res)
   }
 });
 
-// ==========================================
-// ======== HEALTH CHECK ====================
-// ==========================================
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -706,25 +664,16 @@ app.get('/health', (req, res) => {
   });
 });
 
-// ==========================================
-// ======== ROTA 404 ========================
-// ==========================================
 app.use((req, res) => {
   res.status(404).json({ error: 'Rota não encontrada' });
 });
 
-// ==========================================
-// ======== ERROR HANDLER ===================
-// ==========================================
 app.use((err, req, res, next) => {
   console.error('❌ Erro não tratado:', err);
   const errorMessage = process.env.NODE_ENV === 'production' ? 'Erro interno do servidor' : err.message;
   res.status(500).json({ error: errorMessage });
 });
 
-// ==========================================
-// ======== INICIAR SERVIDOR ================
-// ==========================================
 app.listen(PORT, () => {
   console.log('='.repeat(50));
   console.log(`🚀 Portal Central rodando na porta ${PORT}`);
