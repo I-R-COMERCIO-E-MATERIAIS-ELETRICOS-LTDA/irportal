@@ -81,25 +81,19 @@ app.post('/api/login', async (req, res) => {
   const usernameLower = username.toLowerCase().trim();
 
   try {
-    // Buscar usuário na tabela login (ilike = case-insensitive)
-    const { data: loginData, error: loginError } = await supabase
-      .from('login')
-      .select('*')
-      .ilike('username', usernameLower)
-      .single();
-
-    if (loginError || !loginData)
-      return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
-
-    if (loginData.password !== password)
-      return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
-
-    // Buscar dados do usuário na tabela users (ilike = case-insensitive)
-    const { data: userData } = await supabase
+    // Buscar usuário na tabela users (ilike = case-insensitive)
+    const { data: userData, error: userError } = await supabase
       .from('users')
       .select('*')
       .ilike('username', usernameLower)
+      .eq('is_active', true)
       .single();
+
+    if (userError || !userData)
+      return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
+
+    if (userData.password !== password)
+      return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
 
     // Criar sessão
     const sessionToken = uuidv4();
@@ -108,8 +102,8 @@ app.post('/api/login', async (req, res) => {
     const sessionPayload = {
       session_token: sessionToken,
       username:      usernameLower,
-      name:          userData?.name || loginData.name || username,
-      sector:        userData?.sector || loginData.sector || 'Usuário',
+      name:          userData.name || username,
+      sector:        userData.sector || 'Usuário',
       device_token:  deviceToken || null,
       expires_at:    expiresAt.toISOString(),
       created_at:    new Date().toISOString()
