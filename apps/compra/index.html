@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ordem de Compra</title>
-    <link rel="icon" type="image/png" href="I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-PRETO.png">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="/compra/I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-PRETO.png">
+    <link rel="stylesheet" href="/compra/styles.css">
     <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+    <script>
+        // Configurações globais — ajuste PORTAL_URL conforme seu domínio
+        const PORTAL_URL = window.location.origin;
+        const DEVELOPMENT_MODE = false;
+    </script>
 </head>
 <body>
     <div class="app-content">
@@ -16,6 +21,7 @@
                     <h1>Ordem de Compra</h1>
                     <div id="connectionStatus" class="connection-status offline">
                         <span class="status-dot"></span>
+                        <span id="connectionText">Offline</span>
                     </div>
                 </div>
                 <button onclick="openFormModal()" class="btn-new-order-header">
@@ -40,7 +46,7 @@
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value" id="totalOrdens">58</div>
+                        <div class="stat-value" id="totalOrdens">0</div>
                         <div class="stat-label">Total de Ordens</div>
                     </div>
                 </div>
@@ -51,11 +57,11 @@
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value stat-value-success" id="totalFechadas">14</div>
+                        <div class="stat-value stat-value-success" id="totalFechadas">0</div>
                         <div class="stat-label">Fechadas</div>
                     </div>
                 </div>
-                <div class="stat-card stat-card-warning">
+                <div class="stat-card stat-card-warning" id="cardAbertas">
                     <div class="stat-icon stat-icon-warning">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -63,7 +69,7 @@
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value stat-value-warning" id="totalAbertas">28</div>
+                        <div class="stat-value stat-value-warning" id="totalAbertas">0</div>
                         <div class="stat-label">Abertas</div>
                     </div>
                 </div>
@@ -76,7 +82,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-value stat-value-info" id="valorTotal">R$ 0,00</div>
-                        <div class="stat-label">Total</div>
+                        <div class="stat-label">Total do Mês</div>
                     </div>
                 </div>
             </div>
@@ -220,7 +226,8 @@
             </div>
         </div>
     </div>
-    <script src="script.js"></script>
-    <script src="calendar.js"></script>
+
+    <script src="/compra/script.js"></script>
+    <script src="/compra/calendar.js"></script>
 </body>
 </html>
