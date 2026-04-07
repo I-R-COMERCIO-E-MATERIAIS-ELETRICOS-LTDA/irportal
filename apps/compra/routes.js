@@ -1,4 +1,5 @@
-const { createClient } = require('@supabase/supabase-js');
+// apps/compra/routes.js
+// Rotas da API de Ordens de Compra
 
 module.exports = function(supabase) {
     const router = require('express').Router();
@@ -14,6 +15,24 @@ module.exports = function(supabase) {
         return newObj;
     }
 
+    // ─── GET /ordens/ultimo-numero ─────────────────────────────────
+    // IMPORTANTE: Esta rota deve vir ANTES de /ordens/:id para não ser engolida
+    router.get('/ordens/ultimo-numero', async (req, res) => {
+        try {
+            const { data, error } = await supabase
+                .from('ordens_compra')
+                .select('numero_ordem')
+                .order('numero_ordem', { ascending: false })
+                .limit(1);
+            if (error) throw error;
+            const ultimoNumero = data && data[0] ? parseInt(data[0].numero_ordem) || 0 : 0;
+            res.json({ ultimoNumero });
+        } catch (err) {
+            console.error('GET /ordens/ultimo-numero error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // ─── GET /ordens?mes=&ano= ────────────────────────────────────
     router.get('/ordens', async (req, res) => {
         try {
@@ -23,8 +42,9 @@ module.exports = function(supabase) {
             if (mes !== undefined && ano !== undefined) {
                 const startDate = new Date(Number(ano), Number(mes), 1);
                 const endDate = new Date(Number(ano), Number(mes) + 1, 1);
-                query = query.gte('data_ordem', startDate.toISOString().split('T')[0])
-                             .lt('data_ordem', endDate.toISOString().split('T')[0]);
+                query = query
+                    .gte('data_ordem', startDate.toISOString().split('T')[0])
+                    .lt('data_ordem', endDate.toISOString().split('T')[0]);
             }
 
             const { data, error } = await query.order('numero_ordem', { ascending: true });
@@ -41,7 +61,7 @@ module.exports = function(supabase) {
         try {
             const ordem = toSnakeCase(req.body);
             // Garantir que items seja um array JSON
-            if (ordem.items && !Array.isArray(ordem.items)) ordem.items = [];
+            if (!ordem.items || !Array.isArray(ordem.items)) ordem.items = [];
             const { data, error } = await supabase
                 .from('ordens_compra')
                 .insert(ordem)
@@ -59,7 +79,7 @@ module.exports = function(supabase) {
     router.put('/ordens/:id', async (req, res) => {
         try {
             const ordem = toSnakeCase(req.body);
-            if (ordem.items && !Array.isArray(ordem.items)) ordem.items = [];
+            if (!ordem.items || !Array.isArray(ordem.items)) ordem.items = [];
             const { data, error } = await supabase
                 .from('ordens_compra')
                 .update(ordem)
@@ -135,23 +155,6 @@ module.exports = function(supabase) {
             res.json(Array.from(unique.values()));
         } catch (err) {
             console.error('GET /fornecedores error:', err);
-            res.status(500).json({ error: err.message });
-        }
-    });
-
-    // ─── GET /ordens/ultimo-numero ─────────────────────────────────
-    router.get('/ordens/ultimo-numero', async (req, res) => {
-        try {
-            const { data, error } = await supabase
-                .from('ordens_compra')
-                .select('numero_ordem')
-                .order('numero_ordem', { ascending: false })
-                .limit(1);
-            if (error) throw error;
-            const ultimoNumero = data && data[0] ? parseInt(data[0].numero_ordem) || 0 : 0;
-            res.json({ ultimoNumero });
-        } catch (err) {
-            console.error('GET /ordens/ultimo-numero error:', err);
             res.status(500).json({ error: err.message });
         }
     });
