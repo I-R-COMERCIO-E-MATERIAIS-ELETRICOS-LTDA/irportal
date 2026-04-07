@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transportadoras</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-content">
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h1>Transportadoras</h1>
+                <div id="connectionStatus" class="connection-status offline">
+                    <span class="status-dot"></span>
+                </div>
+            </div>
+            <button onclick="openFormModal()" class="btn-new-order-header">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Nova Transportadora
+            </button>
+        </div>
+        <div class="search-bar-wrapper">
+            <div class="search-bar">
+                <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" id="search" placeholder="Buscar por nome, representante, e-mail, região ou estado..." oninput="filterTransportadoras()">
+            </div>
+        </div>
+        <div class="card table-card">
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Representante</th>
+                            <th>Telefone</th>
+                            <th>Celular</th>
+                            <th>E-mail</th>
+                            <th>Região / UF</th>
+                            <th style="text-align:center;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="transportadorasContainer"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- MODAL FORM -->
+<div class="modal-overlay" id="formModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Nova Transportadora</h2>
+            <button class="close-modal-btn" onclick="closeFormModal()">&#x2715;</button>
+        </div>
+        <div class="form-grid">
+            <input type="hidden" id="editId">
+            <div class="form-group full">
+                <label>Nome *</label>
+                <input type="text" id="inputNome" placeholder="Nome da transportadora">
+            </div>
+            <div class="form-group">
+                <label>Representante</label>
+                <input type="text" id="inputRepresentante" placeholder="Nome do representante">
+            </div>
+            <div class="form-group">
+                <label>E-mail</label>
+                <input type="email" id="inputEmail" placeholder="email@transportadora.com">
+            </div>
+            <div class="form-group">
+                <label>Telefone</label>
+                <input type="text" id="inputTelefone" placeholder="(27) 3000-0000">
+            </div>
+            <div class="form-group">
+                <label>Celular / WhatsApp</label>
+                <input type="text" id="inputCelular" placeholder="(27) 99000-0000">
+            </div>
+            <div class="form-group">
+                <label>Região</label>
+                <input type="text" id="inputRegiao" placeholder="Ex: Sudeste, Nacional...">
+            </div>
+            <div class="form-group">
+                <label>UF</label>
+                <input type="text" id="inputEstado" placeholder="ES" maxlength="2" style="text-transform:uppercase;">
+            </div>
+            <div class="form-group full">
+                <label>Observações</label>
+                <textarea id="inputObservacoes" placeholder="Informações adicionais..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-cancel" onclick="closeFormModal()">Cancelar</button>
+            <button class="btn-save" id="btnSave" onclick="saveTransportadora()">Salvar</button>
+        </div>
+    </div>
+</div>
+<!-- MODAL CONFIRMAR EXCLUSÃO -->
+<div class="confirm-overlay" id="confirmModal">
+    <div class="confirm-box">
+        <h3>Excluir Transportadora</h3>
+        <p>Deseja excluir esta transportadora? A ação não pode ser desfeita.</p>
+        <div class="confirm-actions">
+            <button class="btn-confirm-delete" onclick="confirmDelete()">Excluir</button>
+            <button class="btn-confirm-cancel" onclick="closeConfirmModal()">Cancelar</button>
+        </div>
+    </div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

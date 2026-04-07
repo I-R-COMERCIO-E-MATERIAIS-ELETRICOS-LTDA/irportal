@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vendas</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-content">
+    <div class="container">
+        <div class="header">
+            <div class="header-left">
+                <h1>Vendas</h1>
+                <div id="connectionStatus" class="connection-status offline">
+                    <span class="status-dot"></span>
+                </div>
+            </div>
+            <button class="btn-primary" onclick="openFormModal()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Nova Venda
+            </button>
+        </div>
+        <div class="stats-row">
+            <div class="stat-card"><div class="stat-label">Total do Mês</div><div class="stat-value green" id="statTotal">R$ 0,00</div></div>
+            <div class="stat-card"><div class="stat-label">Qtd. Vendas</div><div class="stat-value" id="statQtd">0</div></div>
+            <div class="stat-card"><div class="stat-label">Ticket Médio</div><div class="stat-value blue" id="statTicket">R$ 0,00</div></div>
+        </div>
+        <div class="month-nav">
+            <button onclick="changeMonth(-1)">&#8249;</button>
+            <span id="currentMonth"></span>
+            <button onclick="changeMonth(1)">&#8250;</button>
+        </div>
+        <div class="toolbar">
+            <div class="search-bar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="search" placeholder="Buscar por NF, cliente ou vendedor..." oninput="filterVendas()">
+            </div>
+            <select id="filterVendedor" class="filter-select" onchange="filterVendas()">
+                <option value="">Todos os vendedores</option>
+            </select>
+        </div>
+        <div class="card">
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>NF</th>
+                            <th>Data</th>
+                            <th>Cliente</th>
+                            <th>Vendedor</th>
+                            <th>Valor Total</th>
+                            <th>Frete</th>
+                            <th style="text-align:center;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vendasContainer"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- MODAL -->
+<div class="modal-overlay" id="formModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Nova Venda</h2>
+            <button class="close-modal-btn" onclick="closeFormModal()">&#x2715;</button>
+        </div>
+        <div class="form-grid">
+            <input type="hidden" id="editId">
+            <div class="form-group">
+                <label>Número NF *</label>
+                <input type="text" id="inputNF" placeholder="Ex: 001234">
+            </div>
+            <div class="form-group">
+                <label>Data de Emissão</label>
+                <input type="date" id="inputData">
+            </div>
+            <div class="form-group full">
+                <label>Cliente</label>
+                <input type="text" id="inputCliente" placeholder="Nome do cliente">
+            </div>
+            <div class="form-group">
+                <label>Vendedor</label>
+                <input type="text" id="inputVendedor" placeholder="Nome do vendedor">
+            </div>
+            <div class="form-group">
+                <label>Código</label>
+                <input type="text" id="inputCodigo" placeholder="Código interno">
+            </div>
+            <div class="form-group">
+                <label>Valor Total (R$)</label>
+                <input type="number" id="inputValorTotal" placeholder="0,00" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>Frete (R$)</label>
+                <input type="number" id="inputFrete" placeholder="0,00" step="0.01" min="0">
+            </div>
+            <div class="form-group full">
+                <label>Observações</label>
+                <textarea id="inputObservacoes" placeholder="Informações adicionais..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-danger" id="btnDelete" onclick="deleteVenda()" style="display:none;">Excluir</button>
+            <div class="modal-footer-actions">
+                <button class="btn-cancel" onclick="closeFormModal()">Cancelar</button>
+                <button class="btn-save" id="btnSave" onclick="saveVenda()">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script src="script.js"></script>
+</body>
+</html>

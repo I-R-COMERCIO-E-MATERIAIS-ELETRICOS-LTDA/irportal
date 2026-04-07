@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Licitações</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app-content">
+    <div class="container">
+
+        <div class="header">
+            <div class="header-left">
+                <h1>Licitações</h1>
+                <div id="connectionStatus" class="connection-status offline">
+                    <span class="status-dot"></span>
+                </div>
+            </div>
+            <button class="btn-primary" onclick="openFormModal()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Nova Licitação
+            </button>
+        </div>
+
+        <!-- STATS -->
+        <div class="stats-row">
+            <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="statTotal">0</div></div>
+            <div class="stat-card"><div class="stat-label">Abertas</div><div class="stat-value green" id="statAbertas">0</div></div>
+            <div class="stat-card"><div class="stat-label">Ganhas</div><div class="stat-value blue" id="statGanhas">0</div></div>
+            <div class="stat-card"><div class="stat-label">Suspensas</div><div class="stat-value orange" id="statSuspensas">0</div></div>
+            <div class="stat-card"><div class="stat-label">Encerradas/Canceladas</div><div class="stat-value" id="statEncerradas">0</div></div>
+        </div>
+
+        <!-- TOOLBAR -->
+        <div class="toolbar">
+            <div class="search-bar">
+                <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                </svg>
+                <input type="text" id="search" placeholder="Buscar por número, órgão ou objeto..." oninput="filterLicitacoes()">
+            </div>
+            <select id="filterStatus" class="filter-select" onchange="filterLicitacoes()">
+                <option value="">Todos os status</option>
+                <option value="ABERTA">Aberta</option>
+                <option value="SUSPENSA">Suspensa</option>
+                <option value="ENCERRADA">Encerrada</option>
+                <option value="CANCELADA">Cancelada</option>
+                <option value="GANHA">Ganha</option>
+                <option value="PERDIDA">Perdida</option>
+            </select>
+            <select id="filterAno" class="filter-select" onchange="filterLicitacoes()">
+                <option value="">Todos os anos</option>
+            </select>
+        </div>
+
+        <!-- TABLE -->
+        <div class="card">
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Número / Processo</th>
+                            <th>Órgão</th>
+                            <th>Objeto</th>
+                            <th>Data</th>
+                            <th>Modalidade</th>
+                            <th>Valor (R$)</th>
+                            <th>Status</th>
+                            <th style="text-align:center;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="licitacoesContainer"></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<!-- MODAL FORM -->
+<div class="modal-overlay" id="formModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">Nova Licitação</h2>
+            <button class="close-modal-btn" onclick="closeFormModal()">&#x2715;</button>
+        </div>
+        <div class="form-grid">
+            <input type="hidden" id="editId">
+            <div class="form-group">
+                <label>Número / Processo *</label>
+                <input type="text" id="inputNumero" placeholder="Ex: PE 001/2025">
+            </div>
+            <div class="form-group">
+                <label>Modalidade</label>
+                <select id="inputModalidade">
+                    <option value="">Selecione...</option>
+                    <option>Pregão Eletrônico</option>
+                    <option>Pregão Presencial</option>
+                    <option>Dispensa</option>
+                    <option>Inexigibilidade</option>
+                    <option>Concorrência</option>
+                    <option>Tomada de Preços</option>
+                    <option>Convite</option>
+                    <option>Registro de Preços</option>
+                    <option>Chamamento Público</option>
+                </select>
+            </div>
+            <div class="form-group full">
+                <label>Órgão / Entidade *</label>
+                <input type="text" id="inputOrgao" placeholder="Nome do órgão licitante">
+            </div>
+            <div class="form-group full">
+                <label>Objeto</label>
+                <textarea id="inputObjeto" placeholder="Descrição do objeto licitado..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Data da Licitação</label>
+                <input type="date" id="inputData">
+            </div>
+            <div class="form-group">
+                <label>Data de Abertura / Sessão</label>
+                <input type="date" id="inputDataAbertura">
+            </div>
+            <div class="form-group">
+                <label>Valor Estimado (R$)</label>
+                <input type="number" id="inputValor" placeholder="0,00" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>Valor Ofertado (R$)</label>
+                <input type="number" id="inputValorOfertado" placeholder="0,00" step="0.01" min="0">
+            </div>
+            <div class="form-group">
+                <label>Status</label>
+                <select id="inputStatus">
+                    <option value="ABERTA">Aberta</option>
+                    <option value="SUSPENSA">Suspensa</option>
+                    <option value="ENCERRADA">Encerrada</option>
+                    <option value="CANCELADA">Cancelada</option>
+                    <option value="GANHA">Ganha</option>
+                    <option value="PERDIDA">Perdida</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Responsável</label>
+                <input type="text" id="inputResponsavel" placeholder="Nome do responsável">
+            </div>
+            <div class="form-group full">
+                <label>Link / Edital</label>
+                <input type="url" id="inputLink" placeholder="https://...">
+            </div>
+            <div class="form-group full">
+                <label>Observações</label>
+                <textarea id="inputObservacoes" placeholder="Informações adicionais..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-danger" id="btnDelete" onclick="deleteLicitacao()" style="display:none;">Excluir</button>
+            <div class="modal-footer-actions">
+                <button class="btn-cancel" onclick="closeFormModal()">Cancelar</button>
+                <button class="btn-save" id="btnSave" onclick="saveLicitacao()">Salvar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
