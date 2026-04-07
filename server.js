@@ -78,12 +78,14 @@ app.post('/api/login', async (req, res) => {
   if (!username || !password)
     return res.status(400).json({ success: false, message: 'Usuário e senha obrigatórios' });
 
+  const usernameLower = username.toLowerCase().trim();
+
   try {
-    // Buscar usuário na tabela login
+    // Buscar usuário na tabela login (ilike = case-insensitive)
     const { data: loginData, error: loginError } = await supabase
       .from('login')
       .select('*')
-      .eq('username', username.toLowerCase().trim())
+      .ilike('username', usernameLower)
       .single();
 
     if (loginError || !loginData)
@@ -92,21 +94,11 @@ app.post('/api/login', async (req, res) => {
     if (loginData.password !== password)
       return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
 
-    // Verificar se usuário está na tabela authorized
-    const { data: authData, error: authError } = await supabase
-      .from('authorized')
-      .select('*')
-      .eq('username', username.toLowerCase().trim())
-      .single();
-
-    if (authError || !authData)
-      return res.status(403).json({ success: false, message: 'Usuário não autorizado' });
-
-    // Buscar dados do usuário na tabela users
+    // Buscar dados do usuário na tabela users (ilike = case-insensitive)
     const { data: userData } = await supabase
       .from('users')
       .select('*')
-      .eq('username', username.toLowerCase().trim())
+      .ilike('username', usernameLower)
       .single();
 
     // Criar sessão
@@ -115,9 +107,9 @@ app.post('/api/login', async (req, res) => {
 
     const sessionPayload = {
       session_token: sessionToken,
-      username:      username.toLowerCase().trim(),
+      username:      usernameLower,
       name:          userData?.name || loginData.name || username,
-      sector:        userData?.sector || loginData.sector || authData.sector || 'Usuário',
+      sector:        userData?.sector || loginData.sector || 'Usuário',
       device_token:  deviceToken || null,
       expires_at:    expiresAt.toISOString(),
       created_at:    new Date().toISOString()
@@ -1402,7 +1394,6 @@ app.post('/api/custo-fixo', requireAuth, async (req, res) => {
 // POST /api/monitorar-pedidos (sincroniza vendas → lucro)
 app.post('/api/monitorar-pedidos', requireAuth, async (req, res) => {
   try {
-    // Busca vendas que ainda não estão na tabela lucro
     const { data: vendas, error: vendaError } = await supabase
       .from('vendas')
       .select('*');
@@ -1419,15 +1410,15 @@ app.post('/api/monitorar-pedidos', requireAuth, async (req, res) => {
 
     if (novas.length > 0) {
       const inserir = novas.map(v => ({
-        codigo:         v.codigo,
-        nf:             v.nf || null,
-        vendedor:       v.vendedor || null,
-        data_emissao:   v.data_emissao || null,
-        venda:          v.valor_total || v.venda || 0,
-        custo:          0,
-        frete:          v.frete || 0,
-        comissao:       0,
-        imposto_federal:0
+        codigo:          v.codigo,
+        nf:              v.nf || null,
+        vendedor:        v.vendedor || null,
+        data_emissao:    v.data_emissao || null,
+        venda:           v.valor_total || v.venda || 0,
+        custo:           0,
+        frete:           v.frete || 0,
+        comissao:        0,
+        imposto_federal: 0
       }));
 
       const { error: insertError } = await supabase.from('lucro').insert(inserir);
