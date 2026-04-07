@@ -1,1452 +1,1707 @@
-'use strict';
-
-const express  = require('express');
-const cors     = require('cors');
-const path     = require('path');
+// ============================================================
+// IR COMÉRCIO E MATERIAIS ELÉTRICOS — SERVIDOR CENTRAL
+// ============================================================
+require('dotenv').config();
+const express    = require('express');
+const cors       = require('cors');
+const path       = require('path');
 const { createClient } = require('@supabase/supabase-js');
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 }   = require('uuid');
 
-const app = express();
-
-// ============================================
-// SUPABASE
-// ============================================
-
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-    console.error('❌ ERRO: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados');
-    process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-console.log('✅ Supabase configurado:', supabaseUrl);
-
-// ============================================
-// CONSTANTES
-// ============================================
-
-const PORTAL_URL = process.env.PORTAL_URL || 'https://irportal.onrender.com';
-
-const MODULOS = [
-    'licitacoes', 'precos', 'compra', 'transportadoras',
-    'cotacoes', 'faturamento', 'estoque', 'frete',
-    'receber', 'vendas', 'pagar', 'lucro'
-];
-
-// ============================================
-// MIDDLEWARES GLOBAIS
-// ============================================
-
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Token']
-}));
-
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-app.use((req, res, next) => {
-    console.log(`📥 ${new Date().toISOString()} - ${req.method} ${req.path}`);
-    next();
-});
-
-// ============================================
-// ARQUIVOS ESTÁTICOS
-// ============================================
-
-function setStaticHeaders(res, filepath) {
-    if (filepath.endsWith('.js'))   res.setHeader('Content-Type', 'application/javascript');
-    if (filepath.endsWith('.css'))  res.setHeader('Content-Type', 'text/css');
-    if (filepath.endsWith('.html')) res.setHeader('Content-Type', 'text/html');
-}
-
-// Portal na raiz
-app.use('/', express.static(path.join(__dirname, 'apps', 'portal'), { setHeaders: setStaticHeaders }));
-
-// Módulos
-MODULOS.forEach(modulo => {
-    app.use(`/${modulo}`, express.static(path.join(__dirname, 'apps', modulo), { setHeaders: setStaticHeaders }));
-});
-
-// ============================================
-// AUTENTICAÇÃO — SESSÕES EM MEMÓRIA
-// ============================================
-
-const crypto = require('crypto');
-const activeSessions = new Map(); // token → objeto de sessão
-const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 horas
-
-function gerarToken() {
-    return crypto.randomBytes(32).toString('hex');
-}
-
-function limparSessoesExpiradas() {
-    const agora = Date.now();
-    for (const [token, s] of activeSessions) {
-        if (s.expiresAt < agora) activeSessions.delete(token);
-    }
-}
-
-// ============================================
-// PORTAL — AUTENTICAÇÃO DIRETA (sem proxy)
-// ============================================
-
-app.get('/api/ip', (req, res) => {
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-             || req.socket.remoteAddress
-             || '';
-    res.json({ ip });
-});
-
-app.post('/api/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-
-        if (!username || !password) {
-            return res.status(400).json({ success: false, message: 'Usuário e senha são obrigatórios.' });
-        }
-
-        const { data: users, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('username', username.toLowerCase().trim())
-    .eq('is_active', true)   // ← era 'active', corrigido para 'is_active'
-    .limit(1);
-
-        if (error) throw error;
-
-        if (!users || users.length === 0) {
-            return res.status(401).json({ success: false, message: 'Usuário ou senha incorretos.' });
-        }
-
-        const user = users[0];
-
-        // Comparação de senha em texto puro (coluna "password").
-        // Se usar hash SHA-256 na coluna "password_hash", troque pela linha abaixo:
-        // const hash = crypto.createHash('sha256').update(password).digest('hex');
-        // const senhaCorreta = (user.password_hash === hash);
-        const senhaCorreta = (user.password === password);
-
-        if (!senhaCorreta) {
-            return res.status(401).json({ success: false, message: 'Usuário ou senha incorretos.' });
-        }
-
-        limparSessoesExpiradas();
-
-        const sessionToken = gerarToken();
-        const agora = Date.now();
-        const session = {
-            sessionToken,
-            username:    user.username,
-            name:        user.name || user.username,
-            sector:      user.sector || 'user',
-            deviceToken: req.body.deviceToken || null,
-            createdAt:   new Date(agora).toISOString(),
-            expiresAt:   agora + SESSION_TTL_MS,
-        };
-
-        activeSessions.set(sessionToken, session);
-
-        console.log(`✅ Login: ${user.username} (${user.sector})`);
-        return res.json({ success: true, session });
-
-    } catch (err) {
-        console.error('❌ Erro no login:', err.message);
-        return res.status(500).json({ success: false, message: 'Erro interno. Tente novamente.' });
-    }
-});
-
-app.post('/api/verify-session', (req, res) => {
-    const { sessionToken } = req.body;
-    if (!sessionToken) return res.status(400).json({ valid: false });
-
-    const session = activeSessions.get(sessionToken);
-    if (!session)                          return res.json({ valid: false });
-    if (session.expiresAt < Date.now()) {
-        activeSessions.delete(sessionToken);
-        return res.json({ valid: false });
-    }
-    return res.json({ valid: true, session });
-});
-
-app.post('/api/logout', (req, res) => {
-    const { sessionToken } = req.body;
-    if (sessionToken) activeSessions.delete(sessionToken);
-    res.json({ success: true });
-});
-
-// ============================================
-// MIDDLEWARE DE AUTENTICAÇÃO (verifica Map local)
-// ============================================
-
-function verificarAutenticacao(req, res, next) {
-    const sessionToken = req.headers['x-session-token'] || req.query.sessionToken;
-
-    if (!sessionToken) {
-        return res.status(401).json({ error: 'Não autenticado', redirectToLogin: true });
-    }
-
-    const session = activeSessions.get(sessionToken);
-
-    if (!session || session.expiresAt < Date.now()) {
-        activeSessions.delete(sessionToken);
-        return res.status(401).json({ error: 'Sessão inválida ou expirada', redirectToLogin: true });
-    }
-
-    req.user         = session;
-    req.sessionToken = sessionToken;
-    next();
-}
-
-// ============================================
-// MÓDULO: LICITAÇÕES
-// Tabela: licitacoes  |  itens
-// ============================================
-
-app.use('/api/licitacoes', verificarAutenticacao);
-app.head('/api/licitacoes', (req, res) => res.status(200).end());
-
-app.get('/api/licitacoes', async (req, res) => {
-    try {
-        let query = supabase.from('licitacoes').select('*');
-        const { mes, ano } = req.query;
-        if (mes && ano) {
-            const mesNum = parseInt(mes), anoNum = parseInt(ano);
-            if (!isNaN(mesNum) && !isNaN(anoNum)) {
-                const start = `${anoNum}-${String(mesNum).padStart(2,'0')}-01`;
-                const end   = mesNum === 12
-                    ? `${anoNum + 1}-01-01`
-                    : `${anoNum}-${String(mesNum + 1).padStart(2,'0')}-01`;
-                query = query.gte('data', start).lt('data', end);
-            }
-        }
-        const { data, error } = await query.order('data', { ascending: false });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao listar licitações', message: err.message });
-    }
-});
-
-app.get('/api/licitacoes/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('licitacoes').select('*').eq('id', req.params.id).single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Licitação não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao buscar licitação', message: err.message });
-    }
-});
-
-app.post('/api/licitacoes', async (req, res) => {
-    try {
-        const { responsavel, data, hora, numero_pregao, uasg, nome_orgao, municipio, uf,
-                telefones, emails, validade_proposta, prazo_entrega, prazo_pagamento,
-                detalhes, banco, status, ganho, disputa_por } = req.body;
-        const nova = {
-            responsavel, data,
-            hora:               hora || null,
-            numero_pregao,
-            uasg:               uasg || null,
-            nome_orgao:         nome_orgao || null,
-            municipio:          municipio || null,
-            uf:                 uf || null,
-            telefones:          telefones || [],
-            emails:             emails || [],
-            validade_proposta:  validade_proposta || null,
-            prazo_entrega:      prazo_entrega || null,
-            prazo_pagamento:    prazo_pagamento || null,
-            detalhes:           detalhes || [],
-            banco:              banco || null,
-            status:             status || 'ABERTO',
-            ganho:              ganho || false
-        };
-        if (disputa_por !== undefined) nova.disputa_por = disputa_por || 'ITEM';
-        const { data: d, error } = await supabase.from('licitacoes').insert([nova]).select().single();
-        if (error) throw error;
-        res.status(201).json(d);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao criar licitação', message: err.message });
-    }
-});
-
-app.put('/api/licitacoes/:id', async (req, res) => {
-    try {
-        const { responsavel, data, hora, numero_pregao, uasg, nome_orgao, municipio, uf,
-                telefones, emails, validade_proposta, prazo_entrega, prazo_pagamento,
-                detalhes, banco, status, ganho, disputa_por } = req.body;
-        const upd = {
-            responsavel, data,
-            hora:               hora || null,
-            numero_pregao,
-            uasg:               uasg || null,
-            nome_orgao:         nome_orgao || null,
-            municipio:          municipio || null,
-            uf:                 uf || null,
-            telefones:          telefones || [],
-            emails:             emails || [],
-            validade_proposta:  validade_proposta || null,
-            prazo_entrega:      prazo_entrega || null,
-            prazo_pagamento:    prazo_pagamento || null,
-            detalhes:           detalhes || [],
-            banco:              banco || null,
-            status:             status || 'ABERTO',
-            ganho:              ganho !== undefined ? ganho : false,
-            updated_at:         new Date().toISOString()
-        };
-        if (disputa_por !== undefined) upd.disputa_por = disputa_por || 'ITEM';
-        const { data: d, error } = await supabase.from('licitacoes').update(upd).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Licitação não encontrada' });
-            throw error;
-        }
-        res.json(d);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao atualizar licitação', message: err.message });
-    }
-});
-
-app.delete('/api/licitacoes/:id', async (req, res) => {
-    try {
-        await supabase.from('itens').delete().eq('licitacao_id', req.params.id);
-        const { error } = await supabase.from('licitacoes').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true, message: 'Licitação removida com sucesso' });
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao deletar licitação', message: err.message });
-    }
-});
-
-app.get('/api/licitacoes/:id/dados-bancarios', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('licitacoes').select('banco').eq('id', req.params.id).single();
-        if (error) return res.status(404).json({ success: false, error: 'Licitação não encontrada' });
-        const map = {
-            'BANCO DO BRASIL': 'BANCO DO BRASIL - AG: 3167-4 / CONTA CORRENTE: 130115-2',
-            'BRADESCO':        'BRADESCO - AG: 0000-0 / CONTA CORRENTE: 000000-0',
-            'SICOOB':          'SICOOB - AG: 0000 / CONTA CORRENTE: 00000-0'
-        };
-        res.json({ dados_bancarios: map[data.banco] || null });
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao buscar dados bancários', message: err.message });
-    }
-});
-
-// Itens de licitação
-app.get('/api/licitacoes/:lid/itens', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('itens').select('*').eq('licitacao_id', req.params.lid).order('numero', { ascending: true });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao listar itens', message: err.message });
-    }
-});
-
-app.post('/api/licitacoes/:lid/itens', async (req, res) => {
-    try {
-        const { numero, descricao, qtd, unidade, marca, modelo,
-                estimado_unt, estimado_total, custo_unt, custo_total,
-                porcentagem, venda_unt, venda_total, ganho, grupo_tipo, grupo_numero } = req.body;
-        const item = {
-            licitacao_id:   req.params.lid,
-            numero:         String(numero || 1),
-            descricao:      descricao || null,
-            qtd:            parseInt(qtd) || 1,
-            unidade:        unidade || 'UN',
-            marca:          marca || null,
-            modelo:         modelo || null,
-            estimado_unt:   parseFloat(estimado_unt) || 0,
-            estimado_total: parseFloat(estimado_total) || 0,
-            custo_unt:      parseFloat(custo_unt) || 0,
-            custo_total:    parseFloat(custo_total) || 0,
-            porcentagem:    parseFloat(porcentagem) || 149,
-            venda_unt:      parseFloat(venda_unt) || 0,
-            venda_total:    parseFloat(venda_total) || 0,
-            ganho:          ganho === true || ganho === 'true' || false
-        };
-        if (grupo_tipo   !== undefined) item.grupo_tipo   = grupo_tipo || null;
-        if (grupo_numero !== undefined) item.grupo_numero = grupo_numero != null ? parseInt(grupo_numero) : null;
-        const { data, error } = await supabase.from('itens').insert([item]).select().single();
-        if (error) throw error;
-        res.status(201).json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao criar item', message: err.message });
-    }
-});
-
-app.put('/api/licitacoes/:lid/itens/:id', async (req, res) => {
-    try {
-        const { numero, descricao, qtd, unidade, marca, modelo,
-                estimado_unt, estimado_total, custo_unt, custo_total,
-                porcentagem, venda_unt, venda_total, ganho, grupo_tipo, grupo_numero } = req.body;
-        const upd = {
-            numero:         String(numero || 1),
-            descricao:      descricao || null,
-            qtd:            parseInt(qtd) || 1,
-            unidade:        unidade || 'UN',
-            marca:          marca || null,
-            modelo:         modelo || null,
-            estimado_unt:   parseFloat(estimado_unt) || 0,
-            estimado_total: parseFloat(estimado_total) || 0,
-            custo_unt:      parseFloat(custo_unt) || 0,
-            custo_total:    parseFloat(custo_total) || 0,
-            porcentagem:    parseFloat(porcentagem) || 149,
-            venda_unt:      parseFloat(venda_unt) || 0,
-            venda_total:    parseFloat(venda_total) || 0,
-            ganho:          ganho === true || ganho === 'true' || false,
-            updated_at:     new Date().toISOString()
-        };
-        if (grupo_tipo   !== undefined) upd.grupo_tipo   = grupo_tipo || null;
-        if (grupo_numero !== undefined) upd.grupo_numero = grupo_numero != null ? parseInt(grupo_numero) : null;
-        const { data, error } = await supabase.from('itens').update(upd).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Item não encontrado' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao atualizar item', message: err.message });
-    }
-});
-
-app.delete('/api/licitacoes/:lid/itens/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('itens').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true, message: 'Item removido com sucesso' });
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao deletar item', message: err.message });
-    }
-});
-
-app.post('/api/licitacoes/:lid/itens/delete-multiple', async (req, res) => {
-    try {
-        const { ids } = req.body;
-        if (!ids || !Array.isArray(ids) || ids.length === 0)
-            return res.status(400).json({ success: false, error: 'IDs inválidos' });
-        const { error } = await supabase.from('itens').delete().in('id', ids);
-        if (error) throw error;
-        res.json({ success: true, message: `${ids.length} itens removidos com sucesso` });
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao deletar itens', message: err.message });
-    }
-});
-
-// ============================================
-// MÓDULO: TRANSPORTADORAS
-// Tabela: transportadoras
-// ============================================
-
-app.use('/api/transportadoras', verificarAutenticacao);
-app.head('/api/transportadoras', (req, res) => res.status(200).end());
-
-app.get('/api/transportadoras', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('transportadoras').select('*').order('nome', { ascending: true });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao listar transportadoras', message: err.message });
-    }
-});
-
-app.get('/api/transportadoras/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('transportadoras').select('*').eq('id', req.params.id).single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Transportadora não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao buscar transportadora', message: err.message });
-    }
-});
-
-app.post('/api/transportadoras', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('transportadoras').insert([req.body]).select().single();
-        if (error) throw error;
-        res.status(201).json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao criar transportadora', message: err.message });
-    }
-});
-
-app.put('/api/transportadoras/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('transportadoras').update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Transportadora não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao atualizar transportadora', message: err.message });
-    }
-});
-
-app.delete('/api/transportadoras/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('transportadoras').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true, message: 'Transportadora removida com sucesso' });
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao deletar transportadora', message: err.message });
-    }
-});
-
-// ============================================
-// MÓDULO: COMPRA — ORDENS DE COMPRA
-// Tabela: compra
-// ============================================
-
-app.use('/api/compra', verificarAutenticacao);
-app.head('/api/compra', (req, res) => res.status(200).end());
-
-app.get('/api/compra', async (req, res) => {
-    try {
-        const { mes, ano } = req.query;
-        let query = supabase.from('compra').select('*');
-        if (mes !== undefined && ano !== undefined) {
-            const month = parseInt(mes), year = parseInt(ano);
-            const start = new Date(year, month, 1).toISOString().split('T')[0];
-            const end   = new Date(year, month + 1, 0).toISOString().split('T')[0];
-            query = query.gte('data_ordem', start).lte('data_ordem', end).order('numero_ordem', { ascending: true });
-        } else {
-            query = query.order('created_at', { ascending: false });
-        }
-        const { data, error } = await query;
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao listar ordens', message: err.message });
-    }
-});
-
-app.get('/api/compra/ultimo-numero', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('compra').select('numero_ordem').order('numero_ordem', { ascending: false }).limit(1);
-        if (error) throw error;
-        const ultimoNumero = data?.length > 0 ? parseInt(data[0].numero_ordem) || 0 : 0;
-        res.json({ ultimoNumero });
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar último número' });
-    }
-});
-
-app.get('/api/compra/fornecedores', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('compra').select('razao_social,nome_fantasia,cnpj,endereco_fornecedor,site,contato,telefone,email').order('created_at', { ascending: false });
-        if (error) throw error;
-        const seen = new Set(), fornecedores = [];
-        for (const row of data || []) {
-            const razao = (row.razao_social || '').trim().toUpperCase();
-            if (razao && !seen.has(razao)) { seen.add(razao); fornecedores.push(row); }
-        }
-        res.json(fornecedores);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar fornecedores' });
-    }
-});
-
-app.get('/api/compra/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('compra').select('*').eq('id', req.params.id).single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Ordem não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao buscar ordem', message: err.message });
-    }
-});
-
-app.post('/api/compra', async (req, res) => {
-    try {
-        const { numeroOrdem, responsavel, dataOrdem, razaoSocial, nomeFantasia,
-                cnpj, enderecoFornecedor, site, contato, telefone, email, items,
-                valorTotal, frete, localEntrega, prazoEntrega, transporte,
-                formaPagamento, prazoPagamento, dadosBancarios, status } = req.body;
-        const nova = {
-            numero_ordem:        numeroOrdem,
-            responsavel,
-            data_ordem:          dataOrdem,
-            razao_social:        razaoSocial,
-            nome_fantasia:       nomeFantasia || null,
-            cnpj,
-            endereco_fornecedor: enderecoFornecedor || null,
-            site:                site || null,
-            contato:             contato || null,
-            telefone:            telefone || null,
-            email:               email || null,
-            items:               items || [],
-            valor_total:         valorTotal || 'R$ 0,00',
-            frete:               frete || null,
-            local_entrega:       localEntrega || null,
-            prazo_entrega:       prazoEntrega || null,
-            transporte:          transporte || null,
-            forma_pagamento:     formaPagamento,
-            prazo_pagamento:     prazoPagamento,
-            dados_bancarios:     dadosBancarios || null,
-            status:              status || 'aberta'
-        };
-        const { data, error } = await supabase.from('compra').insert([nova]).select().single();
-        if (error) throw error;
-        res.status(201).json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao criar ordem', message: err.message });
-    }
-});
-
-app.put('/api/compra/:id', async (req, res) => {
-    try {
-        const { numeroOrdem, responsavel, dataOrdem, razaoSocial, nomeFantasia,
-                cnpj, enderecoFornecedor, site, contato, telefone, email, items,
-                valorTotal, frete, localEntrega, prazoEntrega, transporte,
-                formaPagamento, prazoPagamento, dadosBancarios, status } = req.body;
-        const upd = {
-            numero_ordem:        numeroOrdem,
-            responsavel,
-            data_ordem:          dataOrdem,
-            razao_social:        razaoSocial,
-            nome_fantasia:       nomeFantasia || null,
-            cnpj,
-            endereco_fornecedor: enderecoFornecedor || null,
-            site:                site || null,
-            contato:             contato || null,
-            telefone:            telefone || null,
-            email:               email || null,
-            items:               items || [],
-            valor_total:         valorTotal || 'R$ 0,00',
-            frete:               frete || null,
-            local_entrega:       localEntrega || null,
-            prazo_entrega:       prazoEntrega || null,
-            transporte:          transporte || null,
-            forma_pagamento:     formaPagamento,
-            prazo_pagamento:     prazoPagamento,
-            dados_bancarios:     dadosBancarios || null,
-            status:              status || 'aberta',
-            updated_at:          new Date().toISOString()
-        };
-        const { data, error } = await supabase.from('compra').update(upd).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Ordem não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao atualizar ordem', message: err.message });
-    }
-});
-
-app.patch('/api/compra/:id/status', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('compra').update({ status: req.body.status, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Ordem não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao atualizar status', message: err.message });
-    }
-});
-
-app.delete('/api/compra/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('compra').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true, message: 'Ordem removida com sucesso' });
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao deletar ordem', message: err.message });
-    }
-});
-
-// ============================================
-// MÓDULO: COTAÇÕES DE FRETE
-// Tabela: cotacoes
-// ============================================
-
-app.use('/api/cotacoes', verificarAutenticacao);
-app.head('/api/cotacoes', (req, res) => res.status(200).end());
-
-app.get('/api/cotacoes', async (req, res) => {
-    try {
-        const { mes, ano } = req.query;
-        if (mes !== undefined && ano !== undefined) {
-            const month = parseInt(mes), year = parseInt(ano);
-            const start = new Date(year, month, 1).toISOString().split('T')[0];
-            const end   = new Date(year, month + 1, 0).toISOString().split('T')[0];
-            const { data, error } = await supabase.from('cotacoes').select('*').gte('dataCotacao', start).lte('dataCotacao', end).order('dataCotacao', { ascending: false });
-            if (error) throw error;
-            return res.json(data || []);
-        }
-        const { data, error } = await supabase.from('cotacoes').select('*').order('timestamp', { ascending: false });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar cotações', details: err.message });
-    }
-});
-
-app.get('/api/cotacoes/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('cotacoes').select('*').eq('id', req.params.id).single();
-        if (error) return res.status(404).json({ error: 'Cotação não encontrada' });
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar cotação', details: err.message });
-    }
-});
-
-app.post('/api/cotacoes', async (req, res) => {
-    try {
-        const nova = { ...req.body, id: Date.now().toString(), timestamp: new Date().toISOString() };
-        const { data, error } = await supabase.from('cotacoes').insert([nova]).select().single();
-        if (error) throw error;
-        res.status(201).json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao criar cotação', details: err.message });
-    }
-});
-
-app.put('/api/cotacoes/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('cotacoes').update({ ...req.body, updatedAt: new Date().toISOString() }).eq('id', req.params.id).select().single();
-        if (error) return res.status(404).json({ error: 'Cotação não encontrada' });
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao atualizar cotação', details: err.message });
-    }
-});
-
-app.patch('/api/cotacoes/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('cotacoes').update({ ...req.body, updatedAt: new Date().toISOString() }).eq('id', req.params.id).select().single();
-        if (error) return res.status(404).json({ error: 'Cotação não encontrada' });
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao atualizar status', details: err.message });
-    }
-});
-
-app.delete('/api/cotacoes/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('cotacoes').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.status(204).end();
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao excluir cotação', details: err.message });
-    }
-});
-
-// ============================================
-// MÓDULO: FATURAMENTO — PEDIDOS
-// Tabela: faturamento  |  estoque
-// ============================================
-
-app.use('/api/pedidos',  verificarAutenticacao);
-app.use('/api/estoque',  verificarAutenticacao);
-app.use('/api/proximo-codigo', verificarAutenticacao);
-
-app.get('/api/proximo-codigo', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('faturamento').select('codigo').order('codigo', { ascending: false }).limit(1);
-        if (error) throw error;
-        res.json({ proximoCodigo: (data[0]?.codigo || 0) + 1 });
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao obter próximo código' });
-    }
-});
-
-app.get('/api/pedidos', async (req, res) => {
-    try {
-        const { mes, ano } = req.query;
-        let query;
-        if (mes !== undefined && ano !== undefined) {
-            const month = parseInt(mes), year = parseInt(ano);
-            const start = new Date(year, month, 1).toISOString().split('T')[0];
-            const end   = new Date(year, month + 1, 0).toISOString().split('T')[0];
-            query = supabase.from('faturamento').select('*').gte('data_registro', `${start}T00:00:00`).lte('data_registro', `${end}T23:59:59`).order('codigo', { ascending: true });
-        } else {
-            query = supabase.from('faturamento').select('*').order('codigo', { ascending: false });
-        }
-        const { data, error } = await query;
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar pedidos', details: err.message });
-    }
-});
-
-app.post('/api/pedidos', async (req, res) => {
-    try {
-        let pedidoData = { ...req.body };
-        if (!pedidoData.codigo) {
-            const { data: maxData, error: maxErr } = await supabase.from('faturamento').select('codigo').order('codigo', { ascending: false }).limit(1);
-            if (maxErr) throw maxErr;
-            pedidoData.codigo = (maxData[0]?.codigo || 0) + 1;
-        }
-        const { data, error } = await supabase.from('faturamento').insert([pedidoData]).select();
-        if (error) throw error;
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao criar pedido', details: err.message });
-    }
-});
-
-app.patch('/api/pedidos/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('faturamento').update(req.body).eq('id', req.params.id).select();
-        if (error) throw error;
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao atualizar pedido' });
-    }
-});
-
-app.delete('/api/pedidos/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('faturamento').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao excluir pedido' });
-    }
-});
-
-// Estoque (compartilhado com faturamento)
-app.get('/api/estoque', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('estoque').select('*');
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar estoque' });
-    }
-});
-
-app.patch('/api/estoque/:codigo', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('estoque').update(req.body).eq('codigo', req.params.codigo).select();
-        if (error) throw error;
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao atualizar estoque' });
-    }
-});
-
-// ============================================
-// MÓDULO: CONTROLE DE FRETE
-// Tabela: frete
-// ============================================
-
-app.use('/api/fretes', verificarAutenticacao);
-app.head('/api/fretes', (req, res) => res.status(200).end());
-
-app.get('/api/fretes', async (req, res) => {
-    try {
-        const { mes, ano } = req.query;
-        let query = supabase.from('frete').select('*');
-        if (mes !== undefined && ano !== undefined) {
-            const month = parseInt(mes), year = parseInt(ano);
-            const start = new Date(year, month, 1).toISOString().split('T')[0];
-            const end   = new Date(year, month + 1, 0).toISOString().split('T')[0];
-            query = query.gte('data_emissao', start).lte('data_emissao', end);
-        }
-        const { data, error } = await query.order('timestamp', { ascending: false });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar fretes', details: err.message });
-    }
-});
-
-app.get('/api/fretes/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('frete').select('*').eq('id', req.params.id).single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ error: 'Frete não encontrado' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar frete', details: err.message });
-    }
-});
-
-app.post('/api/fretes', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('frete').insert([{ ...req.body, timestamp: new Date().toISOString() }]).select().single();
-        if (error) throw error;
-        res.status(201).json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao criar frete', details: err.message });
-    }
-});
-
-app.put('/api/fretes/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('frete').update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ error: 'Frete não encontrado' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao atualizar frete', details: err.message });
-    }
-});
-
-app.patch('/api/fretes/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('frete').update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ error: 'Frete não encontrado' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao atualizar frete', details: err.message });
-    }
-});
-
-app.delete('/api/fretes/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('frete').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao excluir frete', details: err.message });
-    }
-});
-
-// ============================================
-// MÓDULO: CONTAS A RECEBER
-// Tabela: receber
-// ============================================
-
-app.use('/api/receber', verificarAutenticacao);
-app.head('/api/receber', (req, res) => res.status(200).end());
-
-app.get('/api/receber', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('receber').select('*').order('created_at', { ascending: false });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.post('/api/receber', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('receber').insert([req.body]).select().single();
-        if (error) throw error;
-        res.status(201).json(data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.put('/api/receber/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('receber').update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
-        if (error) throw error;
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.patch('/api/receber/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('receber').update({ ...req.body, updated_at: new Date().toISOString() }).eq('id', req.params.id).select().single();
-        if (error) throw error;
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.delete('/api/receber/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('receber').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ============================================
-// MÓDULO: VENDAS
-// Tabela: vendas  (sincroniza de frete + receber)
-// ============================================
-
-app.use('/api/vendas',              verificarAutenticacao);
-app.use('/api/vendas-consolidadas', verificarAutenticacao);
-app.use('/api/sync',                verificarAutenticacao);
-app.use('/api/dashboard',           verificarAutenticacao);
-
-async function syncVendas() {
-    const vendedores = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
-    const registros  = [];
-
-    for (const vendedor of vendedores) {
-        const { data: freteData  } = await supabase.from('frete').select('*').eq('vendedor', vendedor).order('numero_nf', { ascending: true });
-        const { data: contasData } = await supabase.from('receber').select('*').eq('vendedor', vendedor).order('numero_nf', { ascending: true });
-
-        const nfsPagas = new Map();
-        (contasData || []).forEach(c => {
-            if (c.status === 'PAGO' && c.data_pagamento) nfsPagas.set(c.numero_nf, c);
-        });
-
-        const processadas = new Set();
-
-        nfsPagas.forEach((conta, nf) => {
-            registros.push({ numero_nf: nf, origem: 'CONTAS_RECEBER', data_emissao: conta.data_emissao, valor_nf: conta.valor, tipo_nf: conta.tipo_nf, nome_orgao: conta.orgao, vendedor, banco: conta.banco, data_vencimento: conta.data_vencimento, data_pagamento: conta.data_pagamento, status_pagamento: conta.status, observacoes: conta.observacoes, id_contas_receber: conta.id, prioridade: 2 });
-            processadas.add(nf);
-        });
-
-        (freteData || []).forEach(frete => {
-            if (!processadas.has(frete.numero_nf)) {
-                registros.push({ numero_nf: frete.numero_nf, origem: 'CONTROLE_FRETE', data_emissao: frete.data_emissao, valor_nf: frete.valor_nf, tipo_nf: frete.tipo_nf, nome_orgao: frete.nome_orgao, vendedor, documento: frete.documento, contato_orgao: frete.contato_orgao, transportadora: frete.transportadora, valor_frete: frete.valor_frete, data_coleta: frete.data_coleta, cidade_destino: frete.cidade_destino, previsao_entrega: frete.previsao_entrega, status_frete: frete.status, id_controle_frete: frete.id, prioridade: 1 });
-            }
-        });
-    }
-
-    await supabase.from('vendas').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    if (registros.length > 0) await supabase.from('vendas').insert(registros);
-    return { success: true, count: registros.length };
-}
-
-app.get('/api/sync', async (req, res) => {
-    try { res.json(await syncVendas()); }
-    catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/vendas-consolidadas', async (req, res) => {
-    try {
-        await syncVendas();
-        const { data, error } = await supabase.from('vendas').select('*').order('numero_nf', { ascending: true });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.get('/api/vendas', async (req, res) => {
-    try {
-        await syncVendas();
-        const { data, error } = await supabase.from('vendas').select('*').order('numero_nf', { ascending: true });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.get('/api/dashboard', async (req, res) => {
-    try {
-        await syncVendas();
-        const { data, error } = await supabase.from('vendas').select('*');
-        if (error) throw error;
-        const stats = { pago: 0, aReceber: 0, entregue: 0, faturado: 0 };
-        (data || []).forEach(v => {
-            const valor = parseFloat(v.valor_nf) || 0;
-            stats.faturado += valor;
-            if (v.origem === 'CONTAS_RECEBER' && v.data_pagamento) stats.pago += valor;
-            else if (v.origem === 'CONTROLE_FRETE' && v.status_frete === 'ENTREGUE') { stats.aReceber += valor; stats.entregue += 1; }
-        });
-        res.json(stats);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-// ============================================
-// MÓDULO: CONTAS A PAGAR
-// Tabela: pagar
-// ============================================
-
-app.use('/api/contas', verificarAutenticacao);
-app.head('/api/contas', (req, res) => res.status(200).end());
-
-app.get('/api/contas/grupo/:grupoId', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('pagar').select('*').eq('grupo_id', req.params.grupoId).order('parcela_numero', { ascending: true });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao buscar parcelas do grupo', message: err.message });
-    }
-});
-
-app.get('/api/contas', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('pagar').select('*').order('data_vencimento', { ascending: true });
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao listar contas', message: err.message });
-    }
-});
-
-app.get('/api/contas/:id', async (req, res) => {
-    try {
-        const { data, error } = await supabase.from('pagar').select('*').eq('id', req.params.id).single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Conta não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao buscar conta', message: err.message });
-    }
-});
-
-app.post('/api/contas', async (req, res) => {
-    try {
-        const { documento, descricao, valor, data_vencimento, forma_pagamento, banco,
-                data_pagamento, observacoes, parcela_numero, parcela_total, status, grupo_id } = req.body;
-        const valorNum = parseFloat(valor);
-        if (isNaN(valorNum) || valorNum <= 0) return res.status(400).json({ success: false, error: 'Valor deve ser um número maior que zero' });
-        const nova = {
-            documento:       documento || null,
-            descricao,
-            valor:           valorNum,
-            data_vencimento,
-            forma_pagamento,
-            banco,
-            data_pagamento:  data_pagamento || null,
-            observacoes:     observacoes || null,
-            parcela_numero:  parcela_numero || null,
-            parcela_total:   parcela_total || null,
-            status:          status || (data_pagamento ? 'PAGO' : 'PENDENTE'),
-            grupo_id:        grupo_id || uuidv4()
-        };
-        const { data, error } = await supabase.from('pagar').insert([nova]).select().single();
-        if (error) throw error;
-        res.status(201).json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao criar conta', message: err.message });
-    }
-});
-
-app.put('/api/contas/:id', async (req, res) => {
-    try {
-        const { documento, descricao, valor, data_vencimento, forma_pagamento, banco,
-                data_pagamento, observacoes, parcela_numero, parcela_total, status } = req.body;
-        const valorNum = parseFloat(valor);
-        if (isNaN(valorNum) || valorNum <= 0) return res.status(400).json({ success: false, error: 'Valor deve ser um número maior que zero' });
-        const upd = {
-            documento:       documento || null,
-            descricao,
-            valor:           valorNum,
-            data_vencimento,
-            forma_pagamento,
-            banco,
-            data_pagamento:  data_pagamento || null,
-            observacoes:     observacoes || null,
-            parcela_numero:  parcela_numero || null,
-            parcela_total:   parcela_total || null,
-            status:          status || (data_pagamento ? 'PAGO' : 'PENDENTE')
-        };
-        const { data, error } = await supabase.from('pagar').update(upd).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Conta não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao atualizar conta', message: err.message });
-    }
-});
-
-app.patch('/api/contas/:id', async (req, res) => {
-    try {
-        const updates = {};
-        if (req.body.status          !== undefined) updates.status          = req.body.status;
-        if (req.body.data_pagamento  !== undefined) updates.data_pagamento  = req.body.data_pagamento;
-        if (req.body.parcela_total   !== undefined) updates.parcela_total   = req.body.parcela_total;
-        const { data, error } = await supabase.from('pagar').update(updates).eq('id', req.params.id).select().single();
-        if (error) {
-            if (error.code === 'PGRST116') return res.status(404).json({ success: false, error: 'Conta não encontrada' });
-            throw error;
-        }
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao atualizar conta', message: err.message });
-    }
-});
-
-app.delete('/api/contas/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('pagar').delete().eq('id', req.params.id);
-        if (error) throw error;
-        res.json({ success: true, message: 'Conta removida com sucesso' });
-    } catch (err) {
-        res.status(500).json({ success: false, error: 'Erro ao deletar conta', message: err.message });
-    }
-});
-
-// ============================================
-// MÓDULO: LUCRO REAL
-// Tabela: lucro  (lê de frete para processar)
-// ============================================
-
-app.use('/api/lucro-real',  verificarAutenticacao);
-app.use('/api/custo-fixo',  verificarAutenticacao);
-
-function parseValorMonetario(valor) {
-    if (valor === null || valor === undefined) return 0;
-    if (typeof valor === 'number') return valor;
-    let s = String(valor).replace('R$', '').trim().replace(',', '.');
-    const pts = s.split('.');
-    if (pts.length > 2) { const dec = pts.pop(); s = pts.join('') + '.' + dec; }
-    const n = parseFloat(s);
-    return isNaN(n) ? 0 : n;
-}
-
-function calcularValores(venda) {
-    return { comissao: venda * 0.0125, impostoFederal: venda * 0.11 };
-}
-
-async function obterRegistroExistente(codigo) {
-    try {
-        const { data } = await supabase.from('lucro').select('*').eq('codigo', codigo);
-        return data?.[0] || null;
-    } catch { return null; }
-}
-
-async function processarFreteParaLucro(frete) {
-    if ((frete.tipo_nf || 'ENVIO') !== 'ENVIO') return;
-    const venda  = parseValorMonetario(frete.valor_nf);
-    const freteV = parseValorMonetario(frete.valor_frete);
-    const { comissao, impostoFederal } = calcularValores(venda);
-    const existente = await obterRegistroExistente(frete.id);
-    const custo = existente?.custo || 0;
-    const lucroReal = venda - custo - freteV - comissao - impostoFederal;
-    const registro = {
-        codigo:         frete.id,
-        nf:             frete.numero_nf || '-',
-        vendedor:       frete.vendedor || '',
-        venda,
-        custo,
-        frete:          freteV,
-        comissao,
-        imposto_federal: impostoFederal,
-        lucro_real:     lucroReal,
-        margem_liquida: venda ? lucroReal / venda : 0,
-        data_emissao:   (frete.data_emissao || new Date().toISOString()).split('T')[0]
-    };
-    if (existente) {
-        await supabase.from('lucro').update({ ...registro, custo: existente.custo }).eq('codigo', frete.id);
-    } else {
-        await supabase.from('lucro').insert([registro]);
-    }
-}
-
-// Carga inicial e monitoramento
-app.get('/api/carga-inicial', async (req, res) => {
-    try {
-        const { data: fretes } = await supabase.from('frete').select('*');
-        for (const f of fretes || []) await processarFreteParaLucro(f);
-        res.json({ success: true, total: fretes?.length || 0 });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.get('/api/monitorar-pedidos', async (req, res) => {
-    try {
-        const dois = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-        const { data: fretes } = await supabase.from('frete').select('*').gte('updated_at', dois);
-        for (const f of fretes || []) await processarFreteParaLucro(f);
-        res.json({ success: true, quantidade: fretes?.length || 0 });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.get('/api/lucro-real', async (req, res) => {
-    try {
-        const { mes, ano } = req.query;
-        if (mes === undefined && ano === undefined) return res.status(400).json({ error: 'Mês/ano ou ano são obrigatórios' });
-        let query;
-        if (mes !== undefined && ano !== undefined) {
-            const month = parseInt(mes), year = parseInt(ano);
-            const start = new Date(year, month, 1).toISOString().split('T')[0];
-            const end   = new Date(year, month + 1, 0).toISOString().split('T')[0];
-            query = supabase.from('lucro').select('*').gte('data_emissao', start).lte('data_emissao', end).order('data_emissao', { ascending: true });
-        } else {
-            const year  = parseInt(ano);
-            const start = `${year}-01-01`, end = `${year}-12-31`;
-            query = supabase.from('lucro').select('*').gte('data_emissao', start).lte('data_emissao', end);
-        }
-        const { data, error } = await query;
-        if (error) throw error;
-        res.json(data || []);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao buscar lucro real', details: err.message });
-    }
-});
-
-app.patch('/api/lucro-real/:codigo', async (req, res) => {
-    try {
-        const { data: registros } = await supabase.from('lucro').select('*').eq('codigo', req.params.codigo);
-        if (!registros?.length) return res.status(404).json({ error: 'Registro não encontrado' });
-        const reg = registros[0];
-        const updates = {};
-        if (req.body.custo            !== undefined) updates.custo            = req.body.custo;
-        if (req.body.comissao         !== undefined) updates.comissao         = req.body.comissao;
-        if (req.body.imposto_federal  !== undefined) updates.imposto_federal  = req.body.imposto_federal;
-        const custo  = updates.custo           ?? reg.custo;
-        const comiss = updates.comissao        ?? reg.comissao;
-        const imposto = updates.imposto_federal ?? reg.imposto_federal;
-        updates.lucro_real     = reg.venda - custo - (reg.frete || 0) - comiss - imposto;
-        updates.margem_liquida = reg.venda ? updates.lucro_real / reg.venda : 0;
-        const { data, error } = await supabase.from('lucro').update(updates).eq('codigo', req.params.codigo).select();
-        if (error) throw error;
-        res.json(data);
-    } catch (err) {
-        res.status(500).json({ error: 'Erro ao atualizar lucro real', details: err.message });
-    }
-});
-
-app.get('/api/custo-fixo', async (req, res) => {
-    try {
-        const { mes, ano } = req.query;
-        if (mes === undefined || ano === undefined) return res.status(400).json({ error: 'Mês e ano são obrigatórios' });
-        const start = new Date(parseInt(ano), parseInt(mes), 1).toISOString().split('T')[0];
-        const end   = new Date(parseInt(ano), parseInt(mes) + 1, 0).toISOString().split('T')[0];
-        const { data } = await supabase.from('lucro').select('custo_fixo_mensal').gte('data_emissao', start).lte('data_emissao', end).limit(1);
-        res.json({ valor: data?.length > 0 ? (data[0].custo_fixo_mensal || 0) : 0 });
-    } catch (err) {
-        res.status(500).json({ error: 'Erro interno', details: err.message });
-    }
-});
-
-app.post('/api/custo-fixo', async (req, res) => {
-    try {
-        const { mes, ano, valor } = req.body;
-        if (mes === undefined || ano === undefined || valor === undefined) return res.status(400).json({ error: 'Mês, ano e valor são obrigatórios' });
-        const start = new Date(parseInt(ano), parseInt(mes), 1).toISOString().split('T')[0];
-        const end   = new Date(parseInt(ano), parseInt(mes) + 1, 0).toISOString().split('T')[0];
-        const { error } = await supabase.from('lucro').update({ custo_fixo_mensal: parseFloat(valor) }).gte('data_emissao', start).lte('data_emissao', end);
-        if (error) throw error;
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: 'Erro interno', details: err.message });
-    }
-});
-
-// Rotas de debug (sem auth)
-app.get('/api/debug/fretes', async (req, res) => {
-    try {
-        const { data } = await supabase.from('frete').select('id,numero_nf,tipo_nf,vendedor,valor_nf,valor_frete,data_emissao,updated_at').order('updated_at', { ascending: false }).limit(20);
-        res.json(data || []);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/debug/lucro-real', async (req, res) => {
-    try {
-        const { data } = await supabase.from('lucro').select('*').order('created_at', { ascending: false }).limit(20);
-        res.json(data || []);
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// ============================================
-// HEALTH & FALLBACKS
-// ============================================
-
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString(), modulos: ['portal', ...MODULOS] });
-});
-
-app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Raiz → portal
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'apps', 'portal', 'index.html'));
-});
-
-// Fallback por módulo → index.html do módulo
-MODULOS.forEach(modulo => {
-    app.get(`/${modulo}/*`, (req, res) => {
-        res.sendFile(path.join(__dirname, 'apps', modulo, 'index.html'));
-    });
-});
-
-// ============================================
-// TRATAMENTO GLOBAL DE ERROS
-// ============================================
-
-app.use((err, req, res, next) => {
-    console.error('❌ Erro não tratado:', err);
-    res.status(500).json({ success: false, error: 'Erro interno do servidor', message: err.message });
-});
-
-// ============================================
-// INICIAR SERVIDOR
-// ============================================
-
+const app  = express();
 const PORT = process.env.PORT || 10000;
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log('');
-    console.log('===============================================');
-    console.log('🚀 I.R. COMÉRCIO — MONOREPO CENTRAL');
-    console.log('===============================================');
-    console.log(`✅ Porta:    ${PORT}`);
-    console.log(`✅ Supabase: ${supabaseUrl}`);
-    console.log('');
-    console.log('📦 Módulos:');
-    console.log('   • Portal            → /');
-    MODULOS.forEach(m => console.log(`   • ${m.padEnd(18)} → /${m}`));
-    console.log('');
-    console.log('🔌 APIs:');
-    console.log('   /api/licitacoes   /api/compra        /api/transportadoras');
-    console.log('   /api/cotacoes     /api/pedidos        /api/estoque');
-    console.log('   /api/fretes       /api/receber        /api/contas');
-    console.log('   /api/vendas       /api/lucro-real     /api/custo-fixo');
-    console.log('===============================================');
+// ── SUPABASE ──────────────────────────────────────────────
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+// ── MIDDLEWARES ───────────────────────────────────────────
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+
+// ── AUTENTICAÇÃO MIDDLEWARE ───────────────────────────────
+async function requireAuth(req, res, next) {
+  const token = req.headers['x-session-token'];
+  if (!token) return res.status(401).json({ error: 'Token não fornecido' });
+
+  const { data, error } = await supabase
+    .from('active')
+    .select('*')
+    .eq('session_token', token)
+    .single();
+
+  if (error || !data) return res.status(401).json({ error: 'Sessão inválida ou expirada' });
+
+  const expiresAt = new Date(data.expires_at);
+  if (expiresAt < new Date()) {
+    await supabase.from('active').delete().eq('session_token', token);
+    return res.status(401).json({ error: 'Sessão expirada' });
+  }
+
+  req.sessionData = data;
+  next();
+}
+
+// ── STATIC: SERVIR CADA MÓDULO ────────────────────────────
+app.use('/',               express.static(path.join(__dirname, 'apps/portal')));
+app.use('/licitacoes',     express.static(path.join(__dirname, 'apps/licitacoes')));
+app.use('/precos',         express.static(path.join(__dirname, 'apps/precos')));
+app.use('/compra',         express.static(path.join(__dirname, 'apps/compra')));
+app.use('/transportadoras',express.static(path.join(__dirname, 'apps/transportadoras')));
+app.use('/cotacoes',       express.static(path.join(__dirname, 'apps/cotacoes')));
+app.use('/faturamento',    express.static(path.join(__dirname, 'apps/faturamento')));
+app.use('/estoque',        express.static(path.join(__dirname, 'apps/estoque')));
+app.use('/frete',          express.static(path.join(__dirname, 'apps/frete')));
+app.use('/receber',        express.static(path.join(__dirname, 'apps/receber')));
+app.use('/vendas',         express.static(path.join(__dirname, 'apps/vendas')));
+app.use('/pagar',          express.static(path.join(__dirname, 'apps/pagar')));
+app.use('/lucro',          express.static(path.join(__dirname, 'apps/lucro')));
+
+// ============================================================
+// ROTAS DO PORTAL — LOGIN / SESSÃO
+// ============================================================
+
+// GET IP do cliente
+app.get('/api/ip', (req, res) => {
+  const ip =
+    req.headers['x-forwarded-for']?.split(',')[0].trim() ||
+    req.socket.remoteAddress ||
+    'unknown';
+  res.json({ ip });
 });
 
-// Sincronização inicial de vendas + carga de lucro real
-setTimeout(async () => {
-    try { await syncVendas(); console.log('✅ Sync vendas OK'); } catch (e) { console.error('Sync vendas:', e.message); }
-    try {
-        const { data: fretes } = await supabase.from('frete').select('*');
-        for (const f of fretes || []) await processarFreteParaLucro(f);
-        console.log(`✅ Carga lucro real: ${fretes?.length || 0} registros`);
-    } catch (e) { console.error('Carga lucro:', e.message); }
-}, 4000);
+// POST /api/login
+app.post('/api/login', async (req, res) => {
+  const { username, password, deviceToken } = req.body;
+  if (!username || !password)
+    return res.status(400).json({ success: false, message: 'Usuário e senha obrigatórios' });
 
-// Monitoramento a cada 15s (vendas + lucro)
-setInterval(async () => {
-    try { await syncVendas(); } catch {}
-    try {
-        const dois = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-        const { data: fretes } = await supabase.from('frete').select('*').gte('updated_at', dois);
-        for (const f of fretes || []) await processarFreteParaLucro(f);
-    } catch {}
-}, 15000);
+  try {
+    // Buscar usuário na tabela login
+    const { data: loginData, error: loginError } = await supabase
+      .from('login')
+      .select('*')
+      .eq('username', username.toLowerCase().trim())
+      .single();
 
-process.on('unhandledRejection', reason => console.error('❌ Unhandled Rejection:', reason));
-process.on('uncaughtException',  error  => { console.error('❌ Uncaught Exception:', error); process.exit(1); });
+    if (loginError || !loginData)
+      return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
 
-module.exports = app;
+    if (loginData.password !== password)
+      return res.status(401).json({ success: false, message: 'Usuário ou senha inválidos' });
+
+    // Verificar se usuário está na tabela authorized
+    const { data: authData, error: authError } = await supabase
+      .from('authorized')
+      .select('*')
+      .eq('username', username.toLowerCase().trim())
+      .single();
+
+    if (authError || !authData)
+      return res.status(403).json({ success: false, message: 'Usuário não autorizado' });
+
+    // Buscar dados do usuário na tabela users
+    const { data: userData } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username.toLowerCase().trim())
+      .single();
+
+    // Criar sessão
+    const sessionToken = uuidv4();
+    const expiresAt    = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 horas
+
+    const sessionPayload = {
+      session_token: sessionToken,
+      username:      username.toLowerCase().trim(),
+      name:          userData?.name || loginData.name || username,
+      sector:        userData?.sector || loginData.sector || authData.sector || 'Usuário',
+      device_token:  deviceToken || null,
+      expires_at:    expiresAt.toISOString(),
+      created_at:    new Date().toISOString()
+    };
+
+    const { error: insertError } = await supabase
+      .from('active')
+      .insert([sessionPayload]);
+
+    if (insertError) {
+      console.error('Erro ao criar sessão:', insertError);
+      return res.status(500).json({ success: false, message: 'Erro ao criar sessão' });
+    }
+
+    return res.json({
+      success: true,
+      session: {
+        sessionToken,
+        username:     sessionPayload.username,
+        name:         sessionPayload.name,
+        sector:       sessionPayload.sector,
+        deviceToken:  deviceToken || null,
+        expiresAt:    expiresAt.toISOString()
+      }
+    });
+  } catch (e) {
+    console.error('Erro no login:', e);
+    return res.status(500).json({ success: false, message: 'Erro interno do servidor' });
+  }
+});
+
+// POST /api/logout
+app.post('/api/logout', async (req, res) => {
+  const { sessionToken } = req.body;
+  if (sessionToken) {
+    await supabase.from('active').delete().eq('session_token', sessionToken);
+  }
+  res.json({ success: true });
+});
+
+// POST /api/verify-session
+app.post('/api/verify-session', async (req, res) => {
+  const { sessionToken } = req.body;
+  if (!sessionToken) return res.json({ valid: false });
+
+  const { data, error } = await supabase
+    .from('active')
+    .select('*')
+    .eq('session_token', sessionToken)
+    .single();
+
+  if (error || !data) return res.json({ valid: false });
+
+  const expiresAt = new Date(data.expires_at);
+  if (expiresAt < new Date()) {
+    await supabase.from('active').delete().eq('session_token', sessionToken);
+    return res.json({ valid: false });
+  }
+
+  return res.json({
+    valid: true,
+    session: {
+      sessionToken,
+      username:  data.username,
+      name:      data.name,
+      sector:    data.sector,
+      expiresAt: data.expires_at
+    }
+  });
+});
+
+// ============================================================
+// ROTAS — COMPRA (tabela: compra, itens, fornecedores)
+// ============================================================
+
+// GET /api/fornecedores
+app.get('/api/fornecedores', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('compra')
+      .select('fornecedor')
+      .not('fornecedor', 'is', null);
+
+    if (error) throw error;
+
+    const unique = [...new Set(data.map(d => d.fornecedor).filter(Boolean))].sort();
+    res.json(unique.map(nome => ({ nome })));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ordens/ultimo-numero
+app.get('/api/ordens/ultimo-numero', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('compra')
+      .select('numero')
+      .order('numero', { ascending: false })
+      .limit(1);
+
+    if (error) throw error;
+    const ultimo = data && data.length > 0 ? (data[0].numero || 0) : 0;
+    res.json({ ultimo });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ordens?mes=&ano=
+app.get('/api/ordens', requireAuth, async (req, res) => {
+  try {
+    const { mes, ano } = req.query;
+    let query = supabase.from('compra').select('*').order('numero', { ascending: false });
+
+    if (mes !== undefined && ano !== undefined) {
+      const mesNum = parseInt(mes);
+      const anoNum = parseInt(ano);
+      const inicio = new Date(anoNum, mesNum, 1).toISOString().split('T')[0];
+      const fim    = new Date(anoNum, mesNum + 1, 0).toISOString().split('T')[0];
+      query = query.gte('data', inicio).lte('data', fim);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ordens
+app.post('/api/ordens', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('compra')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/ordens/:id
+app.get('/api/ordens/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('compra')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Ordem não encontrada' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/ordens/:id
+app.put('/api/ordens/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('compra')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/ordens/:id/status
+app.patch('/api/ordens/:id/status', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('compra')
+      .update({ status: req.body.status })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/ordens/:id  (atualização parcial genérica)
+app.patch('/api/ordens/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('compra')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/ordens/:id
+app.delete('/api/ordens/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('compra')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — TRANSPORTADORAS (tabela: transportadoras)
+// ============================================================
+
+// GET /api/transportadoras
+app.get('/api/transportadoras', requireAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 200, search } = req.query;
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to   = from + parseInt(limit) - 1;
+
+    let query = supabase.from('transportadoras').select('*', { count: 'exact' }).range(from, to);
+
+    if (search) {
+      query = query.or(
+        `nome.ilike.%${search}%,representante.ilike.%${search}%,email.ilike.%${search}%,regiao.ilike.%${search}%,estado.ilike.%${search}%`
+      );
+    }
+
+    const { data, error, count } = await query.order('nome', { ascending: true });
+    if (error) throw error;
+    res.json({ data: data || [], total: count || 0 });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/transportadoras
+app.post('/api/transportadoras', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('transportadoras')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/transportadoras/:id
+app.put('/api/transportadoras/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('transportadoras')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/transportadoras/:id
+app.delete('/api/transportadoras/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('transportadoras')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — COTAÇÕES DE FRETE (tabela: cotacoes)
+// ============================================================
+
+// GET /api/cotacoes?mes=&ano=
+app.get('/api/cotacoes', requireAuth, async (req, res) => {
+  try {
+    const { mes, ano } = req.query;
+    let query = supabase.from('cotacoes').select('*').order('created_at', { ascending: false });
+
+    if (mes !== undefined && ano !== undefined) {
+      const mesNum = parseInt(mes);
+      const anoNum = parseInt(ano);
+      const inicio = new Date(anoNum, mesNum, 1).toISOString().split('T')[0];
+      const fim    = new Date(anoNum, mesNum + 1, 0).toISOString().split('T')[0];
+      query = query.gte('data', inicio).lte('data', fim);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/cotacoes
+app.post('/api/cotacoes', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('cotacoes')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/cotacoes/:id
+app.get('/api/cotacoes/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('cotacoes')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Cotação não encontrada' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/cotacoes/:id
+app.patch('/api/cotacoes/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('cotacoes')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/cotacoes/:id
+app.delete('/api/cotacoes/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('cotacoes')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — ESTOQUE (tabela: estoque, grupos)
+// ============================================================
+
+// GET /api/grupos
+app.get('/api/grupos', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('grupos')
+      .select('*')
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/grupos
+app.post('/api/grupos', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('grupos')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/grupos/:codigo
+app.get('/api/grupos/:codigo', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('grupos')
+      .select('*')
+      .eq('codigo', req.params.codigo)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Grupo não encontrado' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/grupos/:codigo
+app.put('/api/grupos/:codigo', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('grupos')
+      .update(req.body)
+      .eq('codigo', req.params.codigo)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/grupos/:codigo
+app.delete('/api/grupos/:codigo', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('grupos')
+      .delete()
+      .eq('codigo', req.params.codigo);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/estoque?page=&limit=&search=&grupo=
+app.get('/api/estoque', requireAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 50, search, grupo } = req.query;
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to   = from + parseInt(limit) - 1;
+
+    let query = supabase.from('estoque').select('*', { count: 'exact' }).range(from, to);
+
+    if (search) {
+      query = query.or(`nome.ilike.%${search}%,codigo.ilike.%${search}%`);
+    }
+    if (grupo) {
+      query = query.eq('grupo', grupo);
+    }
+
+    const { data, error, count } = await query.order('nome', { ascending: true });
+    if (error) throw error;
+    res.json({ data: data || [], total: count || 0 });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/estoque
+app.post('/api/estoque', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('estoque')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/estoque/:codigo
+app.get('/api/estoque/:codigo', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('estoque')
+      .select('*')
+      .eq('codigo', req.params.codigo)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Item não encontrado' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/estoque/:codigo
+app.put('/api/estoque/:codigo', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('estoque')
+      .update(req.body)
+      .eq('codigo', req.params.codigo)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/estoque/:codigo
+app.delete('/api/estoque/:codigo', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('estoque')
+      .delete()
+      .eq('codigo', req.params.codigo);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/estoque/:codigo/entrada
+app.post('/api/estoque/:codigo/entrada', requireAuth, async (req, res) => {
+  try {
+    const { quantidade, observacao } = req.body;
+
+    const { data: item, error: fetchError } = await supabase
+      .from('estoque')
+      .select('quantidade')
+      .eq('codigo', req.params.codigo)
+      .single();
+
+    if (fetchError || !item) return res.status(404).json({ error: 'Item não encontrado' });
+
+    const novaQtd = (item.quantidade || 0) + parseInt(quantidade);
+
+    const { data, error } = await supabase
+      .from('estoque')
+      .update({ quantidade: novaQtd, ultima_entrada: new Date().toISOString(), observacao_entrada: observacao || null })
+      .eq('codigo', req.params.codigo)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/estoque/:codigo/saida
+app.post('/api/estoque/:codigo/saida', requireAuth, async (req, res) => {
+  try {
+    const { quantidade, observacao } = req.body;
+
+    const { data: item, error: fetchError } = await supabase
+      .from('estoque')
+      .select('quantidade')
+      .eq('codigo', req.params.codigo)
+      .single();
+
+    if (fetchError || !item) return res.status(404).json({ error: 'Item não encontrado' });
+
+    const novaQtd = (item.quantidade || 0) - parseInt(quantidade);
+    if (novaQtd < 0) return res.status(400).json({ error: 'Quantidade insuficiente em estoque' });
+
+    const { data, error } = await supabase
+      .from('estoque')
+      .update({ quantidade: novaQtd, ultima_saida: new Date().toISOString(), observacao_saida: observacao || null })
+      .eq('codigo', req.params.codigo)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — FATURAMENTO (tabela: faturamento)
+// ============================================================
+
+// GET /api/pedidos?mes=&ano=
+app.get('/api/pedidos', requireAuth, async (req, res) => {
+  try {
+    const { mes, ano } = req.query;
+    let query = supabase.from('faturamento').select('*').order('created_at', { ascending: false });
+
+    if (mes !== undefined && ano !== undefined) {
+      const mesNum = parseInt(mes);
+      const anoNum = parseInt(ano);
+      const inicio = new Date(anoNum, mesNum, 1).toISOString().split('T')[0];
+      const fim    = new Date(anoNum, mesNum + 1, 0).toISOString().split('T')[0];
+      query = query.gte('data', inicio).lte('data', fim);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/pedidos
+app.post('/api/pedidos', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('faturamento')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/pedidos/:id
+app.get('/api/pedidos/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('faturamento')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Pedido não encontrado' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/pedidos/:id
+app.put('/api/pedidos/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('faturamento')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/pedidos/:id
+app.delete('/api/pedidos/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('faturamento')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — CONTROLE DE FRETE (tabela: frete)
+// ============================================================
+
+// GET /api/fretes
+app.get('/api/fretes', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('frete')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/fretes
+app.post('/api/fretes', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('frete')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/fretes/:id
+app.get('/api/fretes/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('frete')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Frete não encontrado' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/fretes/:id
+app.put('/api/fretes/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('frete')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/fretes/:id
+app.patch('/api/fretes/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('frete')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/fretes/:id
+app.delete('/api/fretes/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('frete')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — CONTAS A RECEBER (tabela: receber)
+// ============================================================
+
+// GET /api/receber/contas
+app.get('/api/receber/contas', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('receber')
+      .select('*')
+      .order('data_vencimento', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/receber/contas
+app.post('/api/receber/contas', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('receber')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/receber/contas/:id
+app.get('/api/receber/contas/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('receber')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/receber/contas/:id
+app.put('/api/receber/contas/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('receber')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/receber/contas/:id
+app.delete('/api/receber/contas/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('receber')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — CONTAS A PAGAR (tabela: pagar)
+// ============================================================
+
+// GET /api/pagar/contas
+app.get('/api/pagar/contas', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('pagar')
+      .select('*')
+      .order('data_vencimento', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/pagar/contas
+app.post('/api/pagar/contas', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('pagar')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/pagar/contas/grupo/:grupoId
+app.get('/api/pagar/contas/grupo/:grupoId', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('pagar')
+      .select('*')
+      .eq('grupo_id', req.params.grupoId)
+      .order('data_vencimento', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/pagar/contas/:id
+app.get('/api/pagar/contas/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('pagar')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/pagar/contas/:id
+app.put('/api/pagar/contas/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('pagar')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/pagar/contas/:id
+app.patch('/api/pagar/contas/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('pagar')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/pagar/contas/:id
+app.delete('/api/pagar/contas/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('pagar')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — VENDAS (tabela: vendas)
+// ============================================================
+
+// GET /api/vendas?mes=&ano=&vendedor=
+app.get('/api/vendas', requireAuth, async (req, res) => {
+  try {
+    const { mes, ano, vendedor } = req.query;
+    let query = supabase.from('vendas').select('*').order('data_emissao', { ascending: false });
+
+    if (mes !== undefined && ano !== undefined) {
+      const mesNum = parseInt(mes);
+      const anoNum = parseInt(ano);
+      const inicio = new Date(anoNum, mesNum, 1).toISOString().split('T')[0];
+      const fim    = new Date(anoNum, mesNum + 1, 0).toISOString().split('T')[0];
+      query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
+    }
+    if (vendedor) {
+      query = query.eq('vendedor', vendedor);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/vendas
+app.post('/api/vendas', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('vendas')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/vendas/:id
+app.get('/api/vendas/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('vendas')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Venda não encontrada' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/vendas/:id
+app.put('/api/vendas/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('vendas')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/vendas/:id
+app.delete('/api/vendas/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('vendas')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — LUCRO REAL (tabela: lucro)
+// ============================================================
+
+// GET /api/lucro-real?mes=&ano=
+app.get('/api/lucro-real', requireAuth, async (req, res) => {
+  try {
+    const { mes, ano } = req.query;
+    let query = supabase.from('lucro').select('*');
+
+    if (mes !== undefined && ano !== undefined) {
+      const mesNum = parseInt(mes);
+      const anoNum = parseInt(ano);
+      const inicio = new Date(anoNum, mesNum, 1).toISOString().split('T')[0];
+      const fim    = new Date(anoNum, mesNum + 1, 0).toISOString().split('T')[0];
+      query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
+    } else if (ano !== undefined) {
+      const anoNum = parseInt(ano);
+      const inicio = new Date(anoNum, 0, 1).toISOString().split('T')[0];
+      const fim    = new Date(anoNum, 11, 31).toISOString().split('T')[0];
+      query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
+    }
+
+    const { data, error } = await query.order('data_emissao', { ascending: true });
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/lucro-real/:codigo
+app.patch('/api/lucro-real/:codigo', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('lucro')
+      .update(req.body)
+      .eq('codigo', req.params.codigo)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/custo-fixo?mes=&ano=
+app.get('/api/custo-fixo', requireAuth, async (req, res) => {
+  try {
+    const { mes, ano } = req.query;
+    const { data, error } = await supabase
+      .from('custo_fixo')
+      .select('*')
+      .eq('mes', parseInt(mes))
+      .eq('ano', parseInt(ano))
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    res.json(data || { valor: 0 });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/custo-fixo
+app.post('/api/custo-fixo', requireAuth, async (req, res) => {
+  try {
+    const { mes, ano, valor } = req.body;
+
+    const { data: existing } = await supabase
+      .from('custo_fixo')
+      .select('id')
+      .eq('mes', mes)
+      .eq('ano', ano)
+      .single();
+
+    let result;
+    if (existing) {
+      const { data, error } = await supabase
+        .from('custo_fixo')
+        .update({ valor })
+        .eq('id', existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
+    } else {
+      const { data, error } = await supabase
+        .from('custo_fixo')
+        .insert([{ mes, ano, valor }])
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
+    }
+
+    res.json(result);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/monitorar-pedidos (sincroniza vendas → lucro)
+app.post('/api/monitorar-pedidos', requireAuth, async (req, res) => {
+  try {
+    // Busca vendas que ainda não estão na tabela lucro
+    const { data: vendas, error: vendaError } = await supabase
+      .from('vendas')
+      .select('*');
+
+    if (vendaError) throw vendaError;
+
+    const { data: lucroExistente } = await supabase
+      .from('lucro')
+      .select('codigo');
+
+    const codigosExistentes = new Set((lucroExistente || []).map(l => l.codigo));
+
+    const novas = (vendas || []).filter(v => v.codigo && !codigosExistentes.has(v.codigo));
+
+    if (novas.length > 0) {
+      const inserir = novas.map(v => ({
+        codigo:         v.codigo,
+        nf:             v.nf || null,
+        vendedor:       v.vendedor || null,
+        data_emissao:   v.data_emissao || null,
+        venda:          v.valor_total || v.venda || 0,
+        custo:          0,
+        frete:          v.frete || 0,
+        comissao:       0,
+        imposto_federal:0
+      }));
+
+      const { error: insertError } = await supabase.from('lucro').insert(inserir);
+      if (insertError) throw insertError;
+    }
+
+    res.json({ success: true, sincronizados: novas.length });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — TABELA DE PREÇOS (tabela: itens, marcas)
+// ============================================================
+
+// GET /api/marcas
+app.get('/api/marcas', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('marcas')
+      .select('*')
+      .order('nome', { ascending: true });
+
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/marcas
+app.post('/api/marcas', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('marcas')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/precos?page=&limit=&search=&marca=
+app.get('/api/precos', requireAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 50, search, marca } = req.query;
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to   = from + parseInt(limit) - 1;
+
+    let query = supabase.from('itens').select('*', { count: 'exact' }).range(from, to);
+
+    if (search) {
+      query = query.or(`nome.ilike.%${search}%,codigo.ilike.%${search}%,descricao.ilike.%${search}%`);
+    }
+    if (marca && marca !== 'TODAS') {
+      query = query.eq('marca', marca);
+    }
+
+    const { data, error, count } = await query.order('nome', { ascending: true });
+    if (error) throw error;
+    res.json({ data: data || [], total: count || 0 });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/precos
+app.post('/api/precos', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('itens')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/precos/:id
+app.get('/api/precos/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('itens')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Item não encontrado' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/precos/:id
+app.put('/api/precos/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('itens')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/precos/:id
+app.delete('/api/precos/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('itens')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// ROTAS — LICITAÇÕES (tabela: licitacoes)
+// ============================================================
+
+// GET /api/licitacoes?mes=&ano=&status=
+app.get('/api/licitacoes', requireAuth, async (req, res) => {
+  try {
+    const { mes, ano, status, search } = req.query;
+    let query = supabase.from('licitacoes').select('*').order('data', { ascending: false });
+
+    if (mes !== undefined && ano !== undefined) {
+      const mesNum = parseInt(mes);
+      const anoNum = parseInt(ano);
+      const inicio = new Date(anoNum, mesNum, 1).toISOString().split('T')[0];
+      const fim    = new Date(anoNum, mesNum + 1, 0).toISOString().split('T')[0];
+      query = query.gte('data', inicio).lte('data', fim);
+    }
+    if (status) query = query.eq('status', status);
+    if (search)  query = query.or(`numero.ilike.%${search}%,orgao.ilike.%${search}%,objeto.ilike.%${search}%`);
+
+    const { data, error } = await query;
+    if (error) throw error;
+    res.json(data || []);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/licitacoes
+app.post('/api/licitacoes', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('licitacoes')
+      .insert([req.body])
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.status(201).json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/licitacoes/:id
+app.get('/api/licitacoes/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('licitacoes')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return res.status(404).json({ error: 'Licitação não encontrada' });
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PUT /api/licitacoes/:id
+app.put('/api/licitacoes/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('licitacoes')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// PATCH /api/licitacoes/:id
+app.patch('/api/licitacoes/:id', requireAuth, async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('licitacoes')
+      .update(req.body)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    res.json(data);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// DELETE /api/licitacoes/:id
+app.delete('/api/licitacoes/:id', requireAuth, async (req, res) => {
+  try {
+    const { error } = await supabase
+      .from('licitacoes')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ============================================================
+// HEALTH CHECK
+// ============================================================
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// ── SPA FALLBACK — serve portal para rotas desconhecidas ──
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'apps/portal/index.html'));
+});
+
+// ── START ─────────────────────────────────────────────────
+app.listen(PORT, () => {
+  console.log(`✅ Servidor IR Comércio rodando na porta ${PORT}`);
+  console.log(`📦 Supabase: ${process.env.SUPABASE_URL ? 'configurado' : '⚠️  NÃO CONFIGURADO'}`);
+});
