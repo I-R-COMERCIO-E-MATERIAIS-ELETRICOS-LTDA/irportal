@@ -1,7 +1,7 @@
-// ─── CONFIGURAÇÃO ─────────────────────────────────────────────────────────────
-// No monorepo, a API está sempre na mesma origem (sem porta separada)
+// CONFIGURAÇÃO — no monorepo a API está sempre na mesma origem
 const API_URL = window.location.origin + '/api';
-const PORTAL_URL = window.location.origin + '/portal';
+// Chave de sessão unificada do monorepo (mesmo nome usado pelo portal)
+const SESSION_KEY = 'irUserSession';
 
 const PAGE_SIZE = 50;
 
@@ -19,6 +19,9 @@ let state = {
 let isOnline = false;
 let sessionToken = null;
 
+console.log('🚀 Tabela de Preços iniciada');
+console.log('📍 API URL:', API_URL);
+
 document.addEventListener('DOMContentLoaded', () => {
     verificarAutenticacao();
 });
@@ -31,10 +34,27 @@ function verificarAutenticacao() {
 
     if (tokenFromUrl) {
         sessionToken = tokenFromUrl;
-        sessionStorage.setItem('ir_session_token', tokenFromUrl);
+        // Armazena na chave unificada do monorepo
+        try {
+            const stored = sessionStorage.getItem(SESSION_KEY);
+            const session = stored ? JSON.parse(stored) : {};
+            session.sessionToken = tokenFromUrl;
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        } catch (e) {}
         window.history.replaceState({}, document.title, window.location.pathname);
     } else {
-        sessionToken = sessionStorage.getItem('ir_session_token');
+        // Tenta recuperar da sessão unificada do monorepo
+        try {
+            const stored = sessionStorage.getItem(SESSION_KEY);
+            if (stored) {
+                const session = JSON.parse(stored);
+                sessionToken = session.sessionToken || null;
+            }
+        } catch (e) {}
+        // Fallback: chave antiga (compatibilidade durante migração)
+        if (!sessionToken) {
+            sessionToken = sessionStorage.getItem('tabelaPrecosSession');
+        }
     }
 
     if (!sessionToken) {
@@ -46,11 +66,12 @@ function verificarAutenticacao() {
 }
 
 function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
+    const portalUrl = window.location.origin + '/portal';
     document.body.innerHTML = `
         <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: var(--bg-primary); color: var(--text-primary); text-align: center; padding: 2rem;">
             <h1 style="font-size: 2.2rem; margin-bottom: 1rem;">${mensagem}</h1>
             <p style="color: var(--text-secondary); margin-bottom: 2rem;">Somente usuários autenticados podem acessar esta área.</p>
-            <a href="${PORTAL_URL}" style="display: inline-block; background: var(--btn-register); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">Ir para o Portal</a>
+            <a href="${portalUrl}" style="display: inline-block; background: var(--btn-register); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">Ir para o Portal</a>
         </div>
     `;
 }
@@ -89,7 +110,7 @@ async function fetchWithTimeout(url, options = {}, timeout = 10000) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
     try {
-        const response = await fetch(url, { ...options, signal: controller.signal });
+        const response = await fetch(url, { ...options, signal: controller.signal, mode: 'cors' });
         clearTimeout(timeoutId);
         return response;
     } catch (err) {
@@ -110,7 +131,7 @@ async function verificarConexao() {
             headers: getHeaders()
         });
         if (response.status === 401) {
-            sessionStorage.removeItem('ir_session_token');
+            sessionStorage.removeItem(SESSION_KEY);
             mostrarTelaAcessoNegado('Sua sessão expirou');
             return false;
         }
@@ -131,8 +152,12 @@ async function carregarTudo() {
 
         if (marcasRes.ok) {
             const marcas = await marcasRes.json();
-            if (Array.isArray(marcas) && (marcas.length === 0 || typeof marcas[0] === 'string')) {
+            if (Array.isArray(marcas) && typeof marcas[0] === 'string') {
                 state.marcasDisponiveis = marcas;
+            } else if (Array.isArray(marcas)) {
+                const set = new Set();
+                marcas.forEach(p => { if (p.marca?.trim()) set.add(p.marca.trim()); });
+                state.marcasDisponiveis = [...set].sort();
             }
             renderMarcasFilter();
         }
@@ -140,12 +165,18 @@ async function carregarTudo() {
         if (precosRes.ok) {
             const result = await precosRes.json();
             if (Array.isArray(result)) {
-                state.precos = result.map(item => ({ ...item, descricao: item.descricao?.toUpperCase() || '' }));
+                state.precos = result.map(item => ({ ...item, descricao: item.descricao.toUpperCase() }));
                 state.totalRecords = result.length;
                 state.totalPages = 1;
                 state.currentPage = 1;
+                if (!marcasRes.ok) {
+                    const set = new Set();
+                    result.forEach(p => { if (p.marca?.trim()) set.add(p.marca.trim()); });
+                    state.marcasDisponiveis = [...set].sort();
+                    renderMarcasFilter();
+                }
             } else {
-                state.precos = (result.data || []).map(item => ({ ...item, descricao: item.descricao?.toUpperCase() || '' }));
+                state.precos = (result.data || []).map(item => ({ ...item, descricao: item.descricao.toUpperCase() }));
                 state.totalRecords = result.total || 0;
                 state.totalPages = result.totalPages || 1;
                 state.currentPage = result.page || 1;
@@ -168,8 +199,12 @@ async function atualizarMarcas() {
         });
         if (response.ok) {
             const marcas = await response.json();
-            if (Array.isArray(marcas) && (marcas.length === 0 || typeof marcas[0] === 'string')) {
+            if (Array.isArray(marcas) && typeof marcas[0] === 'string') {
                 state.marcasDisponiveis = marcas;
+            } else if (Array.isArray(marcas)) {
+                const set = new Set();
+                marcas.forEach(p => { if (p.marca?.trim()) set.add(p.marca.trim()); });
+                state.marcasDisponiveis = [...set].sort();
             }
             renderMarcasFilter();
         }
@@ -184,7 +219,6 @@ function renderMarcasFilter() {
     const container = document.getElementById('marcasFilter');
     if (!container) return;
     container.innerHTML = '';
-
     ['TODAS', ...state.marcasDisponiveis].forEach(marca => {
         const button = document.createElement('button');
         button.className = `brand-button ${marca === state.marcaSelecionada ? 'active' : ''}`;
@@ -221,25 +255,25 @@ async function loadPrecos(page = 1) {
         });
 
         if (response.status === 401) {
-            sessionStorage.removeItem('ir_session_token');
+            sessionStorage.removeItem(SESSION_KEY);
             mostrarTelaAcessoNegado('Sua sessão expirou');
             return;
         }
 
         if (!response.ok) {
-            console.error('Erro ao carregar preços:', response.status);
+            console.error('❌ Erro ao carregar preços:', response.status);
             return;
         }
 
         const result = await response.json();
 
         if (Array.isArray(result)) {
-            state.precos = result.map(item => ({ ...item, descricao: item.descricao?.toUpperCase() || '' }));
+            state.precos = result.map(item => ({ ...item, descricao: item.descricao.toUpperCase() }));
             state.totalRecords = result.length;
             state.totalPages = 1;
             state.currentPage = 1;
         } else {
-            state.precos = (result.data || []).map(item => ({ ...item, descricao: item.descricao?.toUpperCase() || '' }));
+            state.precos = (result.data || []).map(item => ({ ...item, descricao: item.descricao.toUpperCase() }));
             state.totalRecords = result.total || 0;
             state.totalPages = result.totalPages || 1;
             state.currentPage = result.page || page;
@@ -251,7 +285,7 @@ async function loadPrecos(page = 1) {
         renderPaginacao();
 
     } catch (error) {
-        console.error(error.name === 'AbortError' ? 'Timeout' : 'Erro:', error);
+        console.error(error.name === 'AbortError' ? '❌ Timeout' : '❌ Erro:', error);
     } finally {
         state.isLoading = false;
     }
@@ -274,9 +308,7 @@ function renderPrecos() {
     if (!state.precos.length) {
         container.innerHTML = `
             <tr>
-                <td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-secondary);">
-                    Nenhum preço encontrado
-                </td>
+                <td colspan="6" style="text-align: center; padding: 2rem;">Nenhum preço encontrado</td>
             </tr>
         `;
         return;
@@ -284,10 +316,10 @@ function renderPrecos() {
 
     container.innerHTML = state.precos.map(p => `
         <tr>
-            <td><strong>${p.marca || ''}</strong></td>
-            <td>${p.codigo || ''}</td>
-            <td>R$ ${parseFloat(p.preco || 0).toFixed(2)}</td>
-            <td>${p.descricao || ''}</td>
+            <td><strong>${p.marca}</strong></td>
+            <td>${p.codigo}</td>
+            <td>R$ ${parseFloat(p.preco).toFixed(2)}</td>
+            <td>${p.descricao}</td>
             <td style="color: var(--text-secondary); font-size: 0.85rem;">${getTimeAgo(p.timestamp)}</td>
             <td class="actions-cell" style="text-align: center;">
                 <button onclick="window.editPreco('${p.id}')" class="action-btn edit">Editar</button>
@@ -357,7 +389,7 @@ function showFormModal(editingId = null) {
                     <h3 class="modal-title">${isEditing ? 'Editar Preço' : 'Novo Preço'}</h3>
                     <button class="close-modal" onclick="closeFormModal(true)">✕</button>
                 </div>
-                <div class="modal-form-content">
+                <form id="modalPrecoForm" onsubmit="handleSubmit(event)">
                     <input type="hidden" id="modalEditId" value="${editingId || ''}">
                     <div class="form-grid">
                         <div class="form-group">
@@ -378,23 +410,20 @@ function showFormModal(editingId = null) {
                         </div>
                     </div>
                     <div class="modal-actions modal-actions-right">
-                        <button type="button" onclick="handleSubmit()" class="save">${isEditing ? 'Atualizar' : 'Salvar'}</button>
+                        <button type="submit" class="save">${isEditing ? 'Atualizar' : 'Salvar'}</button>
                         <button type="button" onclick="closeFormModal(true)" class="danger">Cancelar</button>
                     </div>
-                </div>
+                </form>
             </div>
         </div>
     `);
 
     setTimeout(() => {
-        const descEl = document.getElementById('modalDescricao');
-        if (descEl) {
-            descEl.addEventListener('input', (e) => {
-                const start = e.target.selectionStart;
-                e.target.value = e.target.value.toUpperCase();
-                e.target.setSelectionRange(start, start);
-            });
-        }
+        document.getElementById('modalDescricao').addEventListener('input', (e) => {
+            const start = e.target.selectionStart;
+            e.target.value = e.target.value.toUpperCase();
+            e.target.setSelectionRange(start, start);
+        });
         document.getElementById('modalMarca')?.focus();
     }, 100);
 }
@@ -408,27 +437,21 @@ function closeFormModal(showCancelMessage = false) {
     setTimeout(() => modal.remove(), 200);
 }
 
-async function handleSubmit() {
-    const editId = document.getElementById('modalEditId').value;
-    const marca = document.getElementById('modalMarca').value.trim();
-    const codigo = document.getElementById('modalCodigo').value.trim();
-    const preco = document.getElementById('modalPreco').value;
-    const descricao = document.getElementById('modalDescricao').value.trim().toUpperCase();
+async function handleSubmit(event) {
+    event.preventDefault();
 
-    if (!marca || !codigo || !preco || !descricao) {
-        showToast('Preencha todos os campos', 'error');
-        return;
-    }
+    const editId = document.getElementById('modalEditId').value;
+    const formData = {
+        marca:    document.getElementById('modalMarca').value.trim(),
+        codigo:   document.getElementById('modalCodigo').value.trim(),
+        preco:    parseFloat(document.getElementById('modalPreco').value),
+        descricao:document.getElementById('modalDescricao').value.trim().toUpperCase()
+    };
 
     if (!isOnline) { showToast('Sistema offline', 'error'); closeFormModal(); return; }
 
-    const formData = { marca, codigo, preco: parseFloat(preco), descricao };
-
     try {
-        const headers = {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        };
+        const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
         if (sessionToken) headers['X-Session-Token'] = sessionToken;
 
         const response = await fetchWithTimeout(
@@ -438,7 +461,7 @@ async function handleSubmit() {
         );
 
         if (response.status === 401) {
-            sessionStorage.removeItem('ir_session_token');
+            sessionStorage.removeItem(SESSION_KEY);
             mostrarTelaAcessoNegado('Sua sessão expirou');
             return;
         }
@@ -449,7 +472,7 @@ async function handleSubmit() {
         }
 
         closeFormModal();
-        showToast(editId ? 'Item atualizado!' : 'Item registrado!', 'success');
+        showToast(editId ? 'Item atualizado' : 'Item registrado', 'success');
         atualizarMarcas();
         loadPrecos(editId ? state.currentPage : 1);
 
@@ -460,7 +483,7 @@ async function handleSubmit() {
 
 // ─── EDITAR / EXCLUIR ─────────────────────────────────────────────────────────
 
-window.editPreco = function(id) { showFormModal(id); };
+window.editPreco   = function(id) { showFormModal(id); };
 window.deletePreco = function(id) { showDeleteModal(id); };
 
 function showDeleteModal(id) {
@@ -470,8 +493,8 @@ function showDeleteModal(id) {
                 <button class="close-modal" onclick="closeDeleteModal()">✕</button>
                 <div class="modal-message-delete">Tem certeza que deseja excluir este preço?</div>
                 <div class="modal-actions modal-actions-no-border">
-                    <button type="button" onclick="confirmDelete('${id}')" class="danger">Sim, excluir</button>
-                    <button type="button" onclick="closeDeleteModal()" class="secondary">Cancelar</button>
+                    <button type="button" onclick="confirmDelete('${id}')" class="danger">Sim</button>
+                    <button type="button" onclick="closeDeleteModal()" class="danger">Cancelar</button>
                 </div>
             </div>
         </div>
@@ -494,7 +517,7 @@ async function confirmDelete(id) {
         });
 
         if (response.status === 401) {
-            sessionStorage.removeItem('ir_session_token');
+            sessionStorage.removeItem(SESSION_KEY);
             mostrarTelaAcessoNegado('Sua sessão expirou');
             return;
         }
@@ -519,12 +542,12 @@ async function confirmDelete(id) {
 
 function getTimeAgo(timestamp) {
     if (!timestamp) return 'Sem data';
-    const now = new Date();
+    const now  = new Date();
     const past = new Date(timestamp);
     const diff = Math.floor((now - past) / 1000);
-    if (diff < 60) return `${diff}s`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}min`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    if (diff < 60)     return `${diff}s`;
+    if (diff < 3600)   return `${Math.floor(diff / 60)}min`;
+    if (diff < 86400)  return `${Math.floor(diff / 3600)}h`;
     if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
     return past.toLocaleDateString('pt-BR');
 }
