@@ -81,6 +81,17 @@ function verificarAutenticacao() {
         sessionToken = sessionStorage.getItem('ordemCompraSession');
     }
 
+    // Tenta também a chave unificada do portal (SESSION_KEY)
+    if (!sessionToken) {
+        try {
+            const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                sessionToken = parsed.token || parsed.sessionToken || null;
+            }
+        } catch (e) { /* ignora */ }
+    }
+
     if (!sessionToken) {
         mostrarTelaAcessoNegado();
         return;
@@ -93,7 +104,7 @@ function verificarAutenticacao() {
 async function fetchSessionUser() {
     if (!sessionToken) return;
     try {
-        const r = await fetch(`${PORTAL_URL}/api/verify-session`, {
+        const r = await fetch(`${PORTAL_URL}/api/portal/verify-session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionToken })
@@ -163,11 +174,14 @@ async function checkServerStatus() {
 
 function updateConnectionStatus() {
     const statusElement = document.getElementById('connectionStatus');
+    const textElement = document.getElementById('connectionText');
     if (statusElement) {
         statusElement.className = isOnline ? 'connection-status online' : 'connection-status offline';
     }
+    if (textElement) {
+        textElement.textContent = isOnline ? 'Online' : 'Offline';
+    }
 }
-
 
 // loadOrdensDirectly: cancela fetch anterior via AbortController,
 // garante que apenas o mês atualmente visível é renderizado
@@ -219,7 +233,6 @@ async function loadOrdensDirectly() {
 // FORNECEDORES GLOBAIS — autocomplete todos os meses
 // ============================================
 async function loadFornecedoresGlobal() {
-    if (!isOnline && !DEVELOPMENT_MODE) return;
     try {
         const headers = { 'Accept': 'application/json' };
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
@@ -249,7 +262,6 @@ async function loadFornecedoresGlobal() {
 // ÚLTIMO NÚMERO GLOBAL — contador do dashboard
 // ============================================
 async function loadUltimoNumero() {
-    if (!isOnline && !DEVELOPMENT_MODE) return;
     try {
         const headers = { 'Accept': 'application/json' };
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
@@ -262,7 +274,7 @@ async function loadUltimoNumero() {
     } catch (e) { console.error('❌ loadUltimoNumero:', e); }
 }
 
-// FUNÇÃO DE SINCRONIZAÇÃO DE DADOS - MENSAGENS SIMPLIFICADAS
+// FUNÇÃO DE SINCRONIZAÇÃO DE DADOS
 async function syncData() {
     console.log('🔄 Iniciando sincronização...');
     
@@ -826,9 +838,7 @@ function renumberItems() {
     itemCounter = rows.length;
 }
 
-// ------------------------------------------------------------
-// FUNÇÃO calculateItemTotal AGORA INCLUI O IPI NO TOTAL DO ITEM
-// ------------------------------------------------------------
+// IPI somado ao total do item
 function calculateItemTotal(input) {
     const row = input.closest('tr');
     const qtd = parseFloat(row.querySelector('.item-qtd').value) || 0;
@@ -1099,11 +1109,11 @@ async function editOrdem(id) {
                             <div class="form-grid">
                                 <div class="form-group">
                                     <label for="formaPagamento">Forma de Pagamento *</label>
-                                    <input type="text" id="formaPagamento" value="${toUpperCase(ordem.forma_pagamento || ordem.formaPagamento)}" required placeholder="Ex: Boleto, PIX, Cartão">
+                                    <input type="text" id="formaPagamento" value="${toUpperCase(ordem.forma_pagamento || ordem.formaPagamento || '')}" required placeholder="Ex: Boleto, PIX, Cartão">
                                 </div>
                                 <div class="form-group">
                                     <label for="prazoPagamento">Prazo de Pagamento *</label>
-                                    <input type="text" id="prazoPagamento" value="${toUpperCase(ordem.prazo_pagamento || ordem.prazoPagamento)}" required placeholder="Ex: 30 dias">
+                                    <input type="text" id="prazoPagamento" value="${toUpperCase(ordem.prazo_pagamento || ordem.prazoPagamento || '')}" required placeholder="Ex: 30 dias">
                                 </div>
                                 <div class="form-group">
                                     <label for="dadosBancarios">Dados Bancários</label>
@@ -1141,10 +1151,9 @@ async function editOrdem(id) {
                 row.querySelector('.item-qtd').value = item.quantidade || 1;
                 row.querySelector('.item-unid').value = toUpperCase(item.unidade || 'UN');
                 row.querySelector('.item-valor').value = item.valorUnitario || item.valor_unitario || 0;
-                row.querySelector('.item-ipi').value = item.ipi || '';  // valor original
+                row.querySelector('.item-ipi').value = item.ipi || '';
                 row.querySelector('.item-st').value = toUpperCase(item.st || '');
-                // Recalcula o total do item (incluindo IPI) e atualiza o campo
-                calculateItemTotal(row.querySelector('.item-valor')); // qualquer input serve para acionar
+                calculateItemTotal(row.querySelector('.item-valor'));
             }
         });
     } else {
@@ -1325,7 +1334,7 @@ function viewOrdem(id) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${ordem.items.map(item => `
+                        ${(ordem.items || []).map(item => `
                             <tr>
                                 <td>${item.item}</td>
                                 <td>${toUpperCase(item.especificacao)}</td>
@@ -1398,7 +1407,6 @@ function updateDashboard() {
     const totalFechadas = monthOrdens.filter(o => o.status === 'fechada').length;
     const totalAbertas = monthOrdens.filter(o => o.status === 'aberta').length;
     
-    // Contador global — não zera ao navegar entre meses
     const ultimoNumero = ultimoNumeroGlobal;
     
     let valorTotalMes = 0;
@@ -1465,7 +1473,6 @@ function updateTable() {
     }
     
     if (filteredOrdens.length === 0) {
-        // Só mostra 'vazio' se não há fetch ativo para este mês
         if (currentFetchController) return;
         container.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;">Nenhuma ordem encontrada</td></tr>`;
         return;
@@ -1539,16 +1546,15 @@ function getOrdensForCurrentMonth() {
 }
 
 function getNextOrderNumber() {
-    // Usa número global para evitar duplicatas entre meses
     return ultimoNumeroGlobal > 0 ? (ultimoNumeroGlobal + 1).toString() : '1250';
 }
 
 function formatDate(dateString) {
+    if (!dateString) return '-';
     const date = new Date(dateString + 'T00:00:00');
     return date.toLocaleDateString('pt-BR');
 }
 
-// FORMATO MONETÁRIO BRASILEIRO
 function formatCurrency(value) {
     const num = parseFloat(value);
     return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -1570,8 +1576,9 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-
+// ============================================
 // GERAÇÃO DE PDF
+// ============================================
 function generatePDFFromTable(id) {
     const ordem = ordens.find(o => String(o.id) === String(id));
     if (!ordem) {
@@ -1635,39 +1642,29 @@ function generatePDFForOrdem(ordem) {
             
             doc.setGState(new doc.GState({ opacity: 0.3 }));
             doc.addImage(logoHeader, 'PNG', logoX, logoY, logoWidth, logoHeight);
-            
             doc.setGState(new doc.GState({ opacity: 1.0 }));
             
             const fontSize = logoHeight * 0.5;
-            
             doc.setFontSize(fontSize);
             doc.setFont(undefined, 'bold');
             doc.setTextColor(150, 150, 150);
             const textX = logoX + logoWidth + 1.2;
-            
             const lineSpacing = fontSize * 0.5;
-            
             const textY1 = logoY + fontSize * 0.85;
             doc.text('I.R COMÉRCIO E', textX, textY1);
-            
             const textY2 = textY1 + lineSpacing;
             doc.text('MATERIAIS ELÉTRICOS LTDA', textX, textY2);
-            
             doc.setTextColor(0, 0, 0);
             
             y = logoY + logoHeight + 8;
-            
             continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineHeight, maxWidth, addTextWithWrap);
-            
         } catch (e) {
-            console.log('Erro ao adicionar logo no cabeçalho:', e);
             y = 25;
             continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineHeight, maxWidth, addTextWithWrap);
         }
     };
     
     logoHeader.onerror = function() {
-        console.log('Erro ao carregar logo do cabeçalho, gerando PDF sem ela');
         y = 25;
         continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineHeight, maxWidth, addTextWithWrap);
     };
@@ -1678,59 +1675,42 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
     logoHeaderImg.crossOrigin = 'anonymous';
     logoHeaderImg.src = 'I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-LTDA-PDF.png';
     
-    logoHeaderImg.onload = function() {
-        gerarPDFComCabecalho();
-    };
-    
-    logoHeaderImg.onerror = function() {
-        console.log('Erro ao carregar logo do cabeçalho');
-        gerarPDFComCabecalho();
-    };
+    logoHeaderImg.onload = function() { gerarPDFComCabecalho(); };
+    logoHeaderImg.onerror = function() { gerarPDFComCabecalho(); };
     
     function gerarPDFComCabecalho() {
         const logoCarregada = logoHeaderImg.complete && logoHeaderImg.naturalHeight !== 0;
         
         function adicionarCabecalho() {
-            if (!logoCarregada) {
-                return 20;
-            }
-            
+            if (!logoCarregada) return 20;
             const headerY = 3;
             const logoWidth = 40;
             const logoHeight = (logoHeaderImg.height / logoHeaderImg.width) * logoWidth;
             const logoX = 5;
-            
             doc.setGState(new doc.GState({ opacity: 0.3 }));
             doc.addImage(logoHeaderImg, 'PNG', logoX, headerY, logoWidth, logoHeight);
             doc.setGState(new doc.GState({ opacity: 1.0 }));
-            
             const fontSize = logoHeight * 0.5;
-            
             doc.setFontSize(fontSize);
             doc.setFont(undefined, 'bold');
             doc.setTextColor(150, 150, 150);
             const textX = logoX + logoWidth + 1.2;
-            
             const lineSpacing = fontSize * 0.5;
             const textY1 = headerY + fontSize * 0.85;
             doc.text('I.R COMÉRCIO E', textX, textY1);
-            
             const textY2 = textY1 + lineSpacing;
             doc.text('MATERIAIS ELÉTRICOS LTDA', textX, textY2);
-            
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(10);
             doc.setFont(undefined, 'normal');
             doc.setDrawColor(0, 0, 0);
             doc.setLineWidth(0.2);
-            
             return headerY + logoHeight + 8;
         }
         
         function addPageWithHeader() {
             doc.addPage();
-            const newY = adicionarCabecalho();
-            return newY;
+            return adicionarCabecalho();
         }
         
         addTextWithWrap = function(text, x, yStart, maxW, lineH = 5) {
@@ -1748,42 +1728,32 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
         doc.setFont(undefined, 'bold');
         doc.setTextColor(0, 0, 0);
         doc.text('ORDEM DE COMPRA', pageWidth / 2, y, { align: 'center' });
-    
         y += 8;
         doc.setFontSize(14);
         doc.text(`Nº ${ordem.numero_ordem || ordem.numeroOrdem}`, pageWidth / 2, y, { align: 'center' });
-        
         y += 12;
         
         doc.setFontSize(11);
         doc.setTextColor(0, 0, 0);
         doc.setFont(undefined, 'bold');
         doc.text('DADOS PARA FATURAMENTO', margin, y);
-        
         y += lineHeight + 1;
         doc.setFont(undefined, 'bold');
         doc.text('I.R. COMÉRCIO E MATERIAIS ELÉTRICOS LTDA', margin, y);
-        
         y += lineHeight + 1;
         doc.setFont(undefined, 'normal');
         doc.text('CNPJ: 33.149.502/0001-38  |  IE: 083.780.74-2', margin, y);
-        
         y += lineHeight + 1;
         doc.text('RUA TADORNA Nº 472, SALA 2', margin, y);
-        
         y += lineHeight + 1;
         doc.text('NOVO HORIZONTE - SERRA/ES  |  CEP: 29.163-318', margin, y);
-        
         y += lineHeight + 1;
         doc.text('TELEFAX: (27) 3209-4291  |  E-MAIL: COMERCIAL.IRCOMERCIO@GMAIL.COM', margin, y);
-        
         y += 10;
         
         doc.setFont(undefined, 'bold');
         doc.text('DADOS DO FORNECEDOR', margin, y);
-        
         y += lineHeight + 1;
-        
         doc.setFont(undefined, 'normal');
         doc.text('RAZÃO SOCIAL: ', margin, y);
         const razaoSocialWidth = doc.getTextWidth('RAZÃO SOCIAL: ');
@@ -1792,114 +1762,60 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
         const razaoLines = doc.splitTextToSize(razaoSocialTexto, maxWidth - razaoSocialWidth);
         doc.text(razaoLines[0], margin + razaoSocialWidth, y);
         y += lineHeight;
-        
         if (razaoLines.length > 1) {
-            for (let i = 1; i < razaoLines.length; i++) {
-                doc.text(razaoLines[i], margin, y);
-                y += lineHeight;
-            }
+            for (let i = 1; i < razaoLines.length; i++) { doc.text(razaoLines[i], margin, y); y += lineHeight; }
         }
 
         if (ordem.nome_fantasia || ordem.nomeFantasia) {
             y += 1;
             doc.setFont(undefined, 'normal');
             doc.text('NOME FANTASIA: ', margin, y);
-            const nomeFantasiaWidth = doc.getTextWidth('NOME FANTASIA: ');
+            const nomeW = doc.getTextWidth('NOME FANTASIA: ');
             doc.setFont(undefined, 'normal');
-            const nomeFantasiaTexto = toUpperCase(ordem.nome_fantasia || ordem.nomeFantasia);
-            const nomeLines = doc.splitTextToSize(nomeFantasiaTexto, maxWidth - nomeFantasiaWidth);
-            doc.text(nomeLines[0], margin + nomeFantasiaWidth, y);
+            const nomeLines = doc.splitTextToSize(toUpperCase(ordem.nome_fantasia || ordem.nomeFantasia), maxWidth - nomeW);
+            doc.text(nomeLines[0], margin + nomeW, y);
             y += lineHeight;
-            
-            if (nomeLines.length > 1) {
-                for (let i = 1; i < nomeLines.length; i++) {
-                    doc.text(nomeLines[i], margin, y);
-                    y += lineHeight;
-                }
-            }
+            if (nomeLines.length > 1) { for (let i = 1; i < nomeLines.length; i++) { doc.text(nomeLines[i], margin, y); y += lineHeight; } }
         }
 
         y += 1;
         doc.setFont(undefined, 'normal');
         doc.text('CNPJ: ', margin, y);
-        const cnpjWidth = doc.getTextWidth('CNPJ: ');
         doc.setFont(undefined, 'bold');
-        doc.text(`${ordem.cnpj}`, margin + cnpjWidth, y);
+        doc.text(`${ordem.cnpj}`, margin + doc.getTextWidth('CNPJ: '), y);
         y += lineHeight;
 
         if (ordem.endereco_fornecedor || ordem.enderecoFornecedor) {
             y += 1;
             doc.setFont(undefined, 'normal');
             doc.text('ENDEREÇO: ', margin, y);
-            const enderecoWidth = doc.getTextWidth('ENDEREÇO: ');
-            const enderecoTexto = toUpperCase(ordem.endereco_fornecedor || ordem.enderecoFornecedor);
-            const enderecoLines = doc.splitTextToSize(enderecoTexto, maxWidth - enderecoWidth);
-            doc.text(enderecoLines[0], margin + enderecoWidth, y);
+            const endW = doc.getTextWidth('ENDEREÇO: ');
+            const endLines = doc.splitTextToSize(toUpperCase(ordem.endereco_fornecedor || ordem.enderecoFornecedor), maxWidth - endW);
+            doc.text(endLines[0], margin + endW, y);
             y += lineHeight;
-            
-            if (enderecoLines.length > 1) {
-                for (let i = 1; i < enderecoLines.length; i++) {
-                    doc.text(enderecoLines[i], margin, y);
-                    y += lineHeight;
-                }
-            }
+            if (endLines.length > 1) { for (let i = 1; i < endLines.length; i++) { doc.text(endLines[i], margin, y); y += lineHeight; } }
         }
 
-        if (ordem.site) {
-            y += 1;
-            doc.setFont(undefined, 'normal');
-            doc.text('SITE: ', margin, y);
-            const siteWidth = doc.getTextWidth('SITE: ');
-            doc.text(ordem.site, margin + siteWidth, y);
-            y += lineHeight;
-        }
-
+        if (ordem.site) { y += 1; doc.setFont(undefined, 'normal'); doc.text('SITE: ', margin, y); doc.text(ordem.site, margin + doc.getTextWidth('SITE: '), y); y += lineHeight; }
         if (ordem.contato) {
             y += 1;
             doc.setFont(undefined, 'normal');
             doc.text('CONTATO: ', margin, y);
-            const contatoWidth = doc.getTextWidth('CONTATO: ');
-            const contatoTexto = toUpperCase(ordem.contato);
-            const contatoLines = doc.splitTextToSize(contatoTexto, maxWidth - contatoWidth);
-            doc.text(contatoLines[0], margin + contatoWidth, y);
+            const contW = doc.getTextWidth('CONTATO: ');
+            const contLines = doc.splitTextToSize(toUpperCase(ordem.contato), maxWidth - contW);
+            doc.text(contLines[0], margin + contW, y);
             y += lineHeight;
-            
-            if (contatoLines.length > 1) {
-                for (let i = 1; i < contatoLines.length; i++) {
-                    doc.text(contatoLines[i], margin, y);
-                    y += lineHeight;
-                }
-            }
+            if (contLines.length > 1) { for (let i = 1; i < contLines.length; i++) { doc.text(contLines[i], margin, y); y += lineHeight; } }
         }
-
-        if (ordem.telefone) {
-            y += 1;
-            doc.setFont(undefined, 'normal');
-            doc.text('TELEFONE: ', margin, y);
-            const telefoneWidth = doc.getTextWidth('TELEFONE: ');
-            doc.text(`${ordem.telefone}`, margin + telefoneWidth, y);
-            y += lineHeight;
-        }
-
-        if (ordem.email) {
-            y += 1;
-            doc.setFont(undefined, 'normal');
-            doc.text('E-MAIL: ', margin, y);
-            const emailWidth = doc.getTextWidth('E-MAIL: ');
-            doc.text(ordem.email, margin + emailWidth, y);
-            y += lineHeight;
-        }
+        if (ordem.telefone) { y += 1; doc.setFont(undefined, 'normal'); doc.text('TELEFONE: ', margin, y); doc.text(`${ordem.telefone}`, margin + doc.getTextWidth('TELEFONE: '), y); y += lineHeight; }
+        if (ordem.email) { y += 1; doc.setFont(undefined, 'normal'); doc.text('E-MAIL: ', margin, y); doc.text(ordem.email, margin + doc.getTextWidth('E-MAIL: '), y); y += lineHeight; }
         
         y += 8;
-        
-        if (y > pageHeight - 50) {
-            y = addPageWithHeader();
-        }
+        if (y > pageHeight - 50) y = addPageWithHeader();
         
         doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
         doc.text('ITENS DO PEDIDO', margin, y);
-        
         y += 6;
         
         const tableWidth = pageWidth - (2 * margin);
@@ -1913,68 +1829,38 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
             st: tableWidth * 0.10,
             total: tableWidth * 0.12
         };
-        
         const itemRowHeight = 10;
         
         doc.setFillColor(108, 117, 125);
         doc.setDrawColor(180, 180, 180);
         doc.rect(margin, y, tableWidth, itemRowHeight, 'FD');
-        
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(9);
         doc.setFont(undefined, 'bold');
         
         let xPos = margin;
-        
+        const headers = ['ITEM', 'ESPECIFICAÇÃO', 'QTD', 'UNID', 'VALOR UN', 'IPI', 'ST', 'TOTAL'];
+        const colKeys = ['item', 'especificacao', 'qtd', 'unid', 'valorUn', 'ipi', 'st', 'total'];
+        colKeys.forEach((key, i) => {
+            doc.line(xPos, y, xPos, y + itemRowHeight);
+            doc.text(headers[i], xPos + (colWidths[key] / 2), y + 6.5, { align: 'center' });
+            xPos += colWidths[key];
+        });
         doc.line(xPos, y, xPos, y + itemRowHeight);
-        doc.text('ITEM', xPos + (colWidths.item / 2), y + 6.5, { align: 'center' });
-        xPos += colWidths.item;
-        doc.line(xPos, y, xPos, y + itemRowHeight);
-        
-        doc.text('ESPECIFICAÇÃO', xPos + (colWidths.especificacao / 2), y + 6.5, { align: 'center' });
-        xPos += colWidths.especificacao;
-        doc.line(xPos, y, xPos, y + itemRowHeight);
-        
-        doc.text('QTD', xPos + (colWidths.qtd / 2), y + 6.5, { align: 'center' });
-        xPos += colWidths.qtd;
-        doc.line(xPos, y, xPos, y + itemRowHeight);
-        
-        doc.text('UNID', xPos + (colWidths.unid / 2), y + 6.5, { align: 'center' });
-        xPos += colWidths.unid;
-        doc.line(xPos, y, xPos, y + itemRowHeight);
-        
-        doc.text('VALOR UN', xPos + (colWidths.valorUn / 2), y + 6.5, { align: 'center' });
-        xPos += colWidths.valorUn;
-        doc.line(xPos, y, xPos, y + itemRowHeight);
-        
-        doc.text('IPI', xPos + (colWidths.ipi / 2), y + 6.5, { align: 'center' });
-        xPos += colWidths.ipi;
-        doc.line(xPos, y, xPos, y + itemRowHeight);
-        
-        doc.text('ST', xPos + (colWidths.st / 2), y + 6.5, { align: 'center' });
-        xPos += colWidths.st;
-        doc.line(xPos, y, xPos, y + itemRowHeight);
-        
-        doc.text('TOTAL', xPos + (colWidths.total / 2), y + 6.5, { align: 'center' });
-        xPos += colWidths.total;
-        doc.line(xPos, y, xPos, y + itemRowHeight);
-        
         y += itemRowHeight;
         
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(8);
         doc.setFont(undefined, 'normal');
         
-        ordem.items.forEach((item, index) => {
+        (ordem.items || []).forEach((item, index) => {
             const especificacaoUpper = toUpperCase(item.especificacao);
             const maxWidthEspec = colWidths.especificacao - 6;
             const especLines = doc.splitTextToSize(especificacaoUpper, maxWidthEspec);
             const lineCount = especLines.length;
             const necessaryHeight = Math.max(itemRowHeight, lineCount * 4 + 4);
             
-            if (y + necessaryHeight > pageHeight - 30) {
-                y = addPageWithHeader();
-            }
+            if (y + necessaryHeight > pageHeight - 30) y = addPageWithHeader();
             
             if (index % 2 !== 0) {
                 doc.setFillColor(240, 240, 240);
@@ -1982,13 +1868,10 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
             }
             
             xPos = margin;
-            
             doc.setDrawColor(180, 180, 180);
             doc.setLineWidth(0.3);
-            doc.line(xPos, y, xPos, y + necessaryHeight);
             
-            doc.setFontSize(8);
-            doc.setFont(undefined, 'normal');
+            doc.line(xPos, y, xPos, y + necessaryHeight);
             doc.text(item.item.toString(), xPos + (colWidths.item / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' });
             xPos += colWidths.item;
             doc.line(xPos, y, xPos, y + necessaryHeight);
@@ -2006,23 +1889,15 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
             doc.line(xPos, y, xPos, y + necessaryHeight);
             
             const valorUn = item.valorUnitario || item.valor_unitario || 0;
-            const valorUnFormatted = parseFloat(valorUn).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-            doc.text(valorUnFormatted, xPos + (colWidths.valorUn / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' });
+            doc.text(parseFloat(valorUn).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), xPos + (colWidths.valorUn / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' });
             xPos += colWidths.valorUn;
             doc.line(xPos, y, xPos, y + necessaryHeight);
             
-            // ------------------------------------------------------------
-            // CAMPO IPI: se for numérico, exibe como moeda; senão, exibe o texto original
-            // ------------------------------------------------------------
             const ipiValor = item.ipi;
             let ipiDisplay = '-';
             if (ipiValor && ipiValor.trim() !== '') {
                 const ipiNum = parseFloatLocale(ipiValor);
-                if (!isNaN(ipiNum)) {
-                    ipiDisplay = ipiNum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                } else {
-                    ipiDisplay = toUpperCase(ipiValor);
-                }
+                ipiDisplay = !isNaN(ipiNum) ? ipiNum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : toUpperCase(ipiValor);
             }
             doc.text(ipiDisplay, xPos + (colWidths.ipi / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' });
             xPos += colWidths.ipi;
@@ -2037,25 +1912,18 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
             doc.line(xPos, y, xPos, y + necessaryHeight);
             
             doc.line(margin, y + necessaryHeight, margin + tableWidth, y + necessaryHeight);
-            
             y += necessaryHeight;
         });
         
         y += 8;
-        
-        if (y > pageHeight - 40) {
-            y = addPageWithHeader();
-        }
+        if (y > pageHeight - 40) y = addPageWithHeader();
         
         doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
         doc.text(`VALOR TOTAL: ${ordem.valor_total || ordem.valorTotal}`, margin, y);
-        
         y += 10;
         
-        if (y > pageHeight - 60) {
-            y = addPageWithHeader();
-        }
+        if (y > pageHeight - 60) y = addPageWithHeader();
         
         doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
@@ -2063,43 +1931,32 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
         y += 5;
         doc.setFontSize(10);
         doc.setFont(undefined, 'normal');
-        
         const localPadrao = 'RUA TADORNA Nº 472, SALA 2, NOVO HORIZONTE - SERRA/ES  |  CEP: 29.163-318';
-        const localEntregaPDF = (ordem.local_entrega || ordem.localEntrega || '').trim() !== '' 
+        const localEntregaPDF = (ordem.local_entrega || ordem.localEntrega || '').trim() !== ''
             ? toUpperCase(ordem.local_entrega || ordem.localEntrega)
             : localPadrao;
-        
         y = addTextWithWrap(localEntregaPDF, margin, y, maxWidth);
-        
         y += 10;
         
-        if (y > pageHeight - 50) {
-            y = addPageWithHeader();
-        }
+        if (y > pageHeight - 50) y = addPageWithHeader();
         
         doc.setFontSize(10);
         doc.setFont(undefined, 'bold');
         doc.text('PRAZO DE ENTREGA:', margin, y);
         doc.setFont(undefined, 'normal');
         doc.text(toUpperCase(ordem.prazo_entrega || ordem.prazoEntrega || '-'), margin + 42, y);
-        
         doc.setFont(undefined, 'bold');
         doc.text('FRETE:', pageWidth - margin - 35, y);
         doc.setFont(undefined, 'normal');
         doc.text(toUpperCase(ordem.frete || '-'), pageWidth - margin - 20, y);
-        
         y += 6;
-        
         doc.setFont(undefined, 'bold');
         doc.text('TRANSPORTE:', margin, y);
         doc.setFont(undefined, 'normal');
         doc.text(toUpperCase(ordem.transporte || '-'), margin + 30, y);
-        
         y += 10;
         
-        if (y > pageHeight - 60) {
-            y = addPageWithHeader();
-        }
+        if (y > pageHeight - 60) y = addPageWithHeader();
         
         doc.setFontSize(11);
         doc.setFont(undefined, 'bold');
@@ -2110,27 +1967,21 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
         doc.text(`FORMA: ${toUpperCase(ordem.forma_pagamento || ordem.formaPagamento)}`, margin, y);
         y += 5;
         doc.text(`PRAZO: ${toUpperCase(ordem.prazo_pagamento || ordem.prazoPagamento)}`, margin, y);
-        
         if (ordem.dados_bancarios || ordem.dadosBancarios) {
             y += 5;
             doc.setFont(undefined, 'bold');
             doc.text('DADOS BANCÁRIOS:', margin, y);
             y += 5;
             doc.setFont(undefined, 'normal');
-            const bancarioUpper = toUpperCase(ordem.dados_bancarios || ordem.dadosBancarios);
-            y = addTextWithWrap(bancarioUpper, margin, y, maxWidth);
+            y = addTextWithWrap(toUpperCase(ordem.dados_bancarios || ordem.dadosBancarios), margin, y, maxWidth);
         }
         
         y += 15;
+        if (y > pageHeight - 80) y = addPageWithHeader();
         
-        if (y > pageHeight - 80) {
-            y = addPageWithHeader();
-        }
-        
-        // DATA ATUAL (NÃO A DATA DA ORDEM) - CORREÇÃO PRINCIPAL
         const dataAtual = new Date();
         const dia = dataAtual.getDate();
-        const meses = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 
+        const meses = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO',
                        'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
         const mes = meses[dataAtual.getMonth()];
         const ano = dataAtual.getFullYear();
@@ -2138,7 +1989,6 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
         doc.setFontSize(10);
         doc.setFont(undefined, 'normal');
         doc.text(`SERRA/ES, ${dia} DE ${mes} DE ${ano}`, pageWidth / 2, y, { align: 'center' });
-        
         y += 5;
         
         const assinatura = new Image();
@@ -2149,108 +1999,63 @@ function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineH
             try {
                 const imgWidth = 50;
                 const imgHeight = (assinatura.height / assinatura.width) * imgWidth;
-                
                 doc.addImage(assinatura, 'PNG', (pageWidth / 2) - (imgWidth / 2), y + 2, imgWidth, imgHeight);
-                
-                let yFinal = y + imgHeight + 5;
-                
-                yFinal += 5;
+                let yFinal = y + imgHeight + 10;
                 doc.setFontSize(10);
                 doc.setFont(undefined, 'bold');
                 doc.text('ROSEMEIRE BICALHO DE LIMA GRAVINO', pageWidth / 2, yFinal, { align: 'center' });
-                
                 yFinal += 5;
                 doc.setFontSize(9);
                 doc.setFont(undefined, 'normal');
                 doc.text('MG-10.078.568 / CPF: 045.160.616-78', pageWidth / 2, yFinal, { align: 'center' });
-                
                 yFinal += 5;
                 doc.text('DIRETORA', pageWidth / 2, yFinal, { align: 'center' });
-                
                 yFinal += 12;
-                
-                if (yFinal > pageHeight - 30) {
-                    yFinal = addPageWithHeader();
-                }
-                
-                doc.setFillColor(240, 240, 240);
-                doc.rect(margin, yFinal, pageWidth - (2 * margin), 22, 'F');
-                doc.setDrawColor(200, 200, 200);
-                doc.rect(margin, yFinal, pageWidth - (2 * margin), 22, 'S');
-                
-                yFinal += 6;
-                doc.setFontSize(10);
-                doc.setFont(undefined, 'bold');
-                doc.setTextColor(255, 82, 29);
-                doc.text('ATENÇÃO SR. FORNECEDOR:', margin + 5, yFinal);
-                
-                yFinal += 5;
-                doc.setTextColor(0, 0, 0);
-                doc.setFont(undefined, 'normal');
-                doc.setFontSize(9);
-                doc.text(`1) GENTILEZA MENCIONAR NA NOTA FISCAL O Nº ${ordem.numero_ordem || ordem.numeroOrdem}`, margin + 5, yFinal);
-                
-                yFinal += 5;
-                doc.text('2) FAVOR ENVIAR A NOTA FISCAL ELETRÔNICA (ARQUIVO .XML) PARA: FINANCEIRO.IRCOMERCIO@GMAIL.COM', margin + 5, yFinal);
-                
-                doc.save(`${toUpperCase(ordem.razao_social || ordem.razaoSocial)}-${ordem.numero_ordem || ordem.numeroOrdem}.pdf`);
-                showToast('PDF gerado com sucesso!', 'success');
-                
+                adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, addPageWithHeader);
             } catch (e) {
-                console.log('Erro ao adicionar assinatura:', e);
                 gerarPDFSemAssinatura();
             }
         };
 
-        assinatura.onerror = function() {
-            console.log('Erro ao carregar assinatura, gerando PDF sem ela');
-            gerarPDFSemAssinatura();
-        };
+        assinatura.onerror = function() { gerarPDFSemAssinatura(); };
         
         function gerarPDFSemAssinatura() {
-            let yFinal = y + 5;
-            
-            yFinal += 5;
+            let yFinal = y + 10;
             doc.setFontSize(10);
             doc.setFont(undefined, 'bold');
             doc.text('ROSEMEIRE BICALHO DE LIMA GRAVINO', pageWidth / 2, yFinal, { align: 'center' });
-            
             yFinal += 5;
             doc.setFontSize(9);
             doc.setFont(undefined, 'normal');
             doc.text('MG-10.078.568 / CPF: 045.160.616-78', pageWidth / 2, yFinal, { align: 'center' });
-            
             yFinal += 5;
             doc.text('DIRETORA', pageWidth / 2, yFinal, { align: 'center' });
-            
             yFinal += 12;
-            
-            if (yFinal > pageHeight - 30) {
-                yFinal = addPageWithHeader();
-            }
-            
-            doc.setFillColor(240, 240, 240);
-            doc.rect(margin, yFinal, pageWidth - (2 * margin), 22, 'F');
-            doc.setDrawColor(200, 200, 200);
-            doc.rect(margin, yFinal, pageWidth - (2 * margin), 22, 'S');
-            
-            yFinal += 6;
-            doc.setFontSize(10);
-            doc.setFont(undefined, 'bold');
-            doc.setTextColor(255, 82, 29);
-            doc.text('ATENÇÃO SR. FORNECEDOR:', margin + 5, yFinal);
-            
-            yFinal += 5;
-            doc.setTextColor(0, 0, 0);
-            doc.setFont(undefined, 'normal');
-            doc.setFontSize(9);
-            doc.text(`1) GENTILEZA MENCIONAR NA NOTA FISCAL O Nº ${ordem.numero_ordem || ordem.numeroOrdem}`, margin + 5, yFinal);
-            
-            yFinal += 5;
-            doc.text('2) FAVOR ENVIAR A NOTA FISCAL ELETRÔNICA (ARQUIVO .XML) PARA: FINANCEIRO.IRCOMERCIO@GMAIL.COM', margin + 5, yFinal);
-            
-            doc.save(`${toUpperCase(ordem.razao_social || ordem.razaoSocial)}-${ordem.numero_ordem || ordem.numeroOrdem}.pdf`);
-            showToast('PDF gerado (sem assinatura)', 'success');
+            adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, addPageWithHeader);
         }
     }
+}
+
+function adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, addPageWithHeader) {
+    if (yFinal > pageHeight - 30) yFinal = addPageWithHeader();
+    
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margin, yFinal, pageWidth - (2 * margin), 22, 'F');
+    doc.setDrawColor(200, 200, 200);
+    doc.rect(margin, yFinal, pageWidth - (2 * margin), 22, 'S');
+    yFinal += 6;
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(255, 82, 29);
+    doc.text('ATENÇÃO SR. FORNECEDOR:', margin + 5, yFinal);
+    yFinal += 5;
+    doc.setTextColor(0, 0, 0);
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(9);
+    doc.text(`1) GENTILEZA MENCIONAR NA NOTA FISCAL O Nº ${ordem.numero_ordem || ordem.numeroOrdem}`, margin + 5, yFinal);
+    yFinal += 5;
+    doc.text('2) FAVOR ENVIAR A NOTA FISCAL ELETRÔNICA (ARQUIVO .XML) PARA: FINANCEIRO.IRCOMERCIO@GMAIL.COM', margin + 5, yFinal);
+    
+    doc.save(`${toUpperCase(ordem.razao_social || ordem.razaoSocial)}-${ordem.numero_ordem || ordem.numeroOrdem}.pdf`);
+    showToast('PDF gerado com sucesso!', 'success');
 }
