@@ -134,6 +134,40 @@ APPS.forEach(appName => {
     }
 });
 
+// ─── MIDDLEWARE: FALLBACK DE ASSETS NA RAIZ → REDIRECIONA PARA O APP CORRETO ─
+// Corrige o problema quando o index.html usa caminhos absolutos como /styles.css
+// em vez de caminhos relativos como ./styles.css ou styles.css.
+// O Referer é usado para descobrir de qual app veio a requisição.
+app.use((req, res, next) => {
+    const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map)$/i.test(req.path);
+    if (!isStaticAsset) return next();
+
+    const referer = req.get('Referer') || '';
+
+    // Descobre qual app gerou a requisição pelo Referer
+    let matchedApp = null;
+    for (const appName of APPS) {
+        if (referer.includes(`/${appName}`)) {
+            matchedApp = appName;
+            break;
+        }
+    }
+
+    if (!matchedApp) return next();
+
+    const appPath = path.join(__dirname, 'apps', matchedApp);
+    // Remove a barra inicial do path para montar o caminho no disco
+    const fileName = req.path.replace(/^\//, '');
+    const filePath = path.join(appPath, fileName);
+
+    if (fs.existsSync(filePath)) {
+        console.log(`🔧 Asset fallback: ${req.path} → /${matchedApp}/${fileName}`);
+        return res.sendFile(filePath);
+    }
+
+    next();
+});
+
 // ─── ROTA RAIZ → PORTAL ───────────────────────────────────────────────────────
 app.get('/', (req, res) => {
     const portalPath = path.join(__dirname, 'apps', 'portal', 'index.html');
