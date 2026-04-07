@@ -30,13 +30,14 @@ async function requireAuth(req, res, next) {
     .from('active')
     .select('*')
     .eq('session_token', token)
+    .eq('is_active', true)
     .single();
 
   if (error || !data) return res.status(401).json({ error: 'Sessão inválida ou expirada' });
 
   const expiresAt = new Date(data.expires_at);
   if (expiresAt < new Date()) {
-    await supabase.from('active').delete().eq('session_token', token);
+    await supabase.from('active').update({ is_active: false }).eq('session_token', token);
     return res.status(401).json({ error: 'Sessão expirada' });
   }
 
@@ -100,12 +101,11 @@ app.post('/api/login', async (req, res) => {
     const expiresAt    = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8 horas
 
     const sessionPayload = {
+      user_id:       userData.id,
       session_token: sessionToken,
-      username:      usernameLower,
-      name:          userData.name || username,
-      sector:        userData.sector || 'Usuário',
       device_token:  deviceToken || null,
       expires_at:    expiresAt.toISOString(),
+      is_active:     true,
       created_at:    new Date().toISOString()
     };
 
@@ -122,11 +122,11 @@ app.post('/api/login', async (req, res) => {
       success: true,
       session: {
         sessionToken,
-        username:     sessionPayload.username,
-        name:         sessionPayload.name,
-        sector:       sessionPayload.sector,
-        deviceToken:  deviceToken || null,
-        expiresAt:    expiresAt.toISOString()
+        username:    usernameLower,
+        name:        userData.name || username,
+        sector:      userData.sector || 'Usuário',
+        deviceToken: deviceToken || null,
+        expiresAt:   expiresAt.toISOString()
       }
     });
   } catch (e) {
@@ -139,7 +139,7 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/logout', async (req, res) => {
   const { sessionToken } = req.body;
   if (sessionToken) {
-    await supabase.from('active').delete().eq('session_token', sessionToken);
+    await supabase.from('active').update({ is_active: false, logout_at: new Date().toISOString() }).eq('session_token', sessionToken);
   }
   res.json({ success: true });
 });
@@ -153,23 +153,31 @@ app.post('/api/verify-session', async (req, res) => {
     .from('active')
     .select('*')
     .eq('session_token', sessionToken)
+    .eq('is_active', true)
     .single();
 
   if (error || !data) return res.json({ valid: false });
 
   const expiresAt = new Date(data.expires_at);
   if (expiresAt < new Date()) {
-    await supabase.from('active').delete().eq('session_token', sessionToken);
+    await supabase.from('active').update({ is_active: false }).eq('session_token', sessionToken);
     return res.json({ valid: false });
   }
+
+  // Buscar dados do usuário
+  const { data: userData } = await supabase
+    .from('users')
+    .select('username, name, sector')
+    .eq('id', data.user_id)
+    .single();
 
   return res.json({
     valid: true,
     session: {
       sessionToken,
-      username:  data.username,
-      name:      data.name,
-      sector:    data.sector,
+      username:  userData?.username || '',
+      name:      userData?.name || '',
+      sector:    userData?.sector || 'Usuário',
       expiresAt: data.expires_at
     }
   });
