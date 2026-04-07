@@ -1,4 +1,4 @@
-/* VARIÁVEIS BASE */
+/* VARIÁVEIS BASE - IDÊNTICAS A TRANSPORTADORAS */
 :root {
     --primary: #ff521d;
     --bg-primary: #FFFFFF;
@@ -95,7 +95,7 @@ body {
 .header-left {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 1rem;
 }
 
 h1 {
@@ -119,27 +119,6 @@ h3 {
     margin-bottom: 0.75rem;
     color: var(--text-primary);
     font-weight: 600;
-}
-
-/* BOTÃO VOLTAR */
-.btn-back {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
-    background: var(--bg-card);
-    color: var(--text-secondary);
-    text-decoration: none;
-    transition: all 0.2s;
-    flex-shrink: 0;
-}
-
-.btn-back:hover {
-    border-color: var(--primary);
-    color: var(--primary);
 }
 
 /* STATUS DE CONEXÃO */
@@ -385,6 +364,7 @@ button {
     transition: all 0.3s ease;
 }
 
+/* EXCEÇÃO: Botão X não deve herdar estilos de button */
 button.close-modal {
     background: transparent !important;
     padding: 0 !important;
@@ -397,6 +377,7 @@ button:hover:not(:disabled) {
     transform: translateY(-1px);
 }
 
+/* EXCEÇÃO: Botão X não deve ter efeito hover de outros botões */
 button.close-modal:hover {
     opacity: 1 !important;
     transform: none !important;
@@ -408,12 +389,29 @@ button:disabled {
     opacity: 0.5;
 }
 
-button.register { background: var(--btn-register); }
-button.danger, button.delete, .action-btn.delete { background: var(--btn-delete); }
-button.edit, .action-btn.edit { background: var(--btn-edit); }
-button.view, .action-btn.view { background: var(--btn-view); }
-button.success, button.save { background: var(--btn-save); }
-button.secondary { background: #6B7280; }
+button.register {
+    background: var(--btn-register);
+}
+
+button.danger, button.delete, .action-btn.delete {
+    background: var(--btn-delete);
+}
+
+button.edit, .action-btn.edit {
+    background: var(--btn-edit);
+}
+
+button.view, .action-btn.view {
+    background: var(--btn-view);
+}
+
+button.success, button.save, button[type="submit"] {
+    background: var(--btn-save);
+}
+
+button.secondary {
+    background: #6B7280;
+}
 
 button.small {
     padding: 8px 12px;
@@ -456,19 +454,31 @@ button.small {
 }
 
 @keyframes slideInBottom {
-    from { opacity: 0; transform: translateY(100px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(100px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes slideOut {
-    to { opacity: 0; transform: translateY(100px); }
+    to {
+        opacity: 0;
+        transform: translateY(100px);
+    }
 }
 
 /* MODAL */
 .modal-overlay {
     display: none;
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     background: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
     align-items: center;
@@ -478,10 +488,21 @@ button.small {
     animation: modalFadeIn 0.2s ease forwards;
 }
 
-.modal-overlay.show { display: flex; }
+.modal-overlay.show {
+    display: flex;
+}
 
-@keyframes modalFadeIn { to { opacity: 1; } }
-@keyframes fadeOut { to { opacity: 0; } }
+@keyframes modalFadeIn {
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+    }
+}
 
 .modal-content {
     background: var(--bg-card);
@@ -497,9 +518,15 @@ button.small {
     animation: scaleIn 0.2s ease forwards;
 }
 
-.modal-content.large { max-width: 1000px; }
+.modal-content.large {
+    max-width: 1000px;
+}
 
-@keyframes scaleIn { to { transform: scale(1); } }
+@keyframes scaleIn {
+    to {
+        transform: scale(1);
+    }
+}
 
 .modal-header {
     display: flex;
@@ -517,6 +544,7 @@ button.small {
     margin: 0;
 }
 
+/* BOTÃO X SEM COR DE PREENCHIMENTO */
 .close-modal {
     background: transparent !important;
     border: none !important;
@@ -539,6 +567,15 @@ button.small {
     background: transparent !important;
     transform: none !important;
     box-shadow: none !important;
+}
+
+.close-modal:active {
+    background: transparent !important;
+}
+
+.close-modal:focus {
+    background: transparent !important;
+    outline: none;
 }
 
 .modal-message {
@@ -578,35 +615,115 @@ button.small {
     border-top: 2px solid var(--border-color);
 }
 
-.modal-actions-right { justify-content: flex-end; }
-.modal-actions-no-border { border-top: none; padding-top: 0; }
-.modal-header-no-border { border-bottom: none; padding-bottom: 0.5rem; }
-.modal-actions button { margin: 0; min-width: 120px; }
-.modal-form-content { margin-top: 1rem; }
-.hidden { display: none !important; }
+.modal-actions-right {
+    justify-content: flex-end;
+}
+
+.modal-actions-no-border {
+    border-top: none;
+    padding-top: 0;
+}
+
+.modal-header-no-border {
+    border-bottom: none;
+    padding-bottom: 0.5rem;
+}
+
+.modal-actions button {
+    margin: 0;
+    min-width: 120px;
+}
+
+.modal-form-content {
+    margin-top: 1rem;
+}
+
+.hidden {
+    display: none !important;
+}
 
 /* RESPONSIVE */
 @media (max-width: 768px) {
-    .container { padding: 0 1rem 5rem 1rem; margin: 1rem auto; }
-    .header { flex-direction: column; align-items: stretch; }
-    .header-left { width: 100%; justify-content: space-between; }
-    .btn-new-order-header { width: 100%; justify-content: center; }
-    h1 { font-size: 1.5rem; }
-    .search-bar { flex-direction: column; align-items: stretch; gap: 0.5rem; }
-    .search-bar input { width: 100%; min-width: unset; }
-    table { font-size: 0.85rem; }
-    th, td { padding: 10px 8px; }
-    button { padding: 10px 16px; font-size: 0.9rem; }
-    .form-grid { grid-template-columns: 1fr; }
-    .modal-content { padding: 1.5rem; width: 95%; }
-    .modal-actions { flex-direction: column-reverse; }
-    .modal-actions button { width: 100%; }
-    .actions-cell { min-width: auto; }
-    #marcasFilter { gap: 0.4rem; }
-    .brand-button { font-size: 0.8rem; padding: 0.4rem 0.8rem; }
+    .container {
+        padding: 0 1rem 5rem 1rem;
+        margin: 1rem auto;
+    }
+    
+    .header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .header-left {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .btn-new-order-header {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    h1 {
+        font-size: 1.5rem;
+    }
+    
+    .search-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+    }
+    
+    .search-bar input {
+        width: 100%;
+        min-width: unset;
+    }
+    
+    table {
+        font-size: 0.85rem;
+    }
+    
+    th, td {
+        padding: 10px 8px;
+    }
+    
+    button {
+        padding: 10px 16px;
+        font-size: 0.9rem;
+    }
+    
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .modal-content {
+        padding: 1.5rem;
+        width: 95%;
+    }
+    
+    .modal-actions {
+        flex-direction: column-reverse;
+    }
+    
+    .modal-actions button {
+        width: 100%;
+    }
+    
+    .actions-cell {
+        min-width: auto;
+    }
+    
+    #marcasFilter {
+        gap: 0.4rem;
+    }
+    
+    .brand-button {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.8rem;
+    }
 }
 
-/* ─── PAGINAÇÃO ──────────────────────────────────────────────────────────────── */
+/* ─── PAGINAÇÃO ─────────────────────────────────────────────────────────────── */
 .paginacao-wrapper {
     display: flex;
     align-items: center;
@@ -665,9 +782,21 @@ button.small {
     background: var(--input-bg);
 }
 
-.pag-nav { font-size: 1rem; font-weight: 700; }
-.pag-ellipsis { padding: 0.4rem 0.4rem; color: var(--text-secondary); font-size: 0.9rem; user-select: none; }
+.pag-nav {
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.pag-ellipsis {
+    padding: 0.4rem 0.4rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    user-select: none;
+}
 
 @media (max-width: 768px) {
-    .paginacao-wrapper { flex-direction: column; align-items: flex-start; }
+    .paginacao-wrapper {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
