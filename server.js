@@ -60,7 +60,6 @@ setInterval(() => {
 }, 3600000);
 
 // ─── AUTENTICAÇÃO CENTRAL ─────────────────────────────────────────────────────
-// Rotas que não precisam de autenticação
 const PUBLIC_PATHS = [
     '/',
     '/health',
@@ -70,7 +69,6 @@ const PUBLIC_PATHS = [
 ];
 
 async function verificarAutenticacao(req, res, next) {
-    // Libera rotas públicas e assets estáticos
     const isPublicPath = PUBLIC_PATHS.some(p => req.path === p);
     const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf)$/i.test(req.path);
 
@@ -78,7 +76,6 @@ async function verificarAutenticacao(req, res, next) {
         return next();
     }
 
-    // Rotas da API do portal (login, etc.) são públicas
     if (req.path.startsWith('/api/portal/')) {
         return next();
     }
@@ -86,7 +83,6 @@ async function verificarAutenticacao(req, res, next) {
     const sessionToken = req.headers['x-session-token'] || req.query.sessionToken;
 
     if (!sessionToken) {
-        // Se for navegação HTML, redireciona para o portal
         if (req.headers.accept && req.headers.accept.includes('text/html')) {
             return res.redirect('/portal?redirect=' + encodeURIComponent(req.path));
         }
@@ -94,7 +90,6 @@ async function verificarAutenticacao(req, res, next) {
     }
 
     try {
-        // Verificação interna de sessão via Supabase (não depende de outro servidor)
         const { data: session, error } = await supabase
             .from('active_sessions')
             .select(`
@@ -117,7 +112,6 @@ async function verificarAutenticacao(req, res, next) {
             return res.status(401).json({ error: 'Usuário inativo', redirectToLogin: true });
         }
 
-        // Atualiza last_activity
         supabase
             .from('active_sessions')
             .update({ last_activity: new Date().toISOString() })
@@ -145,7 +139,7 @@ app.get('/health', async (req, res) => {
             status: error ? 'unhealthy' : 'healthy',
             database: error ? 'disconnected' : 'connected',
             timestamp: new Date().toISOString(),
-            apps: ['portal', 'precos', 'compras', 'transportadoras', 'cotacoes',
+            apps: ['portal', 'precos', 'compra', 'transportadoras', 'cotacoes',
                    'faturamento', 'frete', 'receber', 'vendas', 'pagar', 'lucro',
                    'licitacoes', 'estoque']
         });
@@ -155,10 +149,8 @@ app.get('/health', async (req, res) => {
 });
 
 // ─── ARQUIVOS ESTÁTICOS DOS MÓDULOS ──────────────────────────────────────────
-// Cada módulo serve seus próprios arquivos estáticos a partir de /apps/<modulo>/
-
 const APPS = [
-    'portal', 'precos', 'compras', 'transportadoras', 'cotacoes',
+    'portal', 'precos', 'compra', 'transportadoras', 'cotacoes',
     'faturamento', 'frete', 'receber', 'vendas', 'pagar', 'lucro',
     'licitacoes', 'estoque'
 ];
@@ -166,28 +158,21 @@ const APPS = [
 APPS.forEach(appName => {
     const appPath = path.join(__dirname, 'apps', appName);
     if (fs.existsSync(appPath)) {
-        // Assets estáticos (css, js, imagens) servidos sem autenticação
         app.use(`/${appName}/assets`, express.static(appPath));
-
-        // Rota principal do módulo — HTML requer autenticação (exceto portal)
         app.get(`/${appName}`, (req, res) => {
             res.sendFile(path.join(appPath, 'index.html'));
         });
-
         app.get(`/${appName}/`, (req, res) => {
             res.sendFile(path.join(appPath, 'index.html'));
         });
-
-        // Arquivos estáticos gerais do módulo (css, js, imagens na raiz)
         app.use(`/${appName}`, express.static(appPath, {
-            index: false, // não servir index.html automaticamente (já tratamos acima)
+            index: false,
             dotfiles: 'deny'
         }));
     }
 });
 
 // ─── API DO PORTAL (autenticação e sessões) ───────────────────────────────────
-// Importa as rotas do portal
 const portalRoutes = require('./apps/portal/routes');
 app.use('/api/portal', portalRoutes(supabase));
 
@@ -197,6 +182,10 @@ app.use('/api', verificarAutenticacao);
 // ─── API DE PREÇOS ────────────────────────────────────────────────────────────
 const precosRoutes = require('./apps/precos/routes');
 app.use('/api/precos', precosRoutes(supabase));
+
+// ─── API DE COMPRAS (Ordens de Compra) ────────────────────────────────────────
+const compraRoutes = require('./apps/compra/routes');
+app.use('/api', compraRoutes(supabase));
 
 // ─── ROTA RAIZ → PORTAL ───────────────────────────────────────────────────────
 app.get('/', (req, res) => {
