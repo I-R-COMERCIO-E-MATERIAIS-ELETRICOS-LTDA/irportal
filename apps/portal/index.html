@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal I.R. Comércio</title>
+    <link rel="icon" type="image/png" href="/portal/I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-PRETO.png">
+    <style>
+        :root {
+            --primary: #ff521d;
+            --bg-primary: #FFFFFF;
+            --bg-secondary: #F8F9FA;
+            --bg-card: #FFFFFF;
+            --text-primary: #1A1A1A;
+            --text-secondary: #6B7280;
+            --border-color: #E5E7EB;
+            --input-bg: #F9FAFB;
+            --success-color: #22C55E;
+            --error-color: #EF4444;
+            --card-shadow: 0 4px 24px rgba(0,0,0,0.08);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #0A0A0A;
+                --bg-secondary: #111111;
+                --bg-card: #1A1A1A;
+                --text-primary: #FFFFFF;
+                --text-secondary: #A0A0A0;
+                --border-color: rgba(255,82,29,0.12);
+                --input-bg: #2A2A2A;
+            }
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            padding: 2rem;
+        }
+
+        .login-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 2.5rem;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--card-shadow);
+        }
+
+        .login-logo {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: -0.5px;
+        }
+
+        .login-logo p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 0.3rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 0.875rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 0.5rem;
+        }
+
+        .btn-login:hover:not(:disabled) {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .error-msg {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3);
+            color: var(--error-color);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .error-msg.show { display: block; }
+
+        /* ─── APPS GRID (pós-login) ─── */
+        .apps-container {
+            display: none;
+            width: 100%;
+            max-width: 900px;
+            padding: 2rem;
+        }
+
+        .apps-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .apps-header h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .apps-header .user-info {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        .btn-logout {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-logout:hover {
+            border-color: var(--error-color);
+            color: var(--error-color);
+        }
+
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 1rem;
+        }
+
+        .app-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            color: var(--text-primary);
+            display: block;
+        }
+
+        .app-card:hover {
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255,82,29,0.15);
+        }
+
+        .app-card .app-icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .app-card .app-name {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .app-card.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        @media (max-width: 480px) {
+            .login-card { padding: 2rem 1.5rem; }
+            .apps-container { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- LOGIN -->
+    <div class="login-container" id="loginContainer">
+        <div class="login-card">
+            <div class="login-logo">
+                <h1>I.R. Comércio</h1>
+                <p>Sistema de Gestão</p>
+            </div>
+            <div id="loginForm">
+                <div class="form-group">
+                    <label for="username">Usuário</label>
+                    <input type="text" id="username" autocomplete="username" placeholder="Digite seu usuário">
+                </div>
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" autocomplete="current-password" placeholder="Digite sua senha">
+                </div>
+                <button class="btn-login" id="btnLogin" onclick="fazerLogin()">Entrar</button>
+                <div class="error-msg" id="errorMsg"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- APPS GRID (pós-login) -->
+    <div class="apps-container" id="appsContainer">
+        <div class="apps-header">
+            <div>
+                <h2>Olá, <span id="userName"></span>!</h2>
+                <div class="user-info" id="userInfo"></div>
+            </div>
+            <button class="btn-logout" onclick="fazerLogout()">Sair</button>
+        </div>
+        <div class="apps-grid" id="appsGrid"></div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api/portal';
+
+        // Mapa de todos os apps disponíveis
+        const ALL_APPS = [
+            { key: 'precos',         name: 'Tabela de Preços',   icon: '💰', path: '/precos'         },
+            { key: 'compras',        name: 'Compras',            icon: '🛒', path: '/compras'        },
+            { key: 'transportadoras',name: 'Transportadoras',    icon: '🚚', path: '/transportadoras' },
+            { key: 'cotacoes',       name: 'Cotações',           icon: '📋', path: '/cotacoes'       },
+            { key: 'faturamento',    name: 'Faturamento',        icon: '🧾', path: '/faturamento'    },
+            { key: 'frete',          name: 'Frete',              icon: '📦', path: '/frete'          },
+            { key: 'receber',        name: 'Contas a Receber',   icon: '💵', path: '/receber'        },
+            { key: 'vendas',         name: 'Vendas',             icon: '📈', path: '/vendas'         },
+            { key: 'pagar',          name: 'Contas a Pagar',     icon: '📤', path: '/pagar'          },
+            { key: 'lucro',          name: 'Lucro',              icon: '📊', path: '/lucro'          },
+            { key: 'licitacoes',     name: 'Licitações',         icon: '🏛️', path: '/licitacoes'    },
+            { key: 'estoque',        name: 'Estoque',            icon: '🗃️', path: '/estoque'       },
+        ];
+
+        // Gera device token persistente
+        function getDeviceToken() {
+            let token = localStorage.getItem('ir_device_token');
+            if (!token) {
+                token = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+                    .map(b => b.toString(16).padStart(2,'0')).join('');
+                localStorage.setItem('ir_device_token', token);
+            }
+            return token;
+        }
+
+        // Verifica sessão salva ao carregar
+        document.addEventListener('DOMContentLoaded', async () => {
+            const token = sessionStorage.getItem('ir_session_token');
+            if (token) {
+                try {
+                    const res = await fetch(`${API_BASE}/verify-session`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sessionToken: token })
+                    });
+                    const data = await res.json();
+                    if (data.valid) {
+                        mostrarApps(data.session, token);
+                        return;
+                    }
+                } catch (e) {}
+                sessionStorage.removeItem('ir_session_token');
+            }
+
+            // Verifica redirect após login
+            const urlParams = new URLSearchParams(window.location.search);
+            const redirect = urlParams.get('redirect');
+            if (redirect) {
+                sessionStorage.setItem('ir_redirect', redirect);
+            }
+
+            document.getElementById('username').focus();
+            document.addEventListener('keydown', e => {
+                if (e.key === 'Enter') fazerLogin();
+            });
+        });
+
+        async function fazerLogin() {
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('btnLogin');
+            const errorMsg = document.getElementById('errorMsg');
+
+            if (!username || !password) {
+                mostrarErro('Preencha usuário e senha');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Entrando...';
+            errorMsg.classList.remove('show');
+
+            try {
+                const res = await fetch(`${API_BASE}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        password,
+                        deviceToken: getDeviceToken(),
+                        deviceName: navigator.userAgent.includes('Mobile') ? 'Celular' : 'Computador'
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    mostrarErro(data.error || 'Credenciais inválidas');
+                    return;
+                }
+
+                sessionStorage.setItem('ir_session_token', data.sessionToken);
+
+                const redirect = sessionStorage.getItem('ir_redirect');
+                if (redirect) {
+                    sessionStorage.removeItem('ir_redirect');
+                    window.location.href = redirect + '?sessionToken=' + encodeURIComponent(data.sessionToken);
+                    return;
+                }
+
+                mostrarApps(data.user, data.sessionToken);
+
+            } catch (e) {
+                mostrarErro('Erro de conexão. Tente novamente.');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Entrar';
+            }
+        }
+
+        function mostrarApps(user, token) {
+            document.getElementById('loginContainer').style.display = 'none';
+            const container = document.getElementById('appsContainer');
+            container.style.display = 'block';
+
+            document.getElementById('userName').textContent = user.name || user.username;
+            document.getElementById('userInfo').textContent = user.isAdmin
+                ? 'Administrador'
+                : (user.sector || 'Usuário');
+
+            // Apps que o usuário pode acessar
+            const appsPermitidos = user.apps
+                ? user.apps.split(',').map(a => a.trim())
+                : [];
+
+            const grid = document.getElementById('appsGrid');
+            grid.innerHTML = '';
+
+            ALL_APPS.forEach(app => {
+                const temAcesso = user.isAdmin || appsPermitidos.includes(app.key) || appsPermitidos.includes('*');
+                const card = document.createElement('a');
+                card.className = 'app-card' + (temAcesso ? '' : ' disabled');
+                card.href = temAcesso ? (app.path + '?sessionToken=' + encodeURIComponent(token)) : '#';
+                card.innerHTML = `
+                    <div class="app-icon">${app.icon}</div>
+                    <div class="app-name">${app.name}</div>
+                `;
+                if (!temAcesso) card.title = 'Sem acesso';
+                grid.appendChild(card);
+            });
+        }
+
+        async function fazerLogout() {
+            const token = sessionStorage.getItem('ir_session_token');
+            if (token) {
+                try {
+                    await fetch(`${API_BASE}/logout`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-Session-Token': token },
+                        body: JSON.stringify({ sessionToken: token })
+                    });
+                } catch (e) {}
+                sessionStorage.removeItem('ir_session_token');
+            }
+            location.reload();
+        }
+
+        function mostrarErro(msg) {
+            const el = document.getElementById('errorMsg');
+            el.textContent = msg;
+            el.classList.add('show');
+        }
+    </script>
+</body>
+</html>
