@@ -1,8 +1,6 @@
-const DEVELOPMENT_MODE = false;
-const PORTAL_URL = 'https://ir-comercio-portal-zcan.onrender.com';
-const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:10000/api'
-    : `${window.location.origin}/api`;
+const API_URL = window.location.origin + '/api';
+// Chave de sessão unificada do monorepo (mesmo nome usado pelo portal)
+const SESSION_KEY = 'irUserSession';
 
 let ordens = [];
 let currentMonth = new Date();
