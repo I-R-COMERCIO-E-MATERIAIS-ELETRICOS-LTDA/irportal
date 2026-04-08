@@ -135,16 +135,12 @@ APPS.forEach(appName => {
 });
 
 // ─── MIDDLEWARE: FALLBACK DE ASSETS NA RAIZ → REDIRECIONA PARA O APP CORRETO ─
-// Corrige o problema quando o index.html usa caminhos absolutos como /styles.css
-// em vez de caminhos relativos como ./styles.css ou styles.css.
-// O Referer é usado para descobrir de qual app veio a requisição.
 app.use((req, res, next) => {
     const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map)$/i.test(req.path);
     if (!isStaticAsset) return next();
 
     const referer = req.get('Referer') || '';
 
-    // Descobre qual app gerou a requisição pelo Referer
     let matchedApp = null;
     for (const appName of APPS) {
         if (referer.includes(`/${appName}`)) {
@@ -156,7 +152,6 @@ app.use((req, res, next) => {
     if (!matchedApp) return next();
 
     const appPath = path.join(__dirname, 'apps', matchedApp);
-    // Remove a barra inicial do path para montar o caminho no disco
     const fileName = req.path.replace(/^\//, '');
     const filePath = path.join(appPath, fileName);
 
@@ -189,17 +184,82 @@ app.use('/api', verificarAutenticacao);
 const precosRoutes = require('./apps/precos/routes');
 app.use('/api/precos', precosRoutes(supabase));
 
-// ─── API DE COMPRAS (Ordens de Compra) ────────────────────────────────────────
-// As rotas do módulo compra são montadas em /api diretamente pois usam:
-//   GET  /api/ordens
-//   POST /api/ordens
-//   PUT  /api/ordens/:id
-//   DELETE /api/ordens/:id
-//   PATCH  /api/ordens/:id/status
-//   GET  /api/ordens/ultimo-numero
-//   GET  /api/fornecedores
+// ─── API DE COMPRAS ────────────────────────────────────────────────────────────
+// Rotas montadas em /api diretamente pois usam /api/ordens e /api/fornecedores
 const compraRoutes = require('./apps/compra/routes');
 app.use('/api', compraRoutes(supabase));
+
+// ─── API DE TRANSPORTADORAS ───────────────────────────────────────────────────
+const transportadorasRoutes = require('./apps/transportadoras/routes');
+app.use('/api/transportadoras', transportadorasRoutes(supabase));
+
+// ─── API DE COTAÇÕES DE FRETE ─────────────────────────────────────────────────
+const cotacoesRoutes = require('./apps/cotacoes/routes');
+app.use('/api/cotacoes', cotacoesRoutes(supabase));
+
+// ─── API DE FATURAMENTO ───────────────────────────────────────────────────────
+// Inclui /api/pedidos e /api/estoque (usados pelo módulo de faturamento)
+const faturamentoRoutes = require('./apps/faturamento/routes');
+app.use('/api/pedidos', faturamentoRoutes(supabase));
+
+// ─── ROTA DE ESTOQUE (usada por faturamento e outros módulos) ─────────────────
+// Montada separadamente em /api/estoque para compatibilidade com o script.js atual
+app.get('/api/estoque', verificarAutenticacao, async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('estoque')
+            .select('*')
+            .order('codigo', { ascending: true });
+        if (error) throw error;
+        res.json(data);
+    } catch (err) {
+        console.error('Erro ao listar estoque:', err.message);
+        res.status(500).json({ error: 'Erro ao listar estoque' });
+    }
+});
+
+app.patch('/api/estoque/:codigo', verificarAutenticacao, async (req, res) => {
+    try {
+        const { quantidade } = req.body;
+        const { data, error } = await supabase
+            .from('estoque')
+            .update({ quantidade })
+            .eq('codigo', req.params.codigo)
+            .select()
+            .single();
+        if (error) throw error;
+        res.json(data);
+    } catch (err) {
+        console.error('Erro ao atualizar estoque:', err.message);
+        res.status(500).json({ error: 'Erro ao atualizar estoque' });
+    }
+});
+
+// ─── ENDPOINT DE VERIFICAÇÃO DE SESSÃO (usado pelos módulos via PORTAL_URL) ──
+// Mantém retrocompatibilidade com módulos que chamam /api/verify-session
+app.post('/api/verify-session', async (req, res) => {
+    try {
+        const { sessionToken } = req.body;
+        if (!sessionToken) return res.json({ valid: false });
+
+        const { data: session, error } = await supabase
+            .from('active_sessions')
+            .select(`*, users(id, username, name, is_admin, is_active, sector, apps, authorized_ips)`)
+            .eq('session_token', sessionToken)
+            .eq('is_active', true)
+            .gt('expires_at', new Date().toISOString())
+            .single();
+
+        if (error || !session || !session.users || !session.users.is_active) {
+            return res.json({ valid: false });
+        }
+
+        res.json({ valid: true, session: session.users });
+    } catch (err) {
+        console.error('Erro ao verificar sessão:', err.message);
+        res.status(500).json({ valid: false });
+    }
+});
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -223,4 +283,12 @@ app.listen(PORT, '0.0.0.0', () => {
         console.log(`  ${status} /${appName}`);
     });
     console.log(`\n📝 Logs salvos em: acessos.log\n`);
+    console.log('📡 Rotas de API registradas:');
+    console.log('  POST /api/portal/...       → Portal (auth)');
+    console.log('  GET  /api/transportadoras  → Transportadoras');
+    console.log('  GET  /api/cotacoes         → Cotações de Frete');
+    console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
+    console.log('  GET  /api/estoque          → Estoque');
+    console.log('  GET  /api/precos           → Preços');
+    console.log('  GET  /api/ordens           → Compras\n');
 });
