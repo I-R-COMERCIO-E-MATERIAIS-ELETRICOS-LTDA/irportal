@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pedidos de Faturamento</title>
+    <link rel="icon" type="image/png" href="I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-PRETO.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-content">
+        <div class="container">
+            <div class="header">
+                <div class="header-left">
+                    <h1>Pedidos de Faturamento</h1>
+                    <div id="connectionStatus" class="connection-status offline">
+                        <span class="status-dot"></span>
+                    </div>
+                </div>
+                <button onclick="openFormModal()" class="btn-new-order-header">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    Novo Pedido
+                </button>
+            </div>
+
+            <!-- Dashboard Cards -->
+            <div class="dashboard-grid">
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-default">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                            <polyline points="14 2 14 8 20 8"></polyline>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalPedidos">0</div>
+                        <div class="stat-label">Total de Pedidos</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-card-success">
+                    <div class="stat-icon stat-icon-success">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value stat-value-success" id="totalEmitidos">0</div>
+                        <div class="stat-label">Emitidos</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-card-warning">
+                    <div class="stat-icon stat-icon-warning">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value stat-value-warning" id="totalPendentes">0</div>
+                        <div class="stat-label">Pendentes</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-default">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="12" y1="1" x2="12" y2="23"></line>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="valorTotal">R$ 0,00</div>
+                        <div class="stat-label">Valor Total Emitido</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search Bar with Filters -->
+            <div class="search-bar-wrapper">
+                <div class="search-bar">
+                    <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
+                    </svg>
+                    <input type="text" id="search" placeholder="Pesquisar por número ou razão social..." oninput="filterPedidos()">
+
+                    <div class="search-bar-filters">
+                        <div class="filter-dropdown-inline">
+                            <select id="filterVendedor" onchange="filterPedidos()">
+                                <option value="">Responsável</option>
+                            </select>
+                            <svg class="dropdown-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </div>
+                        <div class="filter-dropdown-inline">
+                            <select id="filterStatus" onchange="filterPedidos()">
+                                <option value="">Todos os Status</option>
+                                <option value="pendente">Pendente</option>
+                                <option value="emitida">Emitido</option>
+                            </select>
+                            <svg class="dropdown-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                        </div>
+                        <div class="month-navigation-inline">
+                            <button onclick="changeMonth(-1)" class="month-nav-arrow" title="Mês anterior">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="15 18 9 12 15 6"></polyline>
+                                </svg>
+                            </button>
+                            <div class="month-display-inline">
+                                <span id="currentMonth">Carregando...</span>
+                            </div>
+                            <button onclick="changeMonth(1)" class="month-nav-arrow" title="Próximo mês">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="9 18 15 12 9 6"></polyline>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button class="calendar-btn" onclick="toggleCalendar()" title="Selecionar mês">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                        </svg>
+                    </button>
+                    <button id="btnSync" onclick="syncData()" class="sync-btn" title="Sincronizar dados">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <polyline points="1 20 1 14 7 14"></polyline>
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Calendar Modal -->
+            <div class="calendar-modal" id="calendarModal">
+                <div class="calendar-content">
+                    <div class="calendar-header">
+                        <button onclick="changeCalendarYear(-1)" class="calendar-year-nav">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="15 18 9 12 15 6"></polyline>
+                            </svg>
+                        </button>
+                        <h3 id="calendarYear">2026</h3>
+                        <button onclick="changeCalendarYear(1)" class="calendar-year-nav">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="calendar-months" id="calendarMonths"></div>
+                </div>
+            </div>
+
+            <!-- Table Card -->
+            <div class="card table-card">
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead id="tableHead">
+                            <tr>
+                                <th style="width: 40px; text-align: center;">
+                                    <span style="font-size: 1.1rem;">✓</span>
+                                </th>
+                                <th>Nº Pedido</th>
+                                <th>Razão Social</th>
+                                <th>Data Emissão</th>
+                                <th>Valor Total</th>
+                                <th>Status</th>
+                                <th style="text-align: center;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pedidosContainer"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE FORMULÁRIO -->
+    <div class="modal-overlay" id="formModal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3 class="modal-title" id="formTitle">Novo Pedido de Faturamento</h3>
+                <button class="close-modal" onclick="closeFormModal()">✕</button>
+            </div>
+
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchTab('tab-geral')">Geral</button>
+                    <button class="tab-btn" onclick="switchTab('tab-faturamento')">Faturamento</button>
+                    <button class="tab-btn" onclick="switchTab('tab-itens')">Itens</button>
+                    <button class="tab-btn" onclick="switchTab('tab-entrega')">Entrega</button>
+                    <button class="tab-btn" onclick="switchTab('tab-transporte')">Transporte</button>
+                </div>
+
+                <!-- Tab Geral -->
+                <div class="tab-content active" id="tab-geral">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nº Pedido</label>
+                            <input type="text" id="codigo" readonly placeholder="Gerado automaticamente">
+                        </div>
+                        <div class="form-group">
+                            <label>Data de Registro</label>
+                            <input type="text" id="dataRegistro" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label>Responsável *</label>
+                            <select id="responsavel">
+                                <option value="">Selecione...</option>
+                                <option value="Roberto">Roberto</option>
+                                <option value="Rosemeire">Rosemeire</option>
+                                <option value="Pollyanna">Pollyanna</option>
+                                <option value="Isaque">Isaque</option>
+                                <option value="Gustavo">Gustavo</option>
+                                <option value="Miguel">Miguel</option>
+                                <option value="Luiz">Luiz</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Documento</label>
+                            <input type="text" id="documento" placeholder="Nº do documento">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Faturamento -->
+                <div class="tab-content" id="tab-faturamento">
+                    <div class="form-grid">
+                        <div class="form-group form-group-full" style="position: relative;">
+                            <label>CNPJ *</label>
+                            <input type="text" id="cnpj" placeholder="00.000.000/0000-00" oninput="buscarClientePorCNPJ(this.value)">
+                            <div id="cnpjSuggestions" class="suggestions-dropdown" style="display:none;"></div>
+                        </div>
+                        <div class="form-group form-group-full">
+                            <label>Razão Social *</label>
+                            <input type="text" id="razaoSocial" placeholder="RAZÃO SOCIAL">
+                        </div>
+                        <div class="form-group">
+                            <label>Inscrição Estadual</label>
+                            <input type="text" id="inscricaoEstadual" placeholder="INSCRIÇÃO ESTADUAL">
+                        </div>
+                        <div class="form-group">
+                            <label>Telefone</label>
+                            <input type="text" id="telefone" placeholder="(00) 00000-0000">
+                        </div>
+                        <div class="form-group form-group-full">
+                            <label>Endereço *</label>
+                            <input type="text" id="endereco" placeholder="ENDEREÇO COMPLETO">
+                        </div>
+                        <div class="form-group">
+                            <label>Bairro</label>
+                            <input type="text" id="bairro" placeholder="BAIRRO">
+                        </div>
+                        <div class="form-group">
+                            <label>Município</label>
+                            <input type="text" id="municipio" placeholder="MUNICÍPIO">
+                        </div>
+                        <div class="form-group">
+                            <label>UF</label>
+                            <input type="text" id="uf" placeholder="UF" maxlength="2">
+                        </div>
+                        <div class="form-group">
+                            <label>Número</label>
+                            <input type="text" id="numero" placeholder="Nº">
+                        </div>
+                        <div class="form-group">
+                            <label>Contato</label>
+                            <input type="text" id="contato" placeholder="NOME DO CONTATO">
+                        </div>
+                        <div class="form-group">
+                            <label>E-mail</label>
+                            <input type="email" id="email" placeholder="email@empresa.com">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Itens -->
+                <div class="tab-content" id="tab-itens">
+                    <div class="items-table-wrapper">
+                        <table class="items-form-table">
+                            <thead>
+                                <tr>
+                                    <th style="width:50px">Item</th>
+                                    <th style="width:120px">Cód. Estoque</th>
+                                    <th>Especificação</th>
+                                    <th style="width:70px">UN</th>
+                                    <th style="width:80px">Qtd</th>
+                                    <th style="width:100px">Vl. Unit.</th>
+                                    <th style="width:120px">Vl. Total</th>
+                                    <th style="width:100px">NCM</th>
+                                    <th style="width:50px"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="itemsContainer"></tbody>
+                        </table>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
+                        <button type="button" onclick="addItem()" class="btn-add-item">+ Adicionar Item</button>
+                        <div class="form-group" style="margin:0; min-width:200px;">
+                            <label>Valor Total do Pedido</label>
+                            <input type="text" id="valorTotalPedido" readonly>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Entrega -->
+                <div class="tab-content" id="tab-entrega">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Peso (kg)</label>
+                            <input type="number" id="peso" min="0" step="0.01" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label>Quantidade de Volumes</label>
+                            <input type="number" id="quantidade" min="0" step="1" placeholder="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Volumes</label>
+                            <input type="text" id="volumes" placeholder="Descrição dos volumes">
+                        </div>
+                        <div class="form-group">
+                            <label>Local de Entrega</label>
+                            <input type="text" id="localEntrega" placeholder="LOCAL DE ENTREGA">
+                        </div>
+                        <div class="form-group">
+                            <label>Setor</label>
+                            <input type="text" id="setor" placeholder="SETOR">
+                        </div>
+                        <div class="form-group">
+                            <label>Previsão de Entrega</label>
+                            <input type="date" id="previsaoEntrega">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab Transporte -->
+                <div class="tab-content" id="tab-transporte">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Transportadora</label>
+                            <select id="transportadora">
+                                <option value="">Selecione...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Valor do Frete</label>
+                            <input type="text" id="valorFrete" placeholder="R$ 0,00">
+                        </div>
+                        <div class="form-group">
+                            <label>Vendedor</label>
+                            <select id="vendedor">
+                                <option value="">Selecione...</option>
+                                <option value="Roberto">Roberto</option>
+                                <option value="Rosemeire">Rosemeire</option>
+                                <option value="Pollyanna">Pollyanna</option>
+                                <option value="Isaque">Isaque</option>
+                                <option value="Gustavo">Gustavo</option>
+                                <option value="Miguel">Miguel</option>
+                                <option value="Luiz">Luiz</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display:none;">Anterior</button>
+                <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo</button>
+                <button type="button" id="btnSave" onclick="savePedido()" style="display:none;">Salvar Pedido</button>
+                <button type="button" onclick="closeFormModal()" class="cancel-close">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE VISUALIZAÇÃO -->
+    <div class="modal-overlay" id="infoModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Pedido Nº <span id="modalCodigo"></span></h3>
+                <button class="close-modal" onclick="closeInfoModal()">✕</button>
+            </div>
+
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchInfoTab('info-tab-geral')">Geral</button>
+                    <button class="tab-btn" onclick="switchInfoTab('info-tab-faturamento')">Faturamento</button>
+                    <button class="tab-btn" onclick="switchInfoTab('info-tab-itens')">Itens</button>
+                    <button class="tab-btn" onclick="switchInfoTab('info-tab-entrega')">Entrega</button>
+                    <button class="tab-btn" onclick="switchInfoTab('info-tab-transporte')">Transporte</button>
+                </div>
+                <div class="tab-content active" id="info-tab-geral"></div>
+                <div class="tab-content" id="info-tab-faturamento"></div>
+                <div class="tab-content" id="info-tab-itens"></div>
+                <div class="tab-content" id="info-tab-entrega"></div>
+                <div class="tab-content" id="info-tab-transporte"></div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" id="btnInfoClose" onclick="closeInfoModal()" class="cancel-close">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="calendar.js"></script>
+</body>
+</html>
