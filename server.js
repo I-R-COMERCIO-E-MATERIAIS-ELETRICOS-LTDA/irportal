@@ -114,19 +114,16 @@ app.get('/health', async (req, res) => {
 // ─── ARQUIVOS ESTÁTICOS DOS MÓDULOS ─────────────────────────────────────────
 const APPS = [
     'portal', 'precos', 'compra', 'transportadoras', 'cotacoes',
-    'faturamento', 'frete', 'receber', 'vendas', 'pagar',
-    'lucro', 'licitacoes', 'estoque'
+    'faturamento', 'frete', 'receber', 'vendas',
+    'pagar', 'lucro', 'licitacoes', 'estoque'
 ];
 
 APPS.forEach(appName => {
     const appPath = path.join(__dirname, 'apps', appName);
     if (fs.existsSync(appPath)) {
-        // Serve assets estáticos da pasta do app (sem autenticação — arquivos públicos)
         app.use(`/${appName}/assets`, express.static(appPath));
-        // Rota raiz do app → index.html
         app.get(`/${appName}`, (req, res) => res.sendFile(path.join(appPath, 'index.html')));
         app.get(`/${appName}/`, (req, res) => res.sendFile(path.join(appPath, 'index.html')));
-        // Arquivos estáticos do app (css, js, imagens, etc.) — sem index automático
         app.use(`/${appName}`, express.static(appPath, { index: false, dotfiles: 'deny' }));
         console.log(`✅ Servindo /${appName}`);
     } else {
@@ -185,7 +182,6 @@ const precosRoutes = require('./apps/precos/routes');
 app.use('/api/precos', precosRoutes(supabase));
 
 // ─── API DE COMPRAS ────────────────────────────────────────────────────────────
-// Rotas montadas em /api diretamente pois usam /api/ordens e /api/fornecedores
 const compraRoutes = require('./apps/compra/routes');
 app.use('/api', compraRoutes(supabase));
 
@@ -198,12 +194,24 @@ const cotacoesRoutes = require('./apps/cotacoes/routes');
 app.use('/api/cotacoes', cotacoesRoutes(supabase));
 
 // ─── API DE FATURAMENTO ───────────────────────────────────────────────────────
-// Inclui /api/pedidos e /api/estoque (usados pelo módulo de faturamento)
 const faturamentoRoutes = require('./apps/faturamento/routes');
 app.use('/api/pedidos', faturamentoRoutes(supabase));
 
-// ─── ROTA DE ESTOQUE (usada por faturamento e outros módulos) ─────────────────
-// Montada separadamente em /api/estoque para compatibilidade com o script.js atual
+// ─── API DE CONTROLE DE FRETE ─────────────────────────────────────────────────
+// Substitui o backend legado em controle-frete.onrender.com
+// Os frontends devem apontar API_URL para este servidor central em /api/fretes
+const freteRoutes = require('./apps/frete/routes');
+app.use('/api/fretes', freteRoutes(supabase));
+
+// ─── API DE CONTAS A RECEBER ──────────────────────────────────────────────────
+const receberRoutes = require('./apps/receber/routes');
+app.use('/api/receber', receberRoutes(supabase));
+
+// ─── API DE VENDAS ────────────────────────────────────────────────────────────
+const vendasRoutes = require('./apps/vendas/routes');
+app.use('/api/vendas', vendasRoutes(supabase));
+
+// ─── ROTA DE ESTOQUE ──────────────────────────────────────────────────────────
 app.get('/api/estoque', verificarAutenticacao, async (req, res) => {
     try {
         const { data, error } = await supabase
@@ -235,8 +243,7 @@ app.patch('/api/estoque/:codigo', verificarAutenticacao, async (req, res) => {
     }
 });
 
-// ─── ENDPOINT DE VERIFICAÇÃO DE SESSÃO (usado pelos módulos via PORTAL_URL) ──
-// Mantém retrocompatibilidade com módulos que chamam /api/verify-session
+// ─── ENDPOINT DE VERIFICAÇÃO DE SESSÃO (retrocompatibilidade) ────────────────
 app.post('/api/verify-session', async (req, res) => {
     try {
         const { sessionToken } = req.body;
@@ -290,5 +297,10 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
     console.log('  GET  /api/estoque          → Estoque');
     console.log('  GET  /api/precos           → Preços');
-    console.log('  GET  /api/ordens           → Compras\n');
+    console.log('  GET  /api/ordens           → Compras');
+    console.log('  ---');
+    console.log('  CRUD /api/fretes           → Controle de Frete ✅ NOVO');
+    console.log('  CRUD /api/receber          → Contas a Receber  ✅ NOVO');
+    console.log('  CRUD /api/vendas           → Vendas            ✅ NOVO');
+    console.log('  POST /api/vendas/sincronizar → Sync manual     ✅ NOVO\n');
 });
