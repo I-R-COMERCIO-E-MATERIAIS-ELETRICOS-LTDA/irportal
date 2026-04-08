@@ -606,10 +606,6 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
             'Almoxarifado':  ['transportadoras','cotacoes','faturamento','estoque','frete'],
         };
 
-         function getUserPermissions(sessionInfo) {
-    const sector = sessionInfo.sector || '';
-    return SECTOR_PERMISSIONS[sector] || [];
-}
         
         // ÍCONES
         const MODULE_ICONS = {
@@ -653,13 +649,10 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
         let sidebarRevealed    = false;
 
         /* ── HELPERS ── */
-        function getUserPermissions(sessionInfo) {
-            const username = sessionInfo.username?.toLowerCase();
-            if (USER_SPECIFIC_PERMISSIONS[username]) return USER_SPECIFIC_PERMISSIONS[username];
-            const sector = sessionInfo.sector || '';
-            if (SECTOR_PERMISSIONS[sector]) return SECTOR_PERMISSIONS[sector];
-            return [];
-        }
+function getUserPermissions(sessionInfo) {
+    const sector = sessionInfo.sector || '';
+    return SECTOR_PERMISSIONS[sector] || [];
+}
 
         function getGreeting() {
             const brasiliaTime = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo', hour12: false });
