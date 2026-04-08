@@ -606,7 +606,10 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
             'Almoxarifado':  ['transportadoras','cotacoes','faturamento','estoque','frete'],
         };
 
-
+         function getUserPermissions(sessionInfo) {
+    const sector = sessionInfo.sector || '';
+    return SECTOR_PERMISSIONS[sector] || [];
+}
         
         // ÍCONES
         const MODULE_ICONS = {
