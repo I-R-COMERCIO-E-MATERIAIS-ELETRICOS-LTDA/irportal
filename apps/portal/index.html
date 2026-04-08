@@ -895,30 +895,44 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 
         /* ── VERIFY SESSION ── */
         async function verifySession(token) {
-            try {
-                const res  = await fetch(`${API_URL}/verify-session`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sessionToken: token })
-                });
-                const data = await res.json();
-                return data.valid === true;
-            } catch { return false; }
-        }
+    const controller = new AbortController();
+    const timeoutId  = setTimeout(() => controller.abort(), 5000);
+    try {
+        const res  = await fetch(`${API_URL}/verify-session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessionToken: token }),
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        const data = await res.json();
+        return data.valid === true;
+    } catch {
+        clearTimeout(timeoutId);
+        return false;
+    }
+}
 
         /* ── INIT ── */
         async function init() {
-            try {
-                deviceToken = getOrCreateDeviceToken();
-                const stored = sessionStorage.getItem('irUserSession');
-                if (stored) {
-                    const session = JSON.parse(stored);
-                    const valid   = await verifySession(session.sessionToken);
-                    if (valid) { currentSessionInfo = session; showDashboard(session); }
-                    else sessionStorage.removeItem('irUserSession');
-                }
-            } catch (e) { console.error('Erro na inicialização:', e); }
+    deviceToken = getOrCreateDeviceToken();
+    try {
+        const stored = sessionStorage.getItem('irUserSession');
+        if (stored) {
+            const session = JSON.parse(stored);
+            const valid   = await verifySession(session.sessionToken);
+            if (valid) {
+                currentSessionInfo = session;
+                showDashboard(session);
+                return;
+            }
+            sessionStorage.removeItem('irUserSession');
         }
+    } catch (e) {
+        console.error('Erro na inicialização:', e);
+        sessionStorage.removeItem('irUserSession');
+    }
+}
 
         window.addEventListener('DOMContentLoaded', init);
     </script>
