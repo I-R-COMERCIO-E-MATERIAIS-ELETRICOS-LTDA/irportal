@@ -638,8 +638,8 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
             { id: 'estoque',         name: 'Estoque',                  url: '',                                          available: false },
             { id: 'receber',         name: 'Contas a Receber',         url: `${ORIGIN}/receber`,                         available: true },
             { id: 'vendas',          name: 'Vendas',                   url: `${ORIGIN}/vendas`,                          available: true },
-            { id: 'pagamento',       name: 'Contas a Pagar',           url: '',                                          available: false },
-            { id: 'lucro',           name: 'Lucro Real',               url: '',                                          available: false },
+            { id: 'pagar',           name: 'Contas a Pagar',           url: `${ORIGIN}/pagar`,                           available: true },
+            { id: 'lucro',           name: 'Lucro Real',               url: `${ORIGIN}/lucro`,                           available: true },
         ];
 
         let deviceToken        = null;
