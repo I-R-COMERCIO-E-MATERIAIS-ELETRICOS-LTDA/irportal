@@ -1,8 +1,8 @@
 // ============================================
 // CONFIGURAÇÃO
 // ============================================
-const PORTAL_URL = 'https://ir-comercio-portal-zcan.onrender.com';
-const API_URL = 'https://contas-a-pagar-ytr6.onrender.com/api';
+const PORTAL_URL = window.location.origin;
+const API_URL = window.location.origin + '/api';
 
 let contas = [];
 let isOnline = false;
