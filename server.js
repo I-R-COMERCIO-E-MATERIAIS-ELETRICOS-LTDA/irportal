@@ -1,306 +1,175 @@
+// ============================================
+// SERVER.JS — MONOREPO CENTRAL
+// IR Comércio e Materiais Elétricos
+// ============================================
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const { createClient } = require('@supabase/supabase-js');
+const express  = require('express');
+const path     = require('path');
+const cors     = require('cors');
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3000;
 
-// ─── SUPABASE ────────────────────────────────────────────────────────────────
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-    console.error('❌ ERRO: Variáveis de ambiente do Supabase não configuradas');
-    process.exit(1);
-}
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// ─── MIDDLEWARES ──────────────────────────────────────────────────────────────
+// ─── MIDDLEWARES GLOBAIS ─────────────────────────────────────────────────────
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Session-Token']
+    origin: process.env.ALLOWED_ORIGINS
+        ? process.env.ALLOWED_ORIGINS.split(',')
+        : '*',
+    credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ─── LOG DE ACESSOS ───────────────────────────────────────────────────────────
-const logFilePath = path.join(__dirname, 'acessos.log');
-let accessCount = 0, uniqueIPs = new Set();
+// ─── AUTENTICAÇÃO MIDDLEWARE ─────────────────────────────────────────────────
+// Valida X-Session-Token ou sessionToken antes de qualquer rota /api
+// O PORTAL é o pivô; ele emite os tokens.
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-function registrarAcesso(req, res, next) {
-    const xForwardedFor = req.headers['x-forwarded-for'];
-    const clientIP = xForwardedFor ? xForwardedFor.split(',')[0].trim() : req.socket.remoteAddress;
-    const cleanIP = (clientIP || '').replace('::ffff:', '');
-    fs.appendFile(logFilePath, `[${new Date().toISOString()}] ${cleanIP} - ${req.method} ${req.path}\n`, () => {});
-    accessCount++;
-    uniqueIPs.add(cleanIP);
-    next();
-}
-app.use(registrarAcesso);
+async function authMiddleware(req, res, next) {
+    // Rota de verificação de sessão — chamada pelo portal, sempre liberada
+    if (req.path === '/api/verify-session') return next();
 
-setInterval(() => {
-    if (accessCount > 0) {
-        console.log(`📊 Última hora: ${accessCount} requisições de ${uniqueIPs.size} IPs únicos`);
-        accessCount = 0;
-        uniqueIPs.clear();
-    }
-}, 3600000);
+    const token = req.headers['x-session-token']
+               || req.query.sessionToken
+               || (req.body && req.body.sessionToken);
 
-// ─── AUTENTICAÇÃO CENTRAL ─────────────────────────────────────────────────────
-const PUBLIC_PATHS = ['/', '/health', '/app', '/portal', '/portal/'];
-
-async function verificarAutenticacao(req, res, next) {
-    const isPublicPath = PUBLIC_PATHS.some(p => req.path === p);
-    const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf)$/i.test(req.path);
-
-    if (isPublicPath || isStaticAsset) return next();
-    if (req.path.startsWith('/api/portal/')) return next();
-
-    const sessionToken = req.headers['x-session-token'] || req.query.sessionToken;
-
-    if (!sessionToken) {
-        if (req.headers.accept && req.headers.accept.includes('text/html'))
-            return res.redirect('/portal?redirect=' + encodeURIComponent(req.path));
-        return res.status(401).json({ error: 'Não autenticado', redirectToLogin: true });
+    if (!token) {
+        return res.status(401).json({ error: 'Token de sessão não informado' });
     }
 
     try {
-        const { data: session, error } = await supabase
-            .from('active_sessions')
-            .select(`*, users(id, username, name, is_admin, is_active, sector, apps, authorized_ips)`)
-            .eq('session_token', sessionToken)
-            .eq('is_active', true)
-            .gt('expires_at', new Date().toISOString())
-            .single();
+        // Verifica a sessão na tabela sessions do Supabase (gerenciada pelo PORTAL)
+        const { data, error } = await supabase
+            .from('sessions')
+            .select('user_id, expires_at, user:users(ip_address, role)')
+            .eq('token', token)
+            .maybeSingle();
 
-        if (error || !session || !session.users || !session.users.is_active)
-            return res.status(401).json({ error: 'Sessão inválida', redirectToLogin: true });
+        if (error || !data) {
+            return res.status(401).json({ error: 'Sessão inválida' });
+        }
 
-        // Atualiza last_activity de forma assíncrona (sem bloquear a requisição)
-        supabase
-            .from('active_sessions')
-            .update({ last_activity: new Date().toISOString() })
-            .eq('session_token', sessionToken)
-            .then(() => {});
+        if (new Date(data.expires_at) < new Date()) {
+            return res.status(401).json({ error: 'Sessão expirada' });
+        }
 
-        req.user = session.users;
-        req.session = session;
-        req.sessionToken = sessionToken;
+        // Restrição de IP para usuários não-admin
+        const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+                      || req.socket.remoteAddress;
+
+        const user = data.user;
+        if (user?.role !== 'admin') {
+            const allowedIps = process.env.ALLOWED_USER_IPS
+                ? process.env.ALLOWED_USER_IPS.split(',').map(ip => ip.trim())
+                : [];
+            if (allowedIps.length > 0 && !allowedIps.includes(clientIp)) {
+                return res.status(403).json({ error: 'Acesso negado para este IP' });
+            }
+        }
+
+        // Restrição de horário
+        if (user?.role !== 'admin') {
+            const now   = new Date();
+            const hour  = now.getHours();
+            const start = parseInt(process.env.ACCESS_HOUR_START ?? '7');
+            const end   = parseInt(process.env.ACCESS_HOUR_END   ?? '22');
+            if (hour < start || hour >= end) {
+                return res.status(403).json({ error: 'Acesso restrito fora do horário permitido' });
+            }
+        }
+
+        req.sessionData = data;
         next();
-    } catch (error) {
-        console.error('Erro ao verificar autenticação:', error.message);
-        return res.status(500).json({ error: 'Erro ao verificar autenticação' });
+    } catch (err) {
+        console.error('[auth]', err.message);
+        res.status(500).json({ error: 'Erro interno de autenticação' });
     }
 }
 
-// ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
-app.get('/health', async (req, res) => {
-    try {
-        const { error } = await supabase.from('users').select('count', { count: 'exact', head: true });
-        res.json({
-            status: error ? 'unhealthy' : 'healthy',
-            database: error ? 'disconnected' : 'connected',
-            timestamp: new Date().toISOString()
-        });
-    } catch {
-        res.json({ status: 'unhealthy', timestamp: new Date().toISOString() });
-    }
-});
+// Aplica autenticação a TODAS as rotas /api, exceto verify-session
+app.use('/api', authMiddleware);
 
-// ─── ARQUIVOS ESTÁTICOS DOS MÓDULOS ─────────────────────────────────────────
-const APPS = [
-    'portal', 'precos', 'compra', 'transportadoras', 'cotacoes',
-    'faturamento', 'frete', 'receber', 'vendas',
-    'pagar', 'lucro', 'licitacoes', 'estoque'
-];
-
-APPS.forEach(appName => {
-    const appPath = path.join(__dirname, 'apps', appName);
-    if (fs.existsSync(appPath)) {
-        app.use(`/${appName}/assets`, express.static(appPath));
-        app.get(`/${appName}`, (req, res) => res.sendFile(path.join(appPath, 'index.html')));
-        app.get(`/${appName}/`, (req, res) => res.sendFile(path.join(appPath, 'index.html')));
-        app.use(`/${appName}`, express.static(appPath, { index: false, dotfiles: 'deny' }));
-        console.log(`✅ Servindo /${appName}`);
-    } else {
-        console.log(`⚠️  Pasta não encontrada: ${appPath}`);
-    }
-});
-
-// ─── MIDDLEWARE: FALLBACK DE ASSETS NA RAIZ → REDIRECIONA PARA O APP CORRETO ─
-app.use((req, res, next) => {
-    const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map)$/i.test(req.path);
-    if (!isStaticAsset) return next();
-
-    const referer = req.get('Referer') || '';
-
-    let matchedApp = null;
-    for (const appName of APPS) {
-        if (referer.includes(`/${appName}`)) {
-            matchedApp = appName;
-            break;
-        }
-    }
-
-    if (!matchedApp) return next();
-
-    const appPath = path.join(__dirname, 'apps', matchedApp);
-    const fileName = req.path.replace(/^\//, '');
-    const filePath = path.join(appPath, fileName);
-
-    if (fs.existsSync(filePath)) {
-        console.log(`🔧 Asset fallback: ${req.path} → /${matchedApp}/${fileName}`);
-        return res.sendFile(filePath);
-    }
-
-    next();
-});
-
-// ─── ROTA RAIZ → PORTAL ───────────────────────────────────────────────────────
-app.get('/', (req, res) => {
-    const portalPath = path.join(__dirname, 'apps', 'portal', 'index.html');
-    if (fs.existsSync(portalPath)) {
-        res.sendFile(portalPath);
-    } else {
-        res.json({ message: 'I.R. Comércio - Sistema Central', apps: APPS.map(a => `/${a}`) });
-    }
-});
-
-// ─── API DO PORTAL (sem autenticação central — gerencia a própria auth) ──────
-const portalRoutes = require('./apps/portal/routes');
-app.use('/api/portal', portalRoutes(supabase));
-
-// ─── MIDDLEWARE DE AUTENTICAÇÃO (aplicado a TODAS as rotas /api a partir daqui)
-app.use('/api', verificarAutenticacao);
-
-// ─── API DE PREÇOS ────────────────────────────────────────────────────────────
-const precosRoutes = require('./apps/precos/routes');
-app.use('/api/precos', precosRoutes(supabase));
-
-// ─── API DE COMPRAS ────────────────────────────────────────────────────────────
-const compraRoutes = require('./apps/compra/routes');
-app.use('/api', compraRoutes(supabase));
-
-// ─── API DE TRANSPORTADORAS ───────────────────────────────────────────────────
-const transportadorasRoutes = require('./apps/transportadoras/routes');
-app.use('/api/transportadoras', transportadorasRoutes(supabase));
-
-// ─── API DE COTAÇÕES DE FRETE ─────────────────────────────────────────────────
-const cotacoesRoutes = require('./apps/cotacoes/routes');
-app.use('/api/cotacoes', cotacoesRoutes(supabase));
-
-// ─── API DE FATURAMENTO ───────────────────────────────────────────────────────
-const faturamentoRoutes = require('./apps/faturamento/routes');
-app.use('/api/pedidos', faturamentoRoutes(supabase));
-
-// ─── API DE CONTROLE DE FRETE ─────────────────────────────────────────────────
-// Substitui o backend legado em controle-frete.onrender.com
-// Os frontends devem apontar API_URL para este servidor central em /api/fretes
-const freteRoutes = require('./apps/frete/routes');
-app.use('/api/fretes', freteRoutes(supabase));
-
-// ─── API DE CONTAS A RECEBER ──────────────────────────────────────────────────
-const receberRoutes = require('./apps/receber/routes');
-app.use('/api/receber', receberRoutes(supabase));
-
-// ─── API DE VENDAS ────────────────────────────────────────────────────────────
-const vendasRoutes = require('./apps/vendas/routes');
-app.use('/api/vendas', vendasRoutes(supabase));
-
-// ─── ROTA DE ESTOQUE ──────────────────────────────────────────────────────────
-app.get('/api/estoque', verificarAutenticacao, async (req, res) => {
-    try {
-        const { data, error } = await supabase
-            .from('estoque')
-            .select('*')
-            .order('codigo', { ascending: true });
-        if (error) throw error;
-        res.json(data);
-    } catch (err) {
-        console.error('Erro ao listar estoque:', err.message);
-        res.status(500).json({ error: 'Erro ao listar estoque' });
-    }
-});
-
-app.patch('/api/estoque/:codigo', verificarAutenticacao, async (req, res) => {
-    try {
-        const { quantidade } = req.body;
-        const { data, error } = await supabase
-            .from('estoque')
-            .update({ quantidade })
-            .eq('codigo', req.params.codigo)
-            .select()
-            .single();
-        if (error) throw error;
-        res.json(data);
-    } catch (err) {
-        console.error('Erro ao atualizar estoque:', err.message);
-        res.status(500).json({ error: 'Erro ao atualizar estoque' });
-    }
-});
-
-// ─── ENDPOINT DE VERIFICAÇÃO DE SESSÃO (retrocompatibilidade) ────────────────
+// ─── ROTA: VERIFY SESSION (usada pelos frontends via PORTAL_URL) ─────────────
 app.post('/api/verify-session', async (req, res) => {
+    const { sessionToken } = req.body;
+    if (!sessionToken) return res.status(400).json({ valid: false });
+
     try {
-        const { sessionToken } = req.body;
-        if (!sessionToken) return res.json({ valid: false });
+        const { data, error } = await supabase
+            .from('sessions')
+            .select('user_id, expires_at')
+            .eq('token', sessionToken)
+            .maybeSingle();
 
-        const { data: session, error } = await supabase
-            .from('active_sessions')
-            .select(`*, users(id, username, name, is_admin, is_active, sector, apps, authorized_ips)`)
-            .eq('session_token', sessionToken)
-            .eq('is_active', true)
-            .gt('expires_at', new Date().toISOString())
-            .single();
-
-        if (error || !session || !session.users || !session.users.is_active) {
-            return res.json({ valid: false });
-        }
-
-        res.json({ valid: true, session: session.users });
+        if (error || !data) return res.json({ valid: false });
+        if (new Date(data.expires_at) < new Date()) return res.json({ valid: false });
+        res.json({ valid: true, userId: data.user_id });
     } catch (err) {
-        console.error('Erro ao verificar sessão:', err.message);
+        console.error('[verify-session]', err.message);
         res.status(500).json({ valid: false });
     }
 });
 
-// ─── 404 ──────────────────────────────────────────────────────────────────────
+// ─── ROTAS DOS MÓDULOS ───────────────────────────────────────────────────────
+
+// PORTAL
+app.use(express.static(path.join(__dirname, 'apps/portal')));
+
+// CONTAS A PAGAR  → /pagar  (frontend) + /api  (backend)
+app.use('/pagar', express.static(path.join(__dirname, 'apps/pagar')));
+app.use('/api',   require('./apps/pagar/routes'));
+
+// LUCRO REAL → /lucro (frontend) + /api (backend)
+app.use('/lucro', express.static(path.join(__dirname, 'apps/lucro')));
+app.use('/api',   require('./apps/lucro/routes'));
+
+// PREÇOS
+app.use('/precos', express.static(path.join(__dirname, 'apps/precos')));
+if (require('fs').existsSync(path.join(__dirname, 'apps/precos/routes.js'))) {
+    app.use('/api', require('./apps/precos/routes'));
+}
+
+// COMPRAS
+app.use('/compra', express.static(path.join(__dirname, 'apps/compra')));
+if (require('fs').existsSync(path.join(__dirname, 'apps/compra/routes.js'))) {
+    app.use('/api', require('./apps/compra/routes'));
+}
+
+// TRANSPORTADORAS
+app.use('/transportadoras', express.static(path.join(__dirname, 'apps/transportadoras')));
+if (require('fs').existsSync(path.join(__dirname, 'apps/transportadoras/routes.js'))) {
+    app.use('/api', require('./apps/transportadoras/routes'));
+}
+
+// COTAÇÕES
+app.use('/cotacoes', express.static(path.join(__dirname, 'apps/cotacoes')));
+if (require('fs').existsSync(path.join(__dirname, 'apps/cotacoes/routes.js'))) {
+    app.use('/api', require('./apps/cotacoes/routes'));
+}
+
+// FATURAMENTO
+app.use('/faturamento', express.static(path.join(__dirname, 'apps/faturamento')));
+if (require('fs').existsSync(path.join(__dirname, 'apps/faturamento/routes.js'))) {
+    app.use('/api', require('./apps/faturamento/routes'));
+}
+
+// ─── FALLBACK — PORTAL ROOT ──────────────────────────────────────────────────
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'apps/portal/index.html'));
+});
+
 app.use((req, res) => {
-    res.status(404).json({ error: '404 - Rota não encontrada' });
+    res.status(404).json({ error: 'Rota não encontrada' });
 });
 
-// ─── TRATAMENTO DE ERROS ──────────────────────────────────────────────────────
-app.use((error, req, res, next) => {
-    console.error('Erro interno:', error.message);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-});
-
-// ─── INICIAR ──────────────────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n✅ I.R. Comércio - Servidor Central rodando na porta ${PORT}`);
-    console.log(`✅ Database: Supabase conectado`);
-    console.log(`✅ Autenticação: Ativa (via Supabase)\n`);
-    APPS.forEach(appName => {
-        const appPath = path.join(__dirname, 'apps', appName);
-        const status = fs.existsSync(appPath) ? '✅' : '⚠️ ';
-        console.log(`  ${status} /${appName}`);
-    });
-    console.log(`\n📝 Logs salvos em: acessos.log\n`);
-    console.log('📡 Rotas de API registradas:');
-    console.log('  POST /api/portal/...       → Portal (auth)');
-    console.log('  GET  /api/transportadoras  → Transportadoras');
-    console.log('  GET  /api/cotacoes         → Cotações de Frete');
-    console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
-    console.log('  GET  /api/estoque          → Estoque');
-    console.log('  GET  /api/precos           → Preços');
-    console.log('  GET  /api/ordens           → Compras');
-    console.log('  ---');
-    console.log('  CRUD /api/fretes           → Controle de Frete ✅ NOVO');
-    console.log('  CRUD /api/receber          → Contas a Receber  ✅ NOVO');
-    console.log('  CRUD /api/vendas           → Vendas            ✅ NOVO');
-    console.log('  POST /api/vendas/sincronizar → Sync manual     ✅ NOVO\n');
+// ─── INICIALIZAÇÃO ────────────────────────────────────────────────────────────
+app.listen(PORT, () => {
+    console.log(`✅ Servidor rodando na porta ${PORT}`);
+    console.log(`   Portal   → http://localhost:${PORT}/`);
+    console.log(`   Pagar    → http://localhost:${PORT}/pagar`);
+    console.log(`   Lucro    → http://localhost:${PORT}/lucro`);
 });
