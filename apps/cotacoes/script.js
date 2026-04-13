@@ -329,12 +329,11 @@ function renderTable() {
             <td>${c.destino || '-'}</td>
             <td>${c.documento || c.numeroCotacao || '-'}</td>
             <td>${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</td>
-            <td>${c.previsaoEntrega ? formatarData(c.previsaoEntrega) : '-'}</td>
             <td><span class="badge ${statusClass}">${statusText}</span></td>
             <td onclick="event.stopPropagation()">
-                <div class="actions">
-                    <button onclick="editCotacao(${c.id})" class="action-btn" style="background:#6B7280;">Editar</button>
-                    <button onclick="deleteCotacao(${c.id})" class="action-btn" style="background:#EF4444;">Excluir</button>
+                <div class="actions" style="display:flex;gap:6px;justify-content:center;">
+                    <button onclick="editCotacao(${c.id})" class="action-btn" style="background:#6B7280;margin:0;">Editar</button>
+                    <button onclick="deleteCotacao(${c.id})" class="action-btn" style="background:#EF4444;margin:0;">Excluir</button>
                 </div>
             </td>
         </tr>`;
