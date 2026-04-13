@@ -284,15 +284,11 @@
                     </div>
                 </div>
 
-                <!-- Tab Itens — botão e total ACIMA da tabela -->
+                <!-- Tab Itens — botão ACIMA da tabela, total ABAIXO à esquerda -->
                 <div class="tab-content" id="tab-itens">
-                    <!-- Toolbar: botão à esquerda, total à direita -->
+                    <!-- Toolbar: apenas o botão Adicionar Item -->
                     <div class="items-tab-toolbar">
                         <button type="button" onclick="addItem()" class="btn-add-item">+ Adicionar Item</button>
-                        <div class="items-tab-total">
-                            <label for="valorTotalPedido">Valor Total do Pedido:</label>
-                            <input type="text" id="valorTotalPedido" readonly>
-                        </div>
                     </div>
 
                     <!-- Tabela com scroll -->
@@ -313,6 +309,12 @@
                             </thead>
                             <tbody id="itemsContainer"></tbody>
                         </table>
+                    </div>
+
+                    <!-- Total — canto inferior esquerdo, abaixo da tabela -->
+                    <div class="items-tab-footer">
+                        <label for="valorTotalPedido">Valor Total do Pedido:</label>
+                        <input type="text" id="valorTotalPedido" readonly>
                     </div>
                 </div>
 
