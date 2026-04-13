@@ -66,7 +66,7 @@ body {
 @keyframes spinSync {
     to { transform: rotate(360deg); }
 }
-.calendar-btn.syncing svg {
+.sync-btn.syncing svg {
     animation: spinSync 0.8s linear infinite;
 }
 
@@ -434,6 +434,25 @@ h2 {
     color: var(--primary);
 }
 
+.sync-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    margin-left: 0.25rem;
+}
+
+.sync-btn:hover {
+    background: var(--input-bg);
+    color: var(--primary);
+}
+
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -561,12 +580,12 @@ tbody tr:hover {
 }
 
 tbody tr.row-fechada {
-    background: rgba(34, 197, 94, 0.12) !important;
-    border-left: 3px solid #22C55E;
+    background: rgba(22, 163, 74, 0.12) !important;
+    border-left: 3px solid #16A34A;
 }
 
 tbody tr.row-fechada:hover {
-    background: rgba(34, 197, 94, 0.18) !important;
+    background: rgba(22, 163, 74, 0.18) !important;
 }
 
 .checkbox-wrapper {
@@ -602,8 +621,8 @@ tbody tr.row-fechada:hover {
 }
 
 .styled-checkbox:checked + .checkbox-label-styled {
-    background: var(--success-color);
-    border-color: var(--success-color);
+    background: #16A34A;
+    border-color: #16A34A;
 }
 
 .styled-checkbox:checked + .checkbox-label-styled::after {
