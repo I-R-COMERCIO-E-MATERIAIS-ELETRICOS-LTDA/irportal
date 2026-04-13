@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pedidos de Faturamento</title>
+    <title>Pedido de Faturamento</title>
     <link rel="icon" type="image/png" href="I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-PRETO.png">
     <link rel="stylesheet" href="styles.css">
 </head>
@@ -12,7 +12,7 @@
         <div class="container">
             <div class="header">
                 <div class="header-left">
-                    <h1>Pedidos de Faturamento</h1>
+                    <h1>Pedido de Faturamento</h1>
                     <div id="connectionStatus" class="connection-status offline">
                         <span class="status-dot"></span>
                     </div>
@@ -33,11 +33,14 @@
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                             <polyline points="14 2 14 8 20 8"></polyline>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
+                            <polyline points="10 9 9 9 8 9"></polyline>
                         </svg>
                     </div>
                     <div class="stat-content">
                         <div class="stat-value" id="totalPedidos">0</div>
-                        <div class="stat-label">Total de Pedidos</div>
+                        <div class="stat-label">Pedidos</div>
                     </div>
                 </div>
                 <div class="stat-card stat-card-success">
@@ -55,8 +58,7 @@
                     <div class="stat-icon stat-icon-warning">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"></circle>
-                            <line x1="12" y1="8" x2="12" y2="12"></line>
-                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                            <polyline points="12 6 12 12 16 14"></polyline>
                         </svg>
                     </div>
                     <div class="stat-content">
@@ -64,16 +66,16 @@
                         <div class="stat-label">Pendentes</div>
                     </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-icon stat-icon-default">
+                <div class="stat-card stat-card-info">
+                    <div class="stat-icon stat-icon-info">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="12" y1="1" x2="12" y2="23"></line>
                             <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value" id="valorTotal">R$ 0,00</div>
-                        <div class="stat-label">Valor Total Emitido</div>
+                        <div class="stat-value stat-value-info" id="valorTotal">R$ 0,00</div>
+                        <div class="stat-label">Faturado</div>
                     </div>
                 </div>
             </div>
@@ -85,8 +87,8 @@
                         <circle cx="11" cy="11" r="8"></circle>
                         <path d="m21 21-4.35-4.35"></path>
                     </svg>
-                    <input type="text" id="search" placeholder="Pesquisar por número ou razão social..." oninput="filterPedidos()">
-
+                    <input type="text" id="search" placeholder="Pesquisar" oninput="filterPedidos()">
+                    
                     <div class="search-bar-filters">
                         <div class="filter-dropdown-inline">
                             <select id="filterVendedor" onchange="filterPedidos()">
@@ -100,7 +102,7 @@
                             <select id="filterStatus" onchange="filterPedidos()">
                                 <option value="">Todos os Status</option>
                                 <option value="pendente">Pendente</option>
-                                <option value="emitida">Emitido</option>
+                                <option value="emitida">Emitida</option>
                             </select>
                             <svg class="dropdown-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="6 9 12 15 18 9"></polyline>
@@ -131,11 +133,10 @@
                             <line x1="3" y1="10" x2="21" y2="10"></line>
                         </svg>
                     </button>
-                    <button id="btnSync" onclick="syncData()" class="sync-btn" title="Sincronizar dados">
+                    <button class="calendar-btn" onclick="syncData()" title="Sincronizar" id="btnSync">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="23 4 23 10 17 10"></polyline>
-                            <polyline points="1 20 1 14 7 14"></polyline>
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                         </svg>
                     </button>
                 </div>
@@ -165,17 +166,9 @@
             <div class="card table-card">
                 <div style="overflow-x: auto;">
                     <table>
-                        <thead id="tableHead">
+                        <thead>
                             <tr>
-                                <th style="width: 40px; text-align: center;">
-                                    <span style="font-size: 1.1rem;">✓</span>
-                                </th>
-                                <th>Nº Pedido</th>
-                                <th>Razão Social</th>
-                                <th>Data Emissão</th>
-                                <th>Valor Total</th>
-                                <th>Status</th>
-                                <th style="text-align: center;">Ações</th>
+                                <!-- O cabeçalho será preenchido dinamicamente pelo JavaScript -->
                             </tr>
                         </thead>
                         <tbody id="pedidosContainer"></tbody>
@@ -187,12 +180,12 @@
 
     <!-- MODAL DE FORMULÁRIO -->
     <div class="modal-overlay" id="formModal">
-        <div class="modal-content modal-large">
+        <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title" id="formTitle">Novo Pedido de Faturamento</h3>
                 <button class="close-modal" onclick="closeFormModal()">✕</button>
             </div>
-
+            
             <div class="tabs-container">
                 <div class="tabs-nav">
                     <button class="tab-btn active" onclick="switchTab('tab-geral')">Geral</button>
@@ -202,84 +195,74 @@
                     <button class="tab-btn" onclick="switchTab('tab-transporte')">Transporte</button>
                 </div>
 
-                <!-- Tab Geral -->
+                <!-- TAB GERAL -->
                 <div class="tab-content active" id="tab-geral">
                     <div class="form-grid">
                         <div class="form-group">
-                            <label>Nº Pedido</label>
-                            <input type="text" id="codigo" readonly placeholder="Gerado automaticamente">
+                            <label for="codigo">Código</label>
+                            <input type="text" id="codigo" readonly>
                         </div>
                         <div class="form-group">
-                            <label>Data de Registro</label>
+                            <label for="documento">Documento</label>
+                            <input type="text" id="documento">
+                        </div>
+                        <div class="form-group">
+                            <label for="responsavel">Responsável *</label>
+                            <input type="text" id="responsavel" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="dataRegistro">Data de Registro</label>
                             <input type="text" id="dataRegistro" readonly>
                         </div>
-                        <div class="form-group">
-                            <label>Responsável *</label>
-                            <select id="responsavel">
-                                <option value="">Selecione...</option>
-                                <option value="Roberto">Roberto</option>
-                                <option value="Rosemeire">Rosemeire</option>
-                                <option value="Pollyanna">Pollyanna</option>
-                                <option value="Isaque">Isaque</option>
-                                <option value="Gustavo">Gustavo</option>
-                                <option value="Miguel">Miguel</option>
-                                <option value="Luiz">Luiz</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Documento</label>
-                            <input type="text" id="documento" placeholder="Nº do documento">
-                        </div>
                     </div>
                 </div>
 
-                <!-- Tab Faturamento - sem Bairro, Município, UF, Número; Endereço no final e maior -->
+                <!-- TAB FATURAMENTO -->
                 <div class="tab-content" id="tab-faturamento">
                     <div class="form-grid">
-                        <div class="form-group form-group-full" style="position: relative;">
-                            <label>CNPJ *</label>
-                            <input type="text" id="cnpj" placeholder="00.000.000/0000-00" oninput="buscarClientePorCNPJ(this.value)">
-                            <div id="cnpjSuggestions" class="suggestions-dropdown" style="display:none;"></div>
-                        </div>
-                        <div class="form-group form-group-full">
-                            <label>Razão Social *</label>
-                            <input type="text" id="razaoSocial" placeholder="RAZÃO SOCIAL">
+                        <div class="form-group">
+                            <label for="cnpj">CNPJ</label>
+                            <input type="text" id="cnpj" oninput="buscarClientePorCNPJ(this.value)" maxlength="18">
+                            <div id="cnpjSuggestions" class="autocomplete-suggestions"></div>
                         </div>
                         <div class="form-group">
-                            <label>Inscrição Estadual</label>
-                            <input type="text" id="inscricaoEstadual" placeholder="INSCRIÇÃO ESTADUAL">
+                            <label for="razaoSocial">Razão Social</label>
+                            <input type="text" id="razaoSocial">
                         </div>
                         <div class="form-group">
-                            <label>Telefone</label>
-                            <input type="text" id="telefone" placeholder="(00) 00000-0000">
+                            <label for="inscricaoEstadual">Inscrição Estadual</label>
+                            <input type="text" id="inscricaoEstadual">
                         </div>
                         <div class="form-group">
-                            <label>Contato</label>
-                            <input type="text" id="contato" placeholder="NOME DO CONTATO">
+                            <label for="telefone">Telefone</label>
+                            <input type="text" id="telefone" maxlength="15">
                         </div>
                         <div class="form-group">
-                            <label>E-mail</label>
-                            <input type="email" id="email" placeholder="email@empresa.com">
+                            <label for="contato">Contato</label>
+                            <input type="text" id="contato">
                         </div>
                         <div class="form-group">
-                            <label>Documento</label>
-                            <input type="text" id="documento" placeholder="Nº do documento">
+                            <label for="email">E-mail</label>
+                            <input type="email" id="email">
                         </div>
-                        <!-- Endereço completo, último e maior -->
-                        <div class="form-group form-group-full">
-                            <label>Endereço Completo *</label>
-                            <input type="text" id="endereco" placeholder="Rua, número, bairro, cidade, UF, CEP">
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="endereco">Endereço</label>
+                            <input type="text" id="endereco">
                         </div>
                     </div>
                 </div>
 
-                <!-- Tab Itens -->
+                <!-- TAB ITENS -->
                 <div class="tab-content" id="tab-itens">
-                    <div class="items-tab-toolbar">
-                        <button type="button" onclick="addItem()" class="btn-add-item">+ Adicionar Item</button>
-                    </div>
-                    <div class="items-form-wrapper">
-                        <table class="items-form-table">
+                    <button type="button" onclick="addItem()" class="btn-add-item" style="margin-bottom: 1rem; background: #22C55E;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                        </svg>
+                        Adicionar Item
+                    </button>
+                    <div class="items-table-container">
+                        <table class="items-table">
                             <thead>
                                 <tr>
                                     <th>Item</th>
@@ -287,8 +270,8 @@
                                     <th>Especificação</th>
                                     <th>UN</th>
                                     <th>Qtd</th>
-                                    <th>Vl. Unit.</th>
-                                    <th>Vl. Total</th>
+                                    <th>Valor Un. (R$)</th>
+                                    <th>Valor Total</th>
                                     <th>NCM</th>
                                     <th></th>
                                 </tr>
@@ -296,77 +279,75 @@
                             <tbody id="itemsContainer"></tbody>
                         </table>
                     </div>
-                    <div class="items-tab-footer">
-                        <label for="valorTotalPedido">Valor Total do Pedido:</label>
-                        <input type="text" id="valorTotalPedido" readonly>
+                    <div class="form-grid" style="margin-top: 1.5rem;">
+                        <div class="form-group">
+                            <label for="valorTotalPedido">Valor Total do Pedido</label>
+                            <input type="text" id="valorTotalPedido" readonly>
+                        </div>
+                        <div class="form-group">
+                            <label for="peso">Peso Total (kg)</label>
+                            <input type="text" id="peso">
+                        </div>
+                        <div class="form-group">
+                            <label for="quantidade">Quantidade Total</label>
+                            <input type="number" id="quantidade" min="0" step="1">
+                        </div>
+                        <div class="form-group">
+                            <label for="volumes">Volumes</label>
+                            <input type="text" id="volumes">
+                        </div>
                     </div>
                 </div>
 
-                <!-- Tab Entrega - Local de Entrega por último e maior -->
+                <!-- TAB ENTREGA -->
                 <div class="tab-content" id="tab-entrega">
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label>Peso (kg)</label>
-                            <input type="number" id="peso" min="0" step="0.01" placeholder="0.00">
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label for="localEntrega">Local de Entrega</label>
+                            <textarea id="localEntrega" rows="3"></textarea>
                         </div>
                         <div class="form-group">
-                            <label>Quantidade de Volumes</label>
-                            <input type="number" id="quantidade" min="0" step="1" placeholder="0">
-                        </div>
-                        <div class="form-group">
-                            <label>Volumes</label>
-                            <input type="text" id="volumes" placeholder="Descrição dos volumes">
-                        </div>
-                        <div class="form-group">
-                            <label>Setor</label>
-                            <input type="text" id="setor" placeholder="SETOR">
-                        </div>
-                        <div class="form-group">
-                            <label>Previsão de Entrega</label>
-                            <input type="date" id="previsaoEntrega">
-                        </div>
-                        <div class="form-group form-group-full">
-                            <label>Local de Entrega</label>
-                            <input type="text" id="localEntrega" placeholder="LOCAL DE ENTREGA (endereço completo, setor, ponto de referência)">
+                            <label for="setor">Setor</label>
+                            <input type="text" id="setor">
                         </div>
                     </div>
                 </div>
 
-                <!-- Tab Transporte - campos mais compactos -->
+                <!-- TAB TRANSPORTE -->
                 <div class="tab-content" id="tab-transporte">
-                    <div class="form-grid form-grid-compact">
+                    <div class="form-grid">
                         <div class="form-group">
-                            <label>Transportadora</label>
+                            <label for="transportadora">Transportadora</label>
                             <select id="transportadora">
-                                <option value="">Selecione...</option>
+                                <option value="">Carregando...</option>
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Valor do Frete</label>
-                            <input type="text" id="valorFrete" placeholder="R$ 0,00">
+                            <label for="valorFrete">Valor do Frete (R$)</label>
+                            <input type="text" id="valorFrete">
                         </div>
                         <div class="form-group">
-                            <label>Vendedor</label>
+                            <label for="vendedor">Vendedor</label>
                             <select id="vendedor">
                                 <option value="">Selecione...</option>
-                                <option value="Roberto">Roberto</option>
-                                <option value="Rosemeire">Rosemeire</option>
-                                <option value="Pollyanna">Pollyanna</option>
-                                <option value="Isaque">Isaque</option>
-                                <option value="Gustavo">Gustavo</option>
-                                <option value="Miguel">Miguel</option>
-                                <option value="Luiz">Luiz</option>
+                                <option value="Roberto">ROBERTO</option>
+                                <option value="Isaque">ISAQUE</option>
+                                <option value="Miguel">MIGUEL</option>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="previsaoEntrega">Previsão de Entrega</label>
+                            <input type="date" id="previsaoEntrega">
                         </div>
                     </div>
                 </div>
             </div>
 
             <div class="modal-actions">
-                <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display:none;">Anterior</button>
+                <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display: none;">Anterior</button>
                 <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo</button>
-                <button type="button" id="btnSave" onclick="savePedido()" class="btn-save-green" style="display:none;">Salvar Pedido</button>
                 <button type="button" onclick="closeFormModal()" class="cancel-close">Cancelar</button>
+                <button type="button" id="btnSave" onclick="savePedido()" class="btn-save-green" style="display: none;">Salvar Pedido</button>
             </div>
         </div>
     </div>
@@ -378,7 +359,7 @@
                 <h3 class="modal-title">Pedido Nº <span id="modalCodigo"></span></h3>
                 <button class="close-modal" onclick="closeInfoModal()">✕</button>
             </div>
-
+            
             <div class="tabs-container">
                 <div class="tabs-nav">
                     <button class="tab-btn active" onclick="switchInfoTab('info-tab-geral')">Geral</button>
@@ -387,6 +368,7 @@
                     <button class="tab-btn" onclick="switchInfoTab('info-tab-entrega')">Entrega</button>
                     <button class="tab-btn" onclick="switchInfoTab('info-tab-transporte')">Transporte</button>
                 </div>
+
                 <div class="tab-content active" id="info-tab-geral"></div>
                 <div class="tab-content" id="info-tab-faturamento"></div>
                 <div class="tab-content" id="info-tab-itens"></div>
@@ -395,7 +377,7 @@
             </div>
 
             <div class="modal-actions">
-                <button type="button" id="btnInfoClose" onclick="closeInfoModal()" class="cancel-close">Fechar</button>
+                <button type="button" onclick="closeInfoModal()" class="cancel-close">Fechar</button>
             </div>
         </div>
     </div>
