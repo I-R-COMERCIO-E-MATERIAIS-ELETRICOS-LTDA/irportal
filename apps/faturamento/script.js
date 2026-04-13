@@ -1,8 +1,10 @@
 // ============================================
 // CONFIGURAÇÃO
 // ============================================
-const PORTAL_URL = window.location.origin;
-const API_URL = `${window.location.origin}/api`;
+const PORTAL_URL = 'https://ir-comercio-portal-zcan.onrender.com';
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3004/api'
+    : `${window.location.origin}/api`;
 
 let pedidos = [];
 let isOnline = false;
@@ -322,8 +324,9 @@ async function loadPedidos() {
 // ============================================
 async function loadTransportadorasCache() {
     try {
+        const TRANSP_API = 'https://transportadoras.onrender.com/api';
         const headers = { 'Accept': 'application/json', 'X-Session-Token': sessionToken };
-        const response = await fetch(`${API_URL}/transportadoras?limit=200`, { headers });
+        const response = await fetch(`${TRANSP_API}/transportadoras?page=1&limit=200`, { headers, mode: 'cors' });
         if (!response.ok) return;
         const result = await response.json();
         const lista = Array.isArray(result) ? result : (result.data || []);
@@ -801,14 +804,14 @@ async function openFormModal() {
     currentTabIndex = 0;
     document.getElementById('formTitle').textContent = 'Novo Pedido de Faturamento';
     resetForm();
+
     document.getElementById('codigo').value = '';
     document.getElementById('dataRegistro').value = getDataAtual();
 
     const responsavelAuto = detectResponsavelFromUser();
-    const responsavelSelect = document.getElementById('responsavel');
-    if (responsavelSelect && responsavelAuto) {
-        responsavelSelect.value = responsavelAuto;
-        responsavelSelect.disabled = true;
+    const responsavelInput = document.getElementById('responsavel');
+    if (responsavelInput && responsavelAuto) {
+        responsavelInput.value = responsavelAuto;
     }
 
     activateTab(0);
@@ -907,7 +910,6 @@ function addItem() {
             <input type="text" 
                    id="codigoEstoque-${itemCounter}" 
                    class="codigo-estoque"
-                   placeholder="CÓDIGO"
                    onblur="verificarEstoque(${itemCounter})"
                    onchange="buscarDadosEstoque(${itemCounter})">
         </td>
@@ -1056,7 +1058,7 @@ function getItems() {
 }
 
 // ============================================
-// SALVAR PEDIDO (sem bairro, municipio, uf, numero)
+// SALVAR PEDIDO (sem campos bairro/municipio/uf/numero)
 // ============================================
 async function savePedido() {
     const responsavel = document.getElementById('responsavel').value.trim();
@@ -1145,7 +1147,7 @@ async function savePedido() {
 }
 
 // ============================================
-// EDITAR PEDIDO (sem bairro, municipio, uf, numero)
+// EDITAR PEDIDO
 // ============================================
 async function editPedido(id) {
     const pedido = pedidos.find(p => p.id === id);
@@ -1160,9 +1162,7 @@ async function editPedido(id) {
     document.getElementById('documento').value = pedido.documento || '';
     
     if (pedido.responsavel) {
-        const responsavelSelect = document.getElementById('responsavel');
-        responsavelSelect.value = pedido.responsavel;
-        responsavelSelect.disabled = true;
+        document.getElementById('responsavel').value = pedido.responsavel;
     }
     
     if (pedido.data_registro) {
@@ -1441,7 +1441,7 @@ function switchInfoTab(tabId, btn) {
 }
 
 // ============================================
-// TOGGLE EMISSÃO
+// TOGGLE EMISSÃO (DEBITAR ESTOQUE)
 // ============================================
 async function toggleEmissao(id, checked) {
     const pedido = pedidos.find(p => p.id === id);
@@ -1597,7 +1597,7 @@ async function executarEmissao(id) {
 }
 
 // ============================================
-// GERAR ETIQUETA
+// GERAR ETIQUETA AUTOMÁTICA (com modal para NF)
 // ============================================
 function gerarEtiqueta(id) {
     const pedido = pedidos.find(p => p.id === id);
