@@ -327,7 +327,7 @@ function renderTable() {
             <td>${formatarData(c.dataCotacao)}</td>
             <td><strong>${c.transportadora || '-'}</strong></td>
             <td>${c.destino || '-'}</td>
-            <td>${c.documento || c.numeroCotacao || '-'}</td>
+            <td style="max-width:120px;word-break:break-word;white-space:normal;">${c.documento || c.numeroCotacao || '-'}</td>
             <td>${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</td>
             <td><span class="badge ${statusClass}">${statusText}</span></td>
             <td onclick="event.stopPropagation()">
