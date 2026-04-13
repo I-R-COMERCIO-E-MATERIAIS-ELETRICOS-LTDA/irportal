@@ -101,17 +101,12 @@ function getDataLocalISO() {
 
 function formatarData(data) {
     if (!data) return '';
-    
-    // Se for string no formato YYYY-MM-DD, extrai os componentes diretamente
     if (typeof data === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data)) {
         const [ano, mes, dia] = data.split('-');
         return `${dia}/${mes}/${ano}`;
     }
-    
-    // Caso contrário, tenta converter via Date (para strings ISO com hora)
     const d = new Date(data);
     if (isNaN(d.getTime())) return '';
-    
     const dia = String(d.getDate()).padStart(2, '0');
     const mes = String(d.getMonth() + 1).padStart(2, '0');
     const ano = d.getFullYear();
@@ -215,7 +210,6 @@ function inicializarApp() {
     loadTransportadorasCache();
     loadAllClientesCache();
     
-    // Listener para salvar com Enter no modal de formulário
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
             const formModal = document.getElementById('formModal');
@@ -652,7 +646,7 @@ function filterPedidos() {
 }
 
 // ============================================
-// ATUALIZAR TABELA (com botão etiqueta azul marinho)
+// ATUALIZAR TABELA
 // ============================================
 function updateTable() {
     const container = document.getElementById('pedidosContainer');
@@ -683,7 +677,6 @@ function updateTable() {
     
     const canToggle = userCanToggleEmissao();
 
-    // Define o cabeçalho dinamicamente
     let headerHtml;
     if (canToggle) {
         headerHtml = `
@@ -748,7 +741,6 @@ function updateTable() {
             `;
         }
 
-        // Botão etiqueta agora com azul marinho (#1E3A8A)
         const actions = `
             <td>
                 <div class="actions">
@@ -790,7 +782,6 @@ function updateTable() {
         }
     }).join('');
 
-    // Adiciona evento de clique nas linhas para abrir o modal de visualização
     document.querySelectorAll('#pedidosContainer tr').forEach(tr => {
         tr.addEventListener('click', function(e) {
             if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button') || e.target.closest('input')) {
@@ -803,17 +794,14 @@ function updateTable() {
 }
 
 // ============================================
-// MODAL DE FORMULÁRIO (MODIFICADO: código vazio)
+// MODAL DE FORMULÁRIO
 // ============================================
 async function openFormModal() {
     editingId = null;
     currentTabIndex = 0;
     document.getElementById('formTitle').textContent = 'Novo Pedido de Faturamento';
     resetForm();
-
-    // Código fica vazio (será gerado no backend)
     document.getElementById('codigo').value = '';
-
     document.getElementById('dataRegistro').value = getDataAtual();
 
     const responsavelAuto = detectResponsavelFromUser();
@@ -1068,7 +1056,7 @@ function getItems() {
 }
 
 // ============================================
-// SALVAR PEDIDO (MODIFICADO: não envia código em novo pedido)
+// SALVAR PEDIDO (sem bairro, municipio, uf, numero)
 // ============================================
 async function savePedido() {
     const responsavel = document.getElementById('responsavel').value.trim();
@@ -1089,17 +1077,11 @@ async function savePedido() {
         return;
     }
     
-    // Monta o objeto do pedido
     const pedido = {
-        // Não inclui codigo para novos pedidos
         cnpj,
         razao_social: razaoSocial,
         inscricao_estadual: document.getElementById('inscricaoEstadual').value.trim(),
         endereco,
-        bairro: document.getElementById('bairro')?.value.trim() || '',
-        municipio: document.getElementById('municipio')?.value.trim() || '',
-        uf: document.getElementById('uf')?.value.trim() || '',
-        numero: document.getElementById('numero')?.value.trim() || '',
         telefone: document.getElementById('telefone').value.trim(),
         contato: document.getElementById('contato').value.trim(),
         email: document.getElementById('email').value.trim().toLowerCase(),
@@ -1123,9 +1105,8 @@ async function savePedido() {
     if (!editingId) {
         pedido.responsavel = responsavel;
         pedido.status = 'pendente';
-        pedido.data_registro = getDataLocalISO(); // Salva apenas a data local
+        pedido.data_registro = getDataLocalISO();
     } else {
-        // Em edição, inclui o código
         pedido.codigo = document.getElementById('codigo').value.trim();
     }
     
@@ -1152,7 +1133,6 @@ async function savePedido() {
         await loadPedidos();
         closeFormModal(true);
         
-        const codigoExibido = wasEditing ? pedido.codigo : 'novo';
         if (wasEditing) {
             showMessage(`Pedido ${pedido.codigo} atualizado`, 'success');
         } else {
@@ -1165,7 +1145,7 @@ async function savePedido() {
 }
 
 // ============================================
-// EDITAR PEDIDO
+// EDITAR PEDIDO (sem bairro, municipio, uf, numero)
 // ============================================
 async function editPedido(id) {
     const pedido = pedidos.find(p => p.id === id);
@@ -1461,14 +1441,13 @@ function switchInfoTab(tabId, btn) {
 }
 
 // ============================================
-// TOGGLE EMISSÃO (DEBITAR ESTOQUE)
+// TOGGLE EMISSÃO
 // ============================================
 async function toggleEmissao(id, checked) {
     const pedido = pedidos.find(p => p.id === id);
     if (!pedido) return;
 
     if (checked && pedido.status === 'pendente') {
-        // Validação 1: Informações básicas
         if (!pedido.cnpj || !pedido.razao_social || !pedido.endereco) {
             showMessage(`Não existem informações suficientes para o pedido ${pedido.codigo}`, 'error');
             document.getElementById(`check-${id}`).checked = false;
@@ -1476,17 +1455,13 @@ async function toggleEmissao(id, checked) {
         }
 
         const items = Array.isArray(pedido.items) ? pedido.items : [];
-
-        // Verificar se algum item tem código de estoque
         const hasStockCode = items.some(item => item.codigoEstoque && item.codigoEstoque.trim() !== '');
 
         if (!hasStockCode) {
-            // Emissão sem estoque: apenas atualiza status, sem debitar
             await executarEmissaoSemEstoque(id);
             return;
         }
 
-        // Verificar se códigos existem no estoque e se há quantidade suficiente
         let estoqueInsuficiente = false;
         for (const item of items) {
             if (!item.codigoEstoque) continue;
@@ -1506,11 +1481,8 @@ async function toggleEmissao(id, checked) {
             document.getElementById(`check-${id}`).checked = false;
             return;
         }
-
-        // Emissão normal com estoque
         await executarEmissao(id);
     } else if (!checked && pedido.status === 'emitida') {
-        // Reverter emissão
         document.getElementById(`check-${id}`).checked = true;
         await executarReverterEmissao(id);
     }
@@ -1589,7 +1561,6 @@ async function executarEmissao(id) {
         const checkboxLabel = document.querySelector(`label[for="check-${id}"]`);
         if (checkboxLabel) { checkboxLabel.style.opacity = '0.5'; checkboxLabel.style.pointerEvents = 'none'; }
 
-        // Debitar estoque
         for (const item of items) {
             if (!item.codigoEstoque) continue;
             const itemEstoque = estoqueCache[item.codigoEstoque];
@@ -1603,7 +1574,6 @@ async function executarEmissao(id) {
             if (!resp.ok) throw new Error('Erro ao atualizar estoque');
         }
 
-        // Atualizar status
         const response = await fetch(`${API_URL}/pedidos/${id}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
@@ -1627,7 +1597,7 @@ async function executarEmissao(id) {
 }
 
 // ============================================
-// GERAR ETIQUETA AUTOMÁTICA (com modal para NF)
+// GERAR ETIQUETA
 // ============================================
 function gerarEtiqueta(id) {
     const pedido = pedidos.find(p => p.id === id);
