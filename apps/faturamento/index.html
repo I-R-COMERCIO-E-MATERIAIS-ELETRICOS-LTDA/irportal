@@ -233,7 +233,7 @@
                     </div>
                 </div>
 
-                <!-- Tab Faturamento -->
+                <!-- Tab Faturamento - sem Bairro, Município, UF, Número; Endereço no final e maior -->
                 <div class="tab-content" id="tab-faturamento">
                     <div class="form-grid">
                         <div class="form-group form-group-full" style="position: relative;">
@@ -253,26 +253,6 @@
                             <label>Telefone</label>
                             <input type="text" id="telefone" placeholder="(00) 00000-0000">
                         </div>
-                        <div class="form-group form-group-full">
-                            <label>Endereço *</label>
-                            <input type="text" id="endereco" placeholder="ENDEREÇO COMPLETO">
-                        </div>
-                        <div class="form-group">
-                            <label>Bairro</label>
-                            <input type="text" id="bairro" placeholder="BAIRRO">
-                        </div>
-                        <div class="form-group">
-                            <label>Município</label>
-                            <input type="text" id="municipio" placeholder="MUNICÍPIO">
-                        </div>
-                        <div class="form-group">
-                            <label>UF</label>
-                            <input type="text" id="uf" placeholder="UF" maxlength="2">
-                        </div>
-                        <div class="form-group">
-                            <label>Número</label>
-                            <input type="text" id="numero" placeholder="Nº">
-                        </div>
                         <div class="form-group">
                             <label>Contato</label>
                             <input type="text" id="contato" placeholder="NOME DO CONTATO">
@@ -281,17 +261,23 @@
                             <label>E-mail</label>
                             <input type="email" id="email" placeholder="email@empresa.com">
                         </div>
+                        <div class="form-group">
+                            <label>Documento</label>
+                            <input type="text" id="documento" placeholder="Nº do documento">
+                        </div>
+                        <!-- Endereço completo, último e maior -->
+                        <div class="form-group form-group-full">
+                            <label>Endereço Completo *</label>
+                            <input type="text" id="endereco" placeholder="Rua, número, bairro, cidade, UF, CEP">
+                        </div>
                     </div>
                 </div>
 
-                <!-- Tab Itens — botão ACIMA da tabela, total ABAIXO à esquerda -->
+                <!-- Tab Itens -->
                 <div class="tab-content" id="tab-itens">
-                    <!-- Toolbar: apenas o botão Adicionar Item -->
                     <div class="items-tab-toolbar">
                         <button type="button" onclick="addItem()" class="btn-add-item">+ Adicionar Item</button>
                     </div>
-
-                    <!-- Tabela com scroll -->
                     <div class="items-form-wrapper">
                         <table class="items-form-table">
                             <thead>
@@ -310,15 +296,13 @@
                             <tbody id="itemsContainer"></tbody>
                         </table>
                     </div>
-
-                    <!-- Total — canto inferior esquerdo, abaixo da tabela -->
                     <div class="items-tab-footer">
                         <label for="valorTotalPedido">Valor Total do Pedido:</label>
                         <input type="text" id="valorTotalPedido" readonly>
                     </div>
                 </div>
 
-                <!-- Tab Entrega -->
+                <!-- Tab Entrega - Local de Entrega por último e maior -->
                 <div class="tab-content" id="tab-entrega">
                     <div class="form-grid">
                         <div class="form-group">
@@ -334,10 +318,6 @@
                             <input type="text" id="volumes" placeholder="Descrição dos volumes">
                         </div>
                         <div class="form-group">
-                            <label>Local de Entrega</label>
-                            <input type="text" id="localEntrega" placeholder="LOCAL DE ENTREGA">
-                        </div>
-                        <div class="form-group">
                             <label>Setor</label>
                             <input type="text" id="setor" placeholder="SETOR">
                         </div>
@@ -345,12 +325,16 @@
                             <label>Previsão de Entrega</label>
                             <input type="date" id="previsaoEntrega">
                         </div>
+                        <div class="form-group form-group-full">
+                            <label>Local de Entrega</label>
+                            <input type="text" id="localEntrega" placeholder="LOCAL DE ENTREGA (endereço completo, setor, ponto de referência)">
+                        </div>
                     </div>
                 </div>
 
-                <!-- Tab Transporte -->
+                <!-- Tab Transporte - campos mais compactos -->
                 <div class="tab-content" id="tab-transporte">
-                    <div class="form-grid">
+                    <div class="form-grid form-grid-compact">
                         <div class="form-group">
                             <label>Transportadora</label>
                             <select id="transportadora">
@@ -381,7 +365,7 @@
             <div class="modal-actions">
                 <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display:none;">Anterior</button>
                 <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo</button>
-                <button type="button" id="btnSave" onclick="savePedido()" style="display:none;">Salvar Pedido</button>
+                <button type="button" id="btnSave" onclick="savePedido()" class="btn-save-green" style="display:none;">Salvar Pedido</button>
                 <button type="button" onclick="closeFormModal()" class="cancel-close">Cancelar</button>
             </div>
         </div>
