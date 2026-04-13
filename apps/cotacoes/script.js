@@ -314,7 +314,7 @@ function renderTable() {
         const statusText  = aprovada ? 'APROVADA' : (reprovada ? 'REPROVADA' : 'PENDENTE');
 
         return `
-        <tr data-id="${c.id}" style="cursor:pointer;" onclick="viewCotacao(${c.id})">
+        <tr data-id="${c.id}" class="${aprovada ? 'row-fechada' : ''}" style="cursor:pointer;" onclick="viewCotacao(${c.id})">
             <td style="text-align:center;">
                 <div class="checkbox-wrapper">
                     <input type="checkbox" class="styled-checkbox" id="check-${c.id}"
