@@ -174,12 +174,8 @@ async function checkServerStatus() {
 
 function updateConnectionStatus() {
     const statusElement = document.getElementById('connectionStatus');
-    const textElement = document.getElementById('connectionText');
     if (statusElement) {
         statusElement.className = isOnline ? 'connection-status online' : 'connection-status offline';
-    }
-    if (textElement) {
-        textElement.textContent = isOnline ? 'Online' : 'Offline';
     }
 }
 
@@ -1285,6 +1281,12 @@ async function toggleStatus(id) {
     }
 }
 
+// Abre o modal de visualização ao clicar na linha (ignora cliques em botões e checkboxes)
+function handleRowClick(event, id) {
+    if (event.target.closest('button') || event.target.closest('input')) return;
+    viewOrdem(id);
+}
+
 function viewOrdem(id) {
     const ordem = ordens.find(o => String(o.id) === String(id));
     if (!ordem) return;
@@ -1485,7 +1487,9 @@ function updateTable() {
     });
     
     container.innerHTML = filteredOrdens.map(ordem => `
-        <tr class="${ordem.status === 'fechada' ? 'row-fechada' : ''}">
+        <tr class="${ordem.status === 'fechada' ? 'row-fechada' : ''}"
+            onclick="handleRowClick(event, '${ordem.id}')"
+            style="cursor: pointer;">
             <td style="text-align: center; padding: 8px;">
                 <div class="checkbox-wrapper">
                     <input 
@@ -1508,7 +1512,6 @@ function updateTable() {
             </td>
             <td class="actions-cell">
                 <div class="actions">
-                    <button onclick="viewOrdem('${ordem.id}')" class="action-btn view" title="Ver detalhes">Ver</button>
                     <button onclick="editOrdem('${ordem.id}')" class="action-btn edit" title="Editar">Editar</button>
                     <button onclick="generatePDFFromTable('${ordem.id}')" class="action-btn success" title="Gerar PDF">PDF</button>
                     <button onclick="deleteOrdem('${ordem.id}')" class="action-btn delete" title="Excluir">Excluir</button>
