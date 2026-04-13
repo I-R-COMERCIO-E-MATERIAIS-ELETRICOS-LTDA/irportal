@@ -789,11 +789,11 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
    ABA ITENS — layout reformulado
    ════════════════════════════════════════════════ */
 
-/* Barra superior: botão + total */
+/* Barra superior: apenas o botão Adicionar Item */
 .items-tab-toolbar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     margin-bottom: 0.75rem;
     gap: 1rem;
     flex-wrap: wrap;
@@ -811,6 +811,31 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
 
 .btn-add-item:hover { background: #2563EB; }
 
+/* Total movido para baixo da tabela — canto inferior esquerdo */
+.items-tab-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.6rem;
+    margin-top: 0.75rem;
+}
+
+.items-tab-footer label {
+    margin: 0;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.items-tab-footer input {
+    width: 160px;
+    padding: 7px 12px;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+/* Mantém compatibilidade com o antigo .items-tab-total caso ainda exista */
 .items-tab-total {
     display: flex;
     align-items: center;
@@ -848,7 +873,7 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
 /* Tabela interna */
 .items-form-table {
     width: 100%;
-    min-width: 860px;
+    min-width: 900px;
     border-collapse: collapse;
     table-layout: fixed;
 }
@@ -860,7 +885,7 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    padding: 9px 7px;
+    padding: 9px 8px;
     border-bottom: 1px solid var(--th-border);
     white-space: nowrap;
     text-align: left;
@@ -870,40 +895,42 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
 }
 
 .items-form-table td {
-    padding: 5px 5px;
+    padding: 5px 6px;
     border-bottom: 1px solid var(--border-color);
     vertical-align: middle;
 }
 
 .items-form-table tbody tr:last-child td { border-bottom: none; }
 
-/* Larguras das colunas */
+/* ── Larguras das colunas — corrigidas ──
+   Item e Código ficam mais largos/espaçados,
+   Especificação reduzida de auto para 160px  */
 .items-form-table th:nth-child(1),
-.items-form-table td:nth-child(1) { width: 44px; text-align: center; }  /* Item */
+.items-form-table td:nth-child(1) { width: 52px; text-align: center; }   /* Item */
 
 .items-form-table th:nth-child(2),
-.items-form-table td:nth-child(2) { width: 108px; }                      /* Cód. Estoque */
+.items-form-table td:nth-child(2) { width: 120px; }                       /* Cód. Estoque */
 
 .items-form-table th:nth-child(3),
-.items-form-table td:nth-child(3) { width: auto; min-width: 140px; }     /* Especificação */
+.items-form-table td:nth-child(3) { width: 160px; min-width: 120px; }    /* Especificação (reduzida) */
 
 .items-form-table th:nth-child(4),
-.items-form-table td:nth-child(4) { width: 70px; }                       /* UN */
+.items-form-table td:nth-child(4) { width: 72px; }                        /* UN */
 
 .items-form-table th:nth-child(5),
-.items-form-table td:nth-child(5) { width: 74px; }                       /* Qtd */
+.items-form-table td:nth-child(5) { width: 78px; }                        /* Qtd */
 
 .items-form-table th:nth-child(6),
-.items-form-table td:nth-child(6) { width: 96px; }                       /* Vl. Unit. */
+.items-form-table td:nth-child(6) { width: 100px; }                       /* Vl. Unit. */
 
 .items-form-table th:nth-child(7),
-.items-form-table td:nth-child(7) { width: 108px; }                      /* Vl. Total */
+.items-form-table td:nth-child(7) { width: 112px; }                       /* Vl. Total */
 
 .items-form-table th:nth-child(8),
-.items-form-table td:nth-child(8) { width: 88px; }                       /* NCM */
+.items-form-table td:nth-child(8) { width: 90px; }                        /* NCM */
 
 .items-form-table th:nth-child(9),
-.items-form-table td:nth-child(9) { width: 40px; text-align: center; }   /* Remover */
+.items-form-table td:nth-child(9) { width: 42px; text-align: center; }    /* Remover */
 
 /* Inputs compactos dentro da tabela */
 .items-form-table input,
@@ -924,6 +951,12 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
 .items-form-table input[readonly] {
     background: var(--table-stripe);
     cursor: not-allowed;
+}
+
+/* Padding extra entre coluna Item e coluna Código */
+.items-form-table td:nth-child(2),
+.items-form-table th:nth-child(2) {
+    padding-left: 10px;
 }
 
 /* ════════════════════════════════════════════════ */
@@ -972,8 +1005,8 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
     .tab-btn { font-size: 0.8rem; padding: 10px 15px; }
     .actions-cell { min-width: auto; }
     .items-tab-toolbar { flex-direction: column; align-items: flex-start; }
-    .items-tab-total { width: 100%; }
-    .items-tab-total input { width: 100%; }
+    .items-tab-footer { flex-direction: column; align-items: flex-start; }
+    .items-tab-footer input { width: 100%; }
 }
 
 /* ── Modal de NF / Delete ── */
