@@ -284,32 +284,35 @@
                     </div>
                 </div>
 
-                <!-- Tab Itens -->
+                <!-- Tab Itens — botão e total ACIMA da tabela -->
                 <div class="tab-content" id="tab-itens">
-                    <div class="items-table-wrapper">
+                    <!-- Toolbar: botão à esquerda, total à direita -->
+                    <div class="items-tab-toolbar">
+                        <button type="button" onclick="addItem()" class="btn-add-item">+ Adicionar Item</button>
+                        <div class="items-tab-total">
+                            <label for="valorTotalPedido">Valor Total do Pedido:</label>
+                            <input type="text" id="valorTotalPedido" readonly>
+                        </div>
+                    </div>
+
+                    <!-- Tabela com scroll -->
+                    <div class="items-form-wrapper">
                         <table class="items-form-table">
                             <thead>
                                 <tr>
-                                    <th style="width:50px">Item</th>
-                                    <th style="width:120px">Cód. Estoque</th>
+                                    <th>Item</th>
+                                    <th>Cód. Estoque</th>
                                     <th>Especificação</th>
-                                    <th style="width:70px">UN</th>
-                                    <th style="width:80px">Qtd</th>
-                                    <th style="width:100px">Vl. Unit.</th>
-                                    <th style="width:120px">Vl. Total</th>
-                                    <th style="width:100px">NCM</th>
-                                    <th style="width:50px"></th>
+                                    <th>UN</th>
+                                    <th>Qtd</th>
+                                    <th>Vl. Unit.</th>
+                                    <th>Vl. Total</th>
+                                    <th>NCM</th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody id="itemsContainer"></tbody>
                         </table>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:1rem;">
-                        <button type="button" onclick="addItem()" class="btn-add-item">+ Adicionar Item</button>
-                        <div class="form-group" style="margin:0; min-width:200px;">
-                            <label>Valor Total do Pedido</label>
-                            <input type="text" id="valorTotalPedido" readonly>
-                        </div>
                     </div>
                 </div>
 
