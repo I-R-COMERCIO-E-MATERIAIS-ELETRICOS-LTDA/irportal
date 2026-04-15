@@ -113,7 +113,7 @@ app.get('/health', async (req, res) => {
 
 // ─── ARQUIVOS ESTÁTICOS DOS MÓDULOS ─────────────────────────────────────────
 const APPS = [
-    'portal', 'precos', 'compra', 'transportadoras', 'cotacoes',
+    'portal', 'painel', 'precos', 'compra', 'transportadoras', 'cotacoes',
     'faturamento', 'frete', 'receber', 'vendas',
     'pagar', 'lucro', 'licitacoes', 'estoque'
 ];
@@ -176,6 +176,10 @@ app.use('/api/portal', portalRoutes(supabase));
 
 // ─── MIDDLEWARE DE AUTENTICAÇÃO (aplicado a TODAS as rotas /api a partir daqui)
 app.use('/api', verificarAutenticacao);
+
+// ─── API DO PAINEL ────────────────────────────────────────────────────────────
+const painelRoutes = require('./apps/painel/routes');
+app.use('/api/painel', painelRoutes(supabase));
 
 // ─── API DE PREÇOS ────────────────────────────────────────────────────────────
 const precosRoutes = require('./apps/precos/routes');
@@ -292,6 +296,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n📝 Logs salvos em: acessos.log\n`);
     console.log('📡 Rotas de API registradas:');
     console.log('  POST /api/portal/...       → Portal (auth)');
+    console.log('  GET  /api/painel/...       → Painel (dashboard)');
     console.log('  GET  /api/transportadoras  → Transportadoras');
     console.log('  GET  /api/cotacoes         → Cotações de Frete');
     console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
