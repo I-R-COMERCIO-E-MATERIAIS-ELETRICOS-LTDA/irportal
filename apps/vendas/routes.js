@@ -1,5 +1,5 @@
 // ============================================
-// ROUTES — CONTAS A RECEBER
+// ROUTES — VENDAS (tabela unificada)
 // ============================================
 const express = require('express');
 const router  = express.Router();
@@ -10,168 +10,185 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// ─── LISTAR CONTAS A RECEBER ─────────────────────────────────────────────────
-router.get('/receber', async (req, res) => {
+// ─── LISTAR VENDAS ────────────────────────────────────────────────────────────
+router.get('/vendas', async (req, res) => {
     try {
-        const { mes, ano } = req.query;
-        let query = supabase.from('contas_receber').select('*').order('data_emissao', { ascending: false });
+        const { mes, ano, vendedor, status_frete, status_pagamento } = req.query;
+
+        let query = supabase
+            .from('vendas')
+            .select('*')
+            .order('data_emissao', { ascending: false });
+
         if (mes && ano) {
-            const inicio = `${ano}-${String(mes).padStart(2,'0')}-01`;
+            const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
             const fimDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
-            const fim    = `${ano}-${String(mes).padStart(2,'0')}-${fimDia}`;
+            const fim    = `${ano}-${String(mes).padStart(2, '0')}-${fimDia}`;
             query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
         }
+        if (vendedor)         query = query.eq('vendedor', vendedor.toUpperCase());
+        if (status_frete)     query = query.eq('status_frete', status_frete);
+        if (status_pagamento) query = query.eq('status_pagamento', status_pagamento);
+
         const { data, error } = await query;
         if (error) throw error;
         res.json(data);
     } catch (err) {
-        console.error('[receber] GET /receber:', err.message);
-        res.status(500).json({ error: 'Erro ao listar contas a receber' });
+        console.error('[vendas] GET /vendas:', err.message);
+        res.status(500).json({ error: 'Erro ao listar vendas' });
     }
 });
 
-// ─── BUSCAR POR ID ───────────────────────────────────────────────────────────
-router.get('/receber/:id', async (req, res) => {
+// ─── BUSCAR VENDA POR ID ──────────────────────────────────────────────────────
+router.get('/vendas/:id', async (req, res) => {
     try {
-        const { data, error } = await supabase.from('contas_receber').select('*').eq('id', req.params.id).single();
+        const { data, error } = await supabase
+            .from('vendas')
+            .select('*')
+            .eq('id', req.params.id)
+            .single();
         if (error) throw error;
-        if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
+        if (!data) return res.status(404).json({ error: 'Venda não encontrada' });
         res.json(data);
     } catch (err) {
-        console.error('[receber] GET /receber/:id:', err.message);
-        res.status(500).json({ error: 'Erro ao buscar conta' });
+        console.error('[vendas] GET /vendas/:id:', err.message);
+        res.status(500).json({ error: 'Erro ao buscar venda' });
     }
 });
 
-// ─── CRIAR ───────────────────────────────────────────────────────────────────
-router.post('/receber', async (req, res) => {
+// ─── ATUALIZAR PRIORIDADE ────────────────────────────────────────────────────
+router.patch('/vendas/:id/prioridade', async (req, res) => {
     try {
-        const { numero_nf, orgao, vendedor, banco, valor, data_emissao, data_vencimento, data_pagamento, status, tipo_nf, observacoes, valor_pago } = req.body;
-        if (!numero_nf || !orgao || !vendedor || !data_emissao)
-            return res.status(400).json({ error: 'numero_nf, orgao, vendedor e data_emissao são obrigatórios' });
+        const { prioridade } = req.body;
+        if (prioridade === undefined || prioridade === null)
+            return res.status(400).json({ error: 'prioridade é obrigatório' });
 
-        let obsJson = null;
-        if (observacoes) { try { obsJson = typeof observacoes === 'string' ? JSON.parse(observacoes) : observacoes; } catch { obsJson = null; } }
-
-        const payload = {
-            numero_nf: (numero_nf||'').toUpperCase().trim(), orgao: (orgao||'').toUpperCase().trim(),
-            vendedor: (vendedor||'').toUpperCase().trim(), banco: banco ? banco.toUpperCase().trim() : null,
-            valor: parseFloat(valor)||0, data_emissao, data_vencimento: data_vencimento||null,
-            data_pagamento: data_pagamento||null, status: status||'A RECEBER',
-            tipo_nf: tipo_nf||'ENVIO', observacoes: obsJson, valor_pago: parseFloat(valor_pago)||0
-        };
-
-        const { data, error } = await supabase.from('contas_receber').insert([payload]).select().single();
+        const { data, error } = await supabase
+            .from('vendas')
+            .update({ prioridade: parseInt(prioridade), updated_at: new Date().toISOString() })
+            .eq('id', req.params.id)
+            .select()
+            .single();
         if (error) throw error;
-        sincronizarVendas(data).catch(console.error);
-        res.status(201).json(data);
-    } catch (err) {
-        console.error('[receber] POST /receber:', err.message);
-        res.status(500).json({ error: 'Erro ao criar conta a receber', details: err.message });
-    }
-});
-
-// ─── PUT ─────────────────────────────────────────────────────────────────────
-router.put('/receber/:id', async (req, res) => {
-    try {
-        const { numero_nf, orgao, vendedor, banco, valor, data_emissao, data_vencimento, data_pagamento, status, tipo_nf, observacoes, valor_pago } = req.body;
-        let obsJson = null;
-        if (observacoes) { try { obsJson = typeof observacoes === 'string' ? JSON.parse(observacoes) : observacoes; } catch { obsJson = null; } }
-
-        const payload = {
-            numero_nf: (numero_nf||'').toUpperCase().trim(), orgao: (orgao||'').toUpperCase().trim(),
-            vendedor: (vendedor||'').toUpperCase().trim(), banco: banco ? banco.toUpperCase().trim() : null,
-            valor: parseFloat(valor)||0, data_emissao, data_vencimento: data_vencimento||null,
-            data_pagamento: data_pagamento||null, status: status||'A RECEBER',
-            tipo_nf: tipo_nf||'ENVIO', observacoes: obsJson, valor_pago: parseFloat(valor_pago)||0,
-            updated_at: new Date().toISOString()
-        };
-
-        const { data, error } = await supabase.from('contas_receber').update(payload).eq('id', req.params.id).select().single();
-        if (error) throw error;
-        if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
-        sincronizarVendas(data).catch(console.error);
+        if (!data) return res.status(404).json({ error: 'Venda não encontrada' });
         res.json(data);
     } catch (err) {
-        console.error('[receber] PUT /receber/:id:', err.message);
-        res.status(500).json({ error: 'Erro ao atualizar conta', details: err.message });
+        console.error('[vendas] PATCH /vendas/:id/prioridade:', err.message);
+        res.status(500).json({ error: 'Erro ao atualizar prioridade' });
     }
 });
 
-// ─── PATCH ───────────────────────────────────────────────────────────────────
-router.patch('/receber/:id', async (req, res) => {
+// ─── PATCH GENÉRICO ──────────────────────────────────────────────────────────
+router.patch('/vendas/:id', async (req, res) => {
     try {
         const updates = { ...req.body, updated_at: new Date().toISOString() };
-        const { data, error } = await supabase.from('contas_receber').update(updates).eq('id', req.params.id).select().single();
+        const { data, error } = await supabase
+            .from('vendas')
+            .update(updates)
+            .eq('id', req.params.id)
+            .select()
+            .single();
         if (error) throw error;
-        if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
-        sincronizarVendas(data).catch(console.error);
+        if (!data) return res.status(404).json({ error: 'Venda não encontrada' });
         res.json(data);
     } catch (err) {
-        console.error('[receber] PATCH /receber/:id:', err.message);
-        res.status(500).json({ error: 'Erro ao atualizar conta', details: err.message });
+        console.error('[vendas] PATCH /vendas/:id:', err.message);
+        res.status(500).json({ error: 'Erro ao atualizar venda', details: err.message });
     }
 });
 
-// ─── DELETE ──────────────────────────────────────────────────────────────────
-router.delete('/receber/:id', async (req, res) => {
-    try {
-        const { error } = await supabase.from('contas_receber').delete().eq('id', req.params.id);
-        if (error) throw error;
-        supabase.from('vendas').delete().eq('id_contas_receber', req.params.id).then(()=>{}).catch(console.error);
-        res.json({ success: true });
-    } catch (err) {
-        console.error('[receber] DELETE /receber/:id:', err.message);
-        res.status(500).json({ error: 'Erro ao deletar conta' });
-    }
-});
-
-// ─── RESUMO ───────────────────────────────────────────────────────────────────
-router.get('/receber/relatorio/resumo', async (req, res) => {
+// ─── DASHBOARD ───────────────────────────────────────────────────────────────
+router.get('/vendas/relatorio/dashboard', async (req, res) => {
     try {
         const { mes, ano } = req.query;
-        let query = supabase.from('contas_receber').select('*');
+
+        let query = supabase.from('vendas').select('*');
         if (mes && ano) {
-            const inicio = `${ano}-${String(mes).padStart(2,'0')}-01`;
+            const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
             const fimDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
-            const fim    = `${ano}-${String(mes).padStart(2,'0')}-${fimDia}`;
+            const fim    = `${ano}-${String(mes).padStart(2, '0')}-${fimDia}`;
             query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
         }
+
         const { data, error } = await query;
         if (error) throw error;
-        const hoje         = new Date().toISOString().split('T')[0];
-        const totalPago    = data.filter(c=>c.status==='PAGO').reduce((s,c)=>s+parseFloat(c.valor||0),0);
-        const totalReceber = data.filter(c=>c.status==='A RECEBER').reduce((s,c)=>s+parseFloat(c.valor||0),0);
-        const totalVencido = data.filter(c=>c.status==='A RECEBER'&&c.data_vencimento&&c.data_vencimento<hoje).reduce((s,c)=>s+parseFloat(c.valor||0),0);
-        res.json({ total_registros: data.length, total_pago: totalPago, total_receber: totalReceber, total_vencido: totalVencido, total_faturado: totalPago+totalReceber });
+
+        const totalPago      = data.filter(v => v.status_pagamento === 'PAGO').reduce((s, v) => s + parseFloat(v.valor_nf || 0), 0);
+        const totalAReceber  = data.filter(v => v.status_pagamento === 'A RECEBER').reduce((s, v) => s + parseFloat(v.valor_nf || 0), 0);
+        const totalEntregue  = data.filter(v => v.status_frete === 'ENTREGUE').length;
+        const totalFaturado  = data.reduce((s, v) => s + parseFloat(v.valor_nf || 0), 0);
+
+        const porVendedor = {};
+        data.forEach(v => {
+            const vend = v.vendedor || 'NÃO INFORMADO';
+            if (!porVendedor[vend]) porVendedor[vend] = { total: 0, pago: 0, receber: 0, count: 0 };
+            porVendedor[vend].total  += parseFloat(v.valor_nf || 0);
+            porVendedor[vend].count  += 1;
+            if (v.status_pagamento === 'PAGO')      porVendedor[vend].pago    += parseFloat(v.valor_nf || 0);
+            if (v.status_pagamento === 'A RECEBER') porVendedor[vend].receber += parseFloat(v.valor_nf || 0);
+        });
+
+        res.json({ total_registros: data.length, total_pago: totalPago, total_a_receber: totalAReceber, total_entregue: totalEntregue, total_faturado: totalFaturado, por_vendedor: porVendedor });
     } catch (err) {
-        console.error('[receber] GET resumo:', err.message);
-        res.status(500).json({ error: 'Erro ao gerar resumo' });
+        console.error('[vendas] GET /vendas/relatorio/dashboard:', err.message);
+        res.status(500).json({ error: 'Erro ao gerar dashboard' });
+    }
+});
+
+// ─── SINCRONIZAÇÃO MANUAL ────────────────────────────────────────────────────
+router.post('/vendas/sincronizar', async (req, res) => {
+    try {
+        let inseridos = 0, atualizados = 0;
+
+        // 1. Sincronizar controle_frete
+        const { data: fretes, error: erroFrete } = await supabase.from('controle_frete').select('*');
+        if (erroFrete) throw erroFrete;
+
+        for (const frete of fretes) {
+            const statusFreteMap = { 'EM_TRANSITO': 'EM TRÂNSITO', 'ENTREGUE': 'ENTREGUE', 'AGUARDANDO_COLETA': 'AGUARDANDO COLETA', 'EXTRAVIADO': 'EXTRAVIADO', 'DEVOLVIDO': 'DEVOLVIDO' };
+            const tipoNfMap      = { 'ENVIO': 'ENVIO', 'CANCELADA': 'CANCELADA', 'REMESSA_AMOSTRA': 'REMESSA DE AMOSTRA', 'SIMPLES_REMESSA': 'SIMPLES REMESSA', 'DEVOLUCAO': 'DEVOLUÇÃO' };
+
+            const payload = {
+                numero_nf: frete.numero_nf, origem: 'CONTROLE_FRETE',
+                data_emissao: frete.data_emissao, valor_nf: parseFloat(frete.valor_nf) || 0,
+                tipo_nf: tipoNfMap[frete.tipo_nf] || frete.tipo_nf, nome_orgao: frete.nome_orgao,
+                vendedor: frete.vendedor, documento: frete.documento || null,
+                contato_orgao: frete.contato_orgao || null, transportadora: frete.transportadora || null,
+                valor_frete: parseFloat(frete.valor_frete) || 0, data_coleta: frete.data_coleta || null,
+                cidade_destino: frete.cidade_destino || null, previsao_entrega: frete.previsao_entrega || null,
+                status_frete: statusFreteMap[frete.status] || frete.status || null,
+                id_controle_frete: frete.id, updated_at: new Date().toISOString()
+            };
+
+            const { data: existente } = await supabase.from('vendas').select('id').eq('id_controle_frete', frete.id).single();
+            if (existente) { await supabase.from('vendas').update(payload).eq('id_controle_frete', frete.id); atualizados++; }
+            else           { await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]); inseridos++; }
+        }
+
+        // 2. Sincronizar contas_receber
+        const { data: contas, error: erroContas } = await supabase.from('contas_receber').select('*');
+        if (erroContas) throw erroContas;
+
+        for (const conta of contas) {
+            const payload = {
+                numero_nf: conta.numero_nf, origem: 'CONTAS_RECEBER',
+                data_emissao: conta.data_emissao, valor_nf: parseFloat(conta.valor) || 0,
+                tipo_nf: conta.tipo_nf || null, nome_orgao: conta.orgao, vendedor: conta.vendedor,
+                banco: conta.banco || null, data_vencimento: conta.data_vencimento || null,
+                data_pagamento: conta.data_pagamento || null, status_pagamento: conta.status || 'A RECEBER',
+                id_contas_receber: conta.id, updated_at: new Date().toISOString()
+            };
+
+            const { data: existente } = await supabase.from('vendas').select('id').eq('id_contas_receber', conta.id).single();
+            if (existente) { await supabase.from('vendas').update(payload).eq('id_contas_receber', conta.id); atualizados++; }
+            else           { await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]); inseridos++; }
+        }
+
+        res.json({ success: true, message: `Sincronização concluída: ${inseridos} inseridos, ${atualizados} atualizados` });
+    } catch (err) {
+        console.error('[vendas] POST /vendas/sincronizar:', err.message);
+        res.status(500).json({ error: 'Erro na sincronização', details: err.message });
     }
 });
 
 module.exports = router;
-
-// ─── SINCRONIZAÇÃO COM TABELA VENDAS ─────────────────────────────────────────
-async function sincronizarVendas(conta) {
-    if (!conta || !conta.numero_nf || !conta.vendedor) return;
-    const tipoNfMap = { 'ENVIO':'ENVIO','CANCELADA':'CANCELADA','REMESSA DE AMOSTRA':'REMESSA DE AMOSTRA','SIMPLES REMESSA':'SIMPLES REMESSA','DEVOLUÇÃO':'DEVOLUÇÃO' };
-    const payload = {
-        numero_nf: conta.numero_nf, origem: 'CONTAS_RECEBER',
-        data_emissao: conta.data_emissao, valor_nf: parseFloat(conta.valor)||0,
-        tipo_nf: tipoNfMap[conta.tipo_nf]||conta.tipo_nf||null,
-        nome_orgao: conta.orgao, vendedor: conta.vendedor,
-        banco: conta.banco||null, data_vencimento: conta.data_vencimento||null,
-        data_pagamento: conta.data_pagamento||null,
-        status_pagamento: conta.status||'A RECEBER',
-        id_contas_receber: conta.id, updated_at: new Date().toISOString()
-    };
-    const { data: existente } = await supabase.from('vendas').select('id').eq('id_contas_receber', conta.id).single();
-    if (existente) {
-        await supabase.from('vendas').update(payload).eq('id_contas_receber', conta.id);
-    } else {
-        const { data: porNF } = await supabase.from('vendas').select('id').eq('numero_nf', conta.numero_nf).eq('vendedor', conta.vendedor).eq('origem','CONTAS_RECEBER').single();
-        if (porNF) { await supabase.from('vendas').update(payload).eq('id', porNF.id); }
-        else       { await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]); }
-    }
-}
