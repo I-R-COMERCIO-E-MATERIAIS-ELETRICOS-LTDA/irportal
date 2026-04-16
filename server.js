@@ -30,9 +30,9 @@ const supabase = createClient(
 
 // ─── AUTENTICAÇÃO MIDDLEWARE ─────────────────────────────────────────────────
 // Aplica-se a todas as rotas /api (exceto /api/verify-session).
-// O PORTAL é o pivô — ele emite e invalida tokens na tabela `sessions`.
 async function authMiddleware(req, res, next) {
-    if (req.path === '/api/verify-session') return next();
+    // FIX: aceita tanto /api/verify-session quanto /api/portal/verify-session
+    if (req.path === '/verify-session' || req.path === '/portal/verify-session') return next();
 
     const token = req.headers['x-session-token']
                || req.query.sessionToken
@@ -82,24 +82,42 @@ async function authMiddleware(req, res, next) {
 
 app.use('/api', authMiddleware);
 
-// ─── VERIFY-SESSION (chamada pelo PORTAL e pelos módulos) ────────────────────
-app.post('/api/verify-session', async (req, res) => {
+// ─── VERIFY-SESSION ──────────────────────────────────────────────────────────
+// FIX: responde tanto em /api/verify-session quanto /api/portal/verify-session
+async function handleVerifySession(req, res) {
     const { sessionToken } = req.body;
     if (!sessionToken) return res.status(400).json({ valid: false });
     try {
         const { data, error } = await supabase
             .from('sessions')
-            .select('user_id, expires_at')
+            .select('user_id, expires_at, user:users(id, name, username, role, sector)')
             .eq('token', sessionToken)
             .maybeSingle();
         if (error || !data) return res.json({ valid: false });
         if (new Date(data.expires_at) < new Date()) return res.json({ valid: false });
-        res.json({ valid: true, userId: data.user_id });
+
+        const u = data.user || {};
+        res.json({
+            valid: true,
+            userId: data.user_id,
+            // FIX: devolve o objeto session completo que o painel/script.js espera
+            session: {
+                id:       u.id,
+                name:     u.name     || u.username || '',
+                username: u.username || '',
+                role:     u.role     || '',
+                sector:   u.sector   || '',
+                isAdmin:  u.role === 'admin'
+            }
+        });
     } catch (err) {
         console.error('[verify-session]', err.message);
         res.status(500).json({ valid: false });
     }
-});
+}
+
+app.post('/api/verify-session',         handleVerifySession);
+app.post('/api/portal/verify-session',  handleVerifySession);  // alias usado pelo painel/script.js
 
 // ─── HELPER: registrar módulo ─────────────────────────────────────────────────
 function registerModule(mountPath, staticDir, routesFile) {
@@ -116,6 +134,10 @@ function registerModule(mountPath, staticDir, routesFile) {
 app.use(express.static(path.join(__dirname, 'apps/portal')));
 
 // ─── MÓDULOS ─────────────────────────────────────────────────────────────────
+
+// PAINEL — FIX: registrado ANTES do fallback para /painel não servir o portal
+registerModule('/painel',        'apps/painel',        'apps/painel/routes.js');
+
 // CONTAS A PAGAR
 registerModule('/pagar',         'apps/pagar',         'apps/pagar/routes.js');
 
@@ -131,7 +153,7 @@ registerModule('/frete',         'apps/frete',         'apps/frete/routes.js');
 // PEDIDOS DE FATURAMENTO
 registerModule('/faturamento',   'apps/faturamento',   'apps/faturamento/routes.js');
 
-// VENDAS (tabela unificada — sem frontend próprio, consumida pelos outros módulos)
+// VENDAS
 registerModule('/vendas',        'apps/vendas',        'apps/vendas/routes.js');
 
 // PREÇOS
@@ -159,6 +181,7 @@ app.use((req, res) => {
 app.listen(PORT, () => {
     console.log(`\n✅  Servidor IR Comércio — porta ${PORT}`);
     console.log(`    Portal       → http://localhost:${PORT}/`);
+    console.log(`    Painel       → http://localhost:${PORT}/painel`);
     console.log(`    Pagar        → http://localhost:${PORT}/pagar`);
     console.log(`    Receber      → http://localhost:${PORT}/receber`);
     console.log(`    Frete        → http://localhost:${PORT}/frete`);
