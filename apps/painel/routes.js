@@ -9,18 +9,6 @@ module.exports = function (supabase) {
 
     // ─── HELPERS ────────────────────────────────────────────────────────────────
 
-    function anoRange(ano) {
-        return { start: `${ano}-01-01`, end: `${ano}-12-31` };
-    }
-
-    function mesRange(mes, ano) {
-        const m = parseInt(mes);
-        const y = parseInt(ano);
-        const mm = String(m).padStart(2, '0');
-        const last = new Date(y, m, 0).getDate();
-        return { start: `${y}-${mm}-01`, end: `${y}-${mm}-${String(last).padStart(2, '0')}` };
-    }
-
     function agruparPorMes(rows, campoData, campoValor) {
         const resultado = Array(12).fill(0);
         rows.forEach(r => {
@@ -34,8 +22,7 @@ module.exports = function (supabase) {
     }
 
     // ─── GET /api/painel/faturamento ─────────────────────────────────────────────
-    // ?ano=N&vendedor=X
-    router.get('/faturamento', async (req, res) => {
+    router.get('/painel/faturamento', async (req, res) => {
         try {
             const { ano, vendedor } = req.query;
             const anoAtual = parseInt(ano) || new Date().getFullYear();
@@ -43,14 +30,12 @@ module.exports = function (supabase) {
 
             const campos = 'data_registro,valor_total,responsavel,status';
 
-            // Ano atual
             let q1 = supabase.from('pedidos_faturamento').select(campos)
                 .gte('data_registro', `${anoAtual}-01-01`)
                 .lte('data_registro', `${anoAtual}-12-31`);
             if (vendedor) q1 = q1.ilike('responsavel', `%${vendedor}%`);
             const { data: d1 } = await q1;
 
-            // Ano anterior
             let q2 = supabase.from('pedidos_faturamento').select(campos)
                 .gte('data_registro', `${anoAnt}-01-01`)
                 .lte('data_registro', `${anoAnt}-12-31`);
@@ -75,8 +60,7 @@ module.exports = function (supabase) {
     });
 
     // ─── GET /api/painel/frete ───────────────────────────────────────────────────
-    // ?ano=N&vendedor=X
-    router.get('/frete', async (req, res) => {
+    router.get('/painel/frete', async (req, res) => {
         try {
             const { ano, vendedor } = req.query;
             const anoAtual = parseInt(ano) || new Date().getFullYear();
@@ -96,7 +80,6 @@ module.exports = function (supabase) {
             if (vendedor) q2 = q2.ilike('vendedor', `%${vendedor}%`);
             const { data: d2 } = await q2;
 
-            // Entregas confirmadas do dia
             const hoje = new Date().toISOString().split('T')[0];
             let qHoje = supabase.from('controle_frete').select('numero_nf,valor_nf,nome_orgao,data_entrega,vendedor')
                 .eq('data_entrega', hoje)
@@ -123,8 +106,7 @@ module.exports = function (supabase) {
     });
 
     // ─── GET /api/painel/vendas ──────────────────────────────────────────────────
-    // ?ano=N&vendedor=X
-    router.get('/vendas', async (req, res) => {
+    router.get('/painel/vendas', async (req, res) => {
         try {
             const { ano, vendedor } = req.query;
             const anoAtual = parseInt(ano) || new Date().getFullYear();
@@ -146,7 +128,6 @@ module.exports = function (supabase) {
             if (vendedor) q2 = q2.ilike('vendedor', `%${vendedor}%`);
             const { data: d2 } = await q2;
 
-            // A receber: status != PAGO
             let qRec = supabase.from('vendas').select('valor_total,valor_pago,status_pagamento,vendedor')
                 .neq('status_pagamento', 'PAGO');
             if (vendedor) qRec = qRec.ilike('vendedor', `%${vendedor}%`);
@@ -161,7 +142,6 @@ module.exports = function (supabase) {
             const mesesAtual = agruparPorMes(d1 || [], 'data_emissao', 'valor_pago');
             const mesesAnt   = agruparPorMes(d2 || [], 'data_emissao', 'valor_pago');
 
-            // Comissões por mês (ano atual)
             const comissoesMes = Array(12).fill(0);
             (d1 || []).forEach(v => {
                 const d = new Date(v.data_emissao);
@@ -171,7 +151,6 @@ module.exports = function (supabase) {
                 }
             });
 
-            // Vendas por vendedor por mês (sem filtro de vendedor, para Rosemeire/Roberto)
             let qTodos = supabase.from('vendas').select(campos)
                 .gte('data_emissao', `${anoAtual}-01-01`)
                 .lte('data_emissao', `${anoAtual}-12-31`)
@@ -214,8 +193,7 @@ module.exports = function (supabase) {
     });
 
     // ─── GET /api/painel/receber ─────────────────────────────────────────────────
-    // ?ano=N
-    router.get('/receber', async (req, res) => {
+    router.get('/painel/receber', async (req, res) => {
         try {
             const { ano } = req.query;
             const anoAtual = parseInt(ano) || new Date().getFullYear();
@@ -259,8 +237,7 @@ module.exports = function (supabase) {
     });
 
     // ─── GET /api/painel/pagar ───────────────────────────────────────────────────
-    // ?ano=N
-    router.get('/pagar', async (req, res) => {
+    router.get('/painel/pagar', async (req, res) => {
         try {
             const { ano } = req.query;
             const anoAtual = parseInt(ano) || new Date().getFullYear();
@@ -296,8 +273,7 @@ module.exports = function (supabase) {
     });
 
     // ─── GET /api/painel/lucro ───────────────────────────────────────────────────
-    // ?ano=N
-    router.get('/lucro', async (req, res) => {
+    router.get('/painel/lucro', async (req, res) => {
         try {
             const { ano } = req.query;
             const anoAtual = parseInt(ano) || new Date().getFullYear();
@@ -331,7 +307,7 @@ module.exports = function (supabase) {
     });
 
     // ─── GET /api/painel/estoque ─────────────────────────────────────────────────
-    router.get('/estoque', async (req, res) => {
+    router.get('/painel/estoque', async (req, res) => {
         try {
             const { data, error } = await supabase.from('estoque').select('*');
             if (error) throw error;
@@ -346,10 +322,7 @@ module.exports = function (supabase) {
                 totalGeral += valor;
             });
 
-            res.json({
-                porGrupo,
-                totalGeral
-            });
+            res.json({ porGrupo, totalGeral });
         } catch (err) {
             console.error('[painel] estoque:', err.message);
             res.status(500).json({ error: err.message });
