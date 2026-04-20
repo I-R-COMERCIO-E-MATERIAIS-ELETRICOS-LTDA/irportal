@@ -8,9 +8,10 @@ const API_URL = window.location.origin + '/api';
 let contas = [];
 let isOnline = false;
 let sessionToken = null;
-let currentMonth = new Date();
+let currentMonth = new Date().getMonth();
 let currentYear = new Date().getFullYear();
 let showAllMonths = false;
+let _editingParcelasTemp = []; // parcelas sendo editadas no modal
 
 const meses = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -113,9 +114,9 @@ function updateConnectionStatus() {
 // ============================================
 // CARREGAMENTO DE DADOS
 // ============================================
-async function loadContas(showMessage = false) {
+async function loadContas(showMsg = false) {
     if (!isOnline && !DEVELOPMENT_MODE) {
-        if (showMessage) showToast('Sistema offline. Não foi possível sincronizar.', 'error');
+        if (showMsg) showToast('Sistema offline. Não foi possível sincronizar.', 'error');
         return;
     }
 
@@ -137,7 +138,7 @@ async function loadContas(showMessage = false) {
         }
 
         if (!response.ok) {
-            if (showMessage) showToast('Erro ao sincronizar dados', 'error');
+            if (showMsg) showToast('Erro ao sincronizar dados', 'error');
             return;
         }
 
@@ -147,15 +148,9 @@ async function loadContas(showMessage = false) {
         updateFilters();
         updateDashboard();
         filterContas();
-
-        // Alerta de vencidos (apenas uma vez por sessão)
-        if (!sessionStorage.getItem('alertaVencidosExibido')) {
-            setTimeout(verificarVencidos, 1000);
-            sessionStorage.setItem('alertaVencidosExibido', 'true');
-        }
     } catch (error) {
         console.error('❌ Erro ao carregar contas:', error);
-        if (showMessage) showToast('Erro ao sincronizar dados', 'error');
+        if (showMsg) showToast('Erro ao sincronizar dados', 'error');
     }
 }
 
@@ -182,7 +177,7 @@ function updateMonthDisplay() {
         if (showAllMonths) {
             el.textContent = `Todos — ${currentYear}`;
         } else {
-            el.textContent = `${meses[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
+            el.textContent = `${meses[currentMonth]} ${currentYear}`;
         }
     }
     updateDashboard();
@@ -191,8 +186,12 @@ function updateMonthDisplay() {
 
 window.changeMonth = function (direction) {
     showAllMonths = false;
-    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1);
-    currentYear = currentMonth.getFullYear();
+    let m = currentMonth + direction;
+    let y = currentYear;
+    if (m > 11) { m = 0; y++; }
+    if (m < 0)  { m = 11; y--; }
+    currentMonth = m;
+    currentYear = y;
     updateMonthDisplay();
 };
 
@@ -202,39 +201,44 @@ window.updateMonthDisplay = updateMonthDisplay;
 // DASHBOARD
 // ============================================
 function updateDashboard() {
+    // Para o dashboard de vencidos: sempre universal (todos os registros)
+    const hoje = new Date().toISOString().split('T')[0];
+
+    const vencido = contas.filter(c =>
+        c.status === 'A RECEBER' && c.data_vencimento && c.data_vencimento < hoje
+    ).length;
+
+    // Demais cards: filtrados pelo mês/ano selecionado
     const filtered = getContasFiltradas();
 
     const pago = filtered
-        .filter(c => c.status === 'PAGO')
+        .filter(c => isStatusPago(c.status))
         .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
 
     const receber = filtered
         .filter(c => c.status === 'A RECEBER')
         .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
 
-    const hoje = new Date().toISOString().split('T')[0];
-    const vencido = filtered.filter(c =>
-        c.status === 'A RECEBER' && c.data_vencimento && c.data_vencimento < hoje
-    ).length;
-
     const faturado = pago + receber;
 
     const fmt = v => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
     const el = id => document.getElementById(id);
-    if (el('statPago')) el('statPago').textContent = fmt(pago);
-    if (el('statReceber')) el('statReceber').textContent = fmt(receber);
+
+    if (el('statPago'))     el('statPago').textContent     = fmt(pago);
+    if (el('statReceber'))  el('statReceber').textContent  = fmt(receber);
     if (el('statFaturado')) el('statFaturado').textContent = fmt(faturado);
-    if (el('statVencido')) el('statVencido').textContent = vencido;
+    if (el('statVencido'))  el('statVencido').textContent  = vencido;
 
     const cardVencido = el('cardVencido');
     if (cardVencido) {
-        if (vencido > 0) {
-            cardVencido.classList.add('has-alert');
-        } else {
-            cardVencido.classList.remove('has-alert');
-        }
+        cardVencido.classList.toggle('has-alert', vencido > 0);
     }
+}
+
+// Verifica se o status representa um pagamento (total ou parcial)
+function isStatusPago(status) {
+    if (!status) return false;
+    return status === 'PAGO' || /parcela/i.test(status);
 }
 
 // ============================================
@@ -249,8 +253,7 @@ function getContasFiltradas(applyMonthFilter = true) {
             return new Date(c.data_emissao + 'T00:00:00').getFullYear() === currentYear;
         }
         const d = new Date(c.data_emissao + 'T00:00:00');
-        return d.getMonth() === currentMonth.getMonth() &&
-               d.getFullYear() === currentMonth.getFullYear();
+        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
     });
 }
 
@@ -285,21 +288,21 @@ function updateFilters() {
 }
 
 window.filterContas = function () {
-    const search = (document.getElementById('search')?.value || '').toLowerCase();
+    const search   = (document.getElementById('search')?.value || '').toLowerCase();
     const vendedor = document.getElementById('filterVendedor')?.value || '';
-    const banco = document.getElementById('filterBanco')?.value || '';
-    const status = document.getElementById('filterStatus')?.value || '';
+    const banco    = document.getElementById('filterBanco')?.value || '';
+    const status   = document.getElementById('filterStatus')?.value || '';
 
     let filtered = getContasFiltradas();
 
     if (vendedor) filtered = filtered.filter(c => c.vendedor === vendedor);
-    if (banco) filtered = filtered.filter(c => c.banco === banco);
-    if (status) filtered = filtered.filter(c => c.status === status);
+    if (banco)    filtered = filtered.filter(c => c.banco === banco);
+    if (status)   filtered = filtered.filter(c => c.status === status);
     if (search) {
-        filtered = filtered.filter(c => {
-            return [c.numero_nf, c.orgao, c.vendedor, c.banco, c.status]
-                .some(f => f && f.toString().toLowerCase().includes(search));
-        });
+        filtered = filtered.filter(c =>
+            [c.numero_nf, c.orgao, c.vendedor, c.banco, c.status]
+                .some(f => f && f.toString().toLowerCase().includes(search))
+        );
     }
 
     filtered.sort((a, b) => {
@@ -313,116 +316,180 @@ window.filterContas = function () {
 };
 
 // ============================================
-// RENDERIZAÇÃO
+// RENDERIZAÇÃO DA TABELA
 // ============================================
 function renderContas(lista) {
     const container = document.getElementById('contasContainer');
     if (!container) return;
 
     if (!lista || lista.length === 0) {
-        container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Nenhuma conta encontrada</div>';
+        container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Nenhuma conta encontrada</div>';
         return;
     }
 
     const hoje = new Date().toISOString().split('T')[0];
 
     container.innerHTML = `
-        <div style="overflow-x: auto;">
+        <div style="overflow-x:auto;">
             <table>
                 <thead>
                     <tr>
+                        <th style="width:50px;text-align:center;">✓</th>
                         <th>NF</th>
                         <th>Órgão</th>
                         <th>Vendedor</th>
                         <th>Banco</th>
                         <th>Valor</th>
+                        <th>Valor Pago</th>
                         <th>Vencimento</th>
+                        <th>Dt. Pagamento</th>
                         <th>Status</th>
-                        <th style="text-align: center;">Ações</th>
+                        <th style="text-align:center;">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
-                    ${lista.map(c => {
-                        const isPago = c.status === 'PAGO';
-                        const isVencido = !isPago && c.data_vencimento && c.data_vencimento < hoje;
-                        return `
-                        <tr class="${isPago ? 'row-entregue' : ''}" data-id="${c.id}">
-                            <td><strong>${c.numero_nf || '-'}</strong></td>
-                            <td style="max-width: 200px; word-wrap: break-word; white-space: normal;">${c.orgao || '-'}</td>
-                            <td>${c.vendedor || '-'}</td>
-                            <td>${c.banco || '-'}</td>
-                            <td><strong>R$ ${parseFloat(c.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></td>
-                            <td style="white-space: nowrap; ${isVencido ? 'color: #EF4444; font-weight: 600;' : ''}">${c.data_vencimento ? formatDate(c.data_vencimento) : '-'}</td>
-                            <td>${getStatusBadge(c, hoje)}</td>
-                            <td class="actions-cell" style="text-align: center; white-space: nowrap;">
-                                <button class="action-btn view" onclick="handleViewClick('${c.id}')" title="Ver detalhes">Ver</button>
-                                <button class="action-btn edit" onclick="handleEditClick('${c.id}')" title="Editar">Editar</button>
-                                <button class="action-btn delete" onclick="handleDeleteClick('${c.id}')" title="Excluir">Excluir</button>
-                            </td>
-                        </tr>`;
-                    }).join('')}
+                    ${lista.map(c => renderRow(c, hoje)).join('')}
                 </tbody>
             </table>
         </div>
     `;
 }
 
+function renderRow(c, hoje) {
+    const isPagoTotal  = c.status === 'PAGO';
+    const isParcial    = /parcela/i.test(c.status || '');
+    const isPagoAlgum  = isPagoTotal || isParcial;
+    const isVencido    = !isPagoAlgum && c.data_vencimento && c.data_vencimento < hoje;
+
+    // Calcular valor pago total (soma parcelas ou valor_pago simples)
+    const parcelas = getParcelas(c);
+    const valorPagoTotal = parcelas.length > 0
+        ? parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0)
+        : parseFloat(c.valor_pago || 0);
+
+    // Data de pagamento: última parcela paga (ou data_pagamento simples)
+    let dataPgto = '-';
+    if (parcelas.length > 0) {
+        const datas = parcelas.map(p => p.data).filter(Boolean).sort();
+        if (datas.length > 0) dataPgto = formatDate(datas[datas.length - 1]);
+    } else if (c.data_pagamento) {
+        dataPgto = formatDate(c.data_pagamento);
+    }
+
+    const rowClass = isPagoTotal ? 'row-pago' : '';
+
+    return `
+        <tr class="${rowClass}" data-id="${c.id}">
+            <td style="text-align:center;">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" class="styled-checkbox" id="chk-${c.id}"
+                        ${isPagoTotal ? 'checked' : ''}
+                        onchange="togglePagamento('${c.id}', this.checked)"
+                        onclick="event.stopPropagation()">
+                    <label for="chk-${c.id}" class="checkbox-label-styled" onclick="event.stopPropagation()"></label>
+                </div>
+            </td>
+            <td><strong>${c.numero_nf || '-'}</strong></td>
+            <td style="max-width:200px;word-wrap:break-word;white-space:normal;">${c.orgao || '-'}</td>
+            <td>${c.vendedor || '-'}</td>
+            <td>${c.banco || '-'}</td>
+            <td><strong>R$ ${parseFloat(c.valor || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</strong></td>
+            <td>${valorPagoTotal > 0 ? 'R$ ' + valorPagoTotal.toLocaleString('pt-BR', {minimumFractionDigits:2}) : '-'}</td>
+            <td style="white-space:nowrap;${isVencido ? 'color:#EF4444;font-weight:600;' : ''}">${c.data_vencimento ? formatDate(c.data_vencimento) : '-'}</td>
+            <td style="white-space:nowrap;">${dataPgto}</td>
+            <td>${getStatusBadge(c, hoje)}</td>
+            <td class="actions-cell" style="text-align:center;white-space:nowrap;">
+                <button class="action-btn view"   onclick="handleViewClick('${c.id}')"   title="Ver detalhes">Ver</button>
+                <button class="action-btn edit"   onclick="handleEditClick('${c.id}')"   title="Editar">Editar</button>
+                <button class="action-btn delete" onclick="handleDeleteClick('${c.id}')" title="Excluir">Excluir</button>
+            </td>
+        </tr>
+    `;
+}
+
 function getStatusBadge(conta, hoje) {
-    if (conta.status === 'PAGO') {
-        return '<span class="badge entregue">PAGO</span>';
+    const s = conta.status || '';
+    if (s === 'PAGO') {
+        return '<span class="badge status-pago">PAGO</span>';
+    }
+    if (/parcela/i.test(s)) {
+        return `<span class="badge status-parcela">${s}</span>`;
     }
     if (conta.data_vencimento && conta.data_vencimento < hoje) {
-        return '<span class="badge devolvido">VENCIDO</span>';
+        return '<span class="badge status-vencido">VENCIDO</span>';
     }
-    return '<span class="badge transito">A RECEBER</span>';
+    return '<span class="badge status-a-receber">A RECEBER</span>';
 }
 
 // ============================================
-// AÇÕES
+// PARCELAS — helpers
 // ============================================
-window.handleViewClick = function (id) {
-    const c = contas.find(x => String(x.id) === String(id));
-    if (!c) return showToast('Conta não encontrada!', 'error');
+function getParcelas(conta) {
+    try {
+        const obs = conta.observacoes;
+        if (!obs) return [];
+        const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
+        if (parsed && Array.isArray(parsed.parcelas)) return parsed.parcelas;
+        return [];
+    } catch { return []; }
+}
 
-    const fmt = v => v ? `R$ ${parseFloat(v).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '-';
-    const d = v => v ? formatDate(v) : '-';
+function getObservacoesTexto(conta) {
+    try {
+        const obs = conta.observacoes;
+        if (!obs) return [];
+        const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
+        if (parsed && Array.isArray(parsed.notas)) return parsed.notas;
+        return [];
+    } catch { return []; }
+}
 
-    const html = `
-        <div class="info-section">
-            <h4>Dados da Conta</h4>
-            <p><strong>Número NF:</strong> ${c.numero_nf || '-'}</p>
-            <p><strong>Órgão:</strong> ${c.orgao || '-'}</p>
-            <p><strong>Vendedor:</strong> ${c.vendedor || '-'}</p>
-            <p><strong>Banco:</strong> ${c.banco || '-'}</p>
-            <p><strong>Valor:</strong> ${fmt(c.valor)}</p>
-            <p><strong>Valor Pago:</strong> ${fmt(c.valor_pago)}</p>
-            <p><strong>Data Emissão:</strong> ${d(c.data_emissao)}</p>
-            <p><strong>Vencimento:</strong> ${d(c.data_vencimento)}</p>
-            <p><strong>Data Pagamento:</strong> ${d(c.data_pagamento)}</p>
-            <p><strong>Status:</strong> ${c.status || '-'}</p>
-            <p><strong>Tipo NF:</strong> ${c.tipo_nf || '-'}</p>
-        </div>
-    `;
+function buildObservacoesJson(notas, parcelas) {
+    return { notas: notas || [], parcelas: parcelas || [] };
+}
 
-    // Reutilizar modal de vencidos com conteúdo dinâmico
-    const modal = document.getElementById('vencidosModal');
-    const body = document.getElementById('vencidosModalBody');
-    if (modal && body) {
-        body.innerHTML = html;
-        modal.style.display = 'flex';
+// ============================================
+// TOGGLE PAGAMENTO (checkbox)
+// ============================================
+window.togglePagamento = async function(id, checked) {
+    const conta = contas.find(x => String(x.id) === String(id));
+    if (!conta) return;
+
+    if (checked) {
+        // Abrir modal para confirmar pagamento
+        showFormModal(id, true);
+        // Reverter checkbox até o modal confirmar
+        const chk = document.getElementById(`chk-${id}`);
+        if (chk) chk.checked = false;
+    } else {
+        // Desmarcar pagamento — reverter para A RECEBER
+        if (!confirm('Reverter este pagamento para "A RECEBER"?')) {
+            const chk = document.getElementById(`chk-${id}`);
+            if (chk) chk.checked = true;
+            return;
+        }
+        await salvarConta(id, { status: 'A RECEBER', data_pagamento: null, valor_pago: 0 }, true);
     }
 };
 
-window.handleEditClick = function (id) {
+// ============================================
+// AÇÕES DA TABELA
+// ============================================
+window.handleViewClick = function(id) {
+    const c = contas.find(x => String(x.id) === String(id));
+    if (!c) return showToast('Conta não encontrada!', 'error');
+    showViewModal(c);
+};
+
+window.handleEditClick = function(id) {
     const c = contas.find(x => String(x.id) === String(id));
     if (!c) return showToast('Conta não encontrada!', 'error');
     showFormModal(id);
 };
 
-window.handleDeleteClick = async function (id) {
+window.handleDeleteClick = async function(id) {
     const conta = contas.find(x => String(x.id) === String(id));
     if (!conta) return showToast('Conta não encontrada!', 'error');
-
     if (!confirm(`Excluir NF ${conta.numero_nf}?`)) return;
 
     contas = contas.filter(x => String(x.id) !== String(id));
@@ -445,97 +512,273 @@ window.handleDeleteClick = async function (id) {
 };
 
 // ============================================
-// FORMULÁRIO
+// MODAL DE VISUALIZAÇÃO (por abas)
 // ============================================
-window.toggleForm = function () { showFormModal(null); };
+function showViewModal(c) {
+    const hoje = new Date().toISOString().split('T')[0];
+    const fmt  = v => v ? `R$ ${parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits:2})}` : '-';
+    const d    = v => v ? formatDate(v) : '-';
 
-window.showFormModal = function (editingId = null) {
+    const parcelas = getParcelas(c);
+    const notas    = getObservacoesTexto(c);
+    const valorPagoTotal = parcelas.length > 0
+        ? parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0)
+        : parseFloat(c.valor_pago || 0);
+
+    const statusBadge = getStatusBadge(c, hoje);
+
+    // Aba Geral
+    const tabGeral = `
+        <div class="info-section">
+            <h4>Dados da Conta</h4>
+            <div class="info-row"><span class="info-label">Número NF:</span><span class="info-value">${c.numero_nf || '-'}</span></div>
+            <div class="info-row"><span class="info-label">Órgão:</span><span class="info-value">${c.orgao || '-'}</span></div>
+            <div class="info-row"><span class="info-label">Vendedor:</span><span class="info-value">${c.vendedor || '-'}</span></div>
+            <div class="info-row"><span class="info-label">Banco:</span><span class="info-value">${c.banco || '-'}</span></div>
+            <div class="info-row"><span class="info-label">Tipo NF:</span><span class="info-value">${c.tipo_nf || '-'}</span></div>
+            <div class="info-row"><span class="info-label">Status:</span><span class="info-value">${statusBadge}</span></div>
+        </div>`;
+
+    // Aba Valores e Datas
+    const tabValores = `
+        <div class="info-section">
+            <h4>Valores e Datas</h4>
+            <div class="info-row"><span class="info-label">Valor NF:</span><span class="info-value">${fmt(c.valor)}</span></div>
+            <div class="info-row"><span class="info-label">Valor Pago Total:</span><span class="info-value">${valorPagoTotal > 0 ? fmt(valorPagoTotal) : '-'}</span></div>
+            <div class="info-row"><span class="info-label">Data Emissão:</span><span class="info-value">${d(c.data_emissao)}</span></div>
+            <div class="info-row"><span class="info-label">Vencimento:</span><span class="info-value">${d(c.data_vencimento)}</span></div>
+            <div class="info-row"><span class="info-label">Data Pagamento:</span><span class="info-value">${d(c.data_pagamento)}</span></div>
+        </div>`;
+
+    // Aba Pagamento Parcelado
+    let tabParcelas = `<div class="info-section"><h4>Pagamento Parcelado</h4>`;
+    if (parcelas.length === 0) {
+        tabParcelas += `<p style="color:var(--text-secondary);font-style:italic;">Nenhuma parcela registrada.</p>`;
+    } else {
+        tabParcelas += `<table style="width:100%;margin-top:.5rem;"><thead><tr><th>Parcela</th><th>Valor</th><th>Data Pagamento</th></tr></thead><tbody>`;
+        parcelas.forEach((p, i) => {
+            tabParcelas += `<tr><td>${p.numero || (i+1) + 'ª'}</td><td>R$ ${parseFloat(p.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td>${p.data ? formatDate(p.data) : '-'}</td></tr>`;
+        });
+        tabParcelas += `</tbody></table>`;
+    }
+    tabParcelas += `</div>`;
+
+    // Aba Observações
+    let tabObs = `<div class="info-section"><h4>Observações</h4>`;
+    if (notas.length === 0) {
+        tabObs += `<p style="color:var(--text-secondary);font-style:italic;">Nenhuma observação registrada.</p>`;
+    } else {
+        tabObs += `<div class="observacoes-list-view">`;
+        notas.forEach(n => {
+            tabObs += `
+                <div class="observacao-item-view">
+                    <div class="observacao-header">
+                        <span class="observacao-data">${n.data || ''}</span>
+                    </div>
+                    <p class="observacao-texto">${n.texto || ''}</p>
+                </div>`;
+        });
+        tabObs += `</div>`;
+    }
+    tabObs += `</div>`;
+
+    const html = `
+        <div class="modal-overlay show" id="viewModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">NF ${c.numero_nf || ''}</h3>
+                    <button class="close-modal" onclick="document.getElementById('viewModal').remove()">✕</button>
+                </div>
+                <div class="tabs-container">
+                    <div class="tabs-nav">
+                        <button class="tab-btn active" onclick="switchViewTab('vtab-geral',this)">Geral</button>
+                        <button class="tab-btn" onclick="switchViewTab('vtab-valores',this)">Valores e Datas</button>
+                        <button class="tab-btn" onclick="switchViewTab('vtab-parcelas',this)">Pagamento Parcelado</button>
+                        <button class="tab-btn" onclick="switchViewTab('vtab-obs',this)">Observações</button>
+                    </div>
+                    <div id="vtab-geral"    class="tab-content active">${tabGeral}</div>
+                    <div id="vtab-valores"  class="tab-content">${tabValores}</div>
+                    <div id="vtab-parcelas" class="tab-content">${tabParcelas}</div>
+                    <div id="vtab-obs"      class="tab-content">${tabObs}</div>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-cancel" onclick="document.getElementById('viewModal').remove()">Fechar</button>
+                </div>
+            </div>
+        </div>`;
+
+    document.getElementById('viewModal')?.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+}
+
+window.switchViewTab = function(tabId, btn) {
+    const modal = document.getElementById('viewModal');
+    modal.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    modal.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabId).classList.add('active');
+    btn.classList.add('active');
+};
+
+// ============================================
+// MODAL DE FORMULÁRIO (por abas)
+// ============================================
+window.toggleForm    = function() { showFormModal(null); };
+window.showFormModal = function(editingId = null, focusPagamento = false) {
     const isEditing = editingId !== null;
     const c = isEditing ? contas.find(x => String(x.id) === String(editingId)) : null;
 
-    const modalHTML = `
-        <div class="modal-overlay" id="formModal" style="display: flex;">
+    const notas    = c ? getObservacoesTexto(c) : [];
+    const parcelas = c ? getParcelas(c) : [];
+    _editingParcelasTemp = JSON.parse(JSON.stringify(parcelas));
+
+    // Calcular valor pago total das parcelas existentes
+    const valorPagoAtual = _editingParcelasTemp.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
+
+    const html = `
+        <div class="modal-overlay show" id="formModal">
             <div class="modal-content">
                 <div class="modal-header">
                     <h3 class="modal-title">${isEditing ? 'Editar Conta' : 'Nova Conta a Receber'}</h3>
-                    <button class="close-modal" onclick="closeFormModal(true)">✕</button>
+                    <button class="close-modal" onclick="closeFormModal()">✕</button>
                 </div>
-                <form id="contaForm" onsubmit="handleSubmit(event)">
-                    <input type="hidden" id="editId" value="${editingId || ''}">
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="numero_nf">Número NF *</label>
-                            <input type="text" id="numero_nf" value="${c?.numero_nf || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="orgao">Órgão *</label>
-                            <input type="text" id="orgao" value="${c?.orgao || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="vendedor">Vendedor *</label>
-                            <select id="vendedor">
-                                <option value="">Selecione...</option>
-                                <option value="ROBERTO" ${c?.vendedor === 'ROBERTO' ? 'selected' : ''}>ROBERTO</option>
-                                <option value="ISAQUE" ${c?.vendedor === 'ISAQUE' ? 'selected' : ''}>ISAQUE</option>
-                                <option value="MIGUEL" ${c?.vendedor === 'MIGUEL' ? 'selected' : ''}>MIGUEL</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="banco">Banco</label>
-                            <input type="text" id="banco" value="${c?.banco || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label for="valor">Valor (R$)</label>
-                            <input type="number" id="valor" step="0.01" min="0" value="${c?.valor || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label for="valor_pago">Valor Pago (R$)</label>
-                            <input type="number" id="valor_pago" step="0.01" min="0" value="${c?.valor_pago || '0'}">
-                        </div>
-                        <div class="form-group">
-                            <label for="data_emissao">Data Emissão *</label>
-                            <input type="date" id="data_emissao" value="${c?.data_emissao || ''}" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="data_vencimento">Vencimento</label>
-                            <input type="date" id="data_vencimento" value="${c?.data_vencimento || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label for="data_pagamento">Data Pagamento</label>
-                            <input type="date" id="data_pagamento" value="${c?.data_pagamento || ''}">
-                        </div>
-                        <div class="form-group">
-                            <label for="status">Status</label>
-                            <select id="status">
-                                <option value="A RECEBER" ${!c || c.status === 'A RECEBER' ? 'selected' : ''}>A Receber</option>
-                                <option value="PAGO" ${c?.status === 'PAGO' ? 'selected' : ''}>Pago</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="tipo_nf">Tipo NF</label>
-                            <select id="tipo_nf">
-                                <option value="ENVIO" ${!c || c.tipo_nf === 'ENVIO' ? 'selected' : ''}>Envio</option>
-                                <option value="CANCELADA" ${c?.tipo_nf === 'CANCELADA' ? 'selected' : ''}>Cancelada</option>
-                                <option value="REMESSA DE AMOSTRA" ${c?.tipo_nf === 'REMESSA DE AMOSTRA' ? 'selected' : ''}>Remessa de Amostra</option>
-                                <option value="SIMPLES REMESSA" ${c?.tipo_nf === 'SIMPLES REMESSA' ? 'selected' : ''}>Simples Remessa</option>
-                                <option value="DEVOLUÇÃO" ${c?.tipo_nf === 'DEVOLUÇÃO' ? 'selected' : ''}>Devolução</option>
-                            </select>
+
+                <div class="tabs-container">
+                    <div class="tabs-nav">
+                        <button class="tab-btn ${!focusPagamento ? 'active' : ''}" onclick="switchFormTab('ftab-geral',this)">Geral</button>
+                        <button class="tab-btn" onclick="switchFormTab('ftab-valores',this)">Valores e Datas</button>
+                        <button class="tab-btn ${focusPagamento ? 'active' : ''}" onclick="switchFormTab('ftab-parcelas',this)">Pagamento Parcelado</button>
+                        <button class="tab-btn" onclick="switchFormTab('ftab-obs',this)">Observações</button>
+                    </div>
+
+                    <!-- ABA: GERAL -->
+                    <div id="ftab-geral" class="tab-content ${!focusPagamento ? 'active' : ''}">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Número NF *</label>
+                                <input type="text" id="f_numero_nf" value="${c?.numero_nf || ''}" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Órgão *</label>
+                                <input type="text" id="f_orgao" value="${c?.orgao || ''}" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Vendedor *</label>
+                                <select id="f_vendedor">
+                                    <option value="">Selecione...</option>
+                                    <option value="ROBERTO" ${c?.vendedor==='ROBERTO'?'selected':''}>ROBERTO</option>
+                                    <option value="ISAQUE"  ${c?.vendedor==='ISAQUE' ?'selected':''}>ISAQUE</option>
+                                    <option value="MIGUEL"  ${c?.vendedor==='MIGUEL' ?'selected':''}>MIGUEL</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Banco</label>
+                                <input type="text" id="f_banco" value="${c?.banco || ''}">
+                            </div>
+                            <div class="form-group">
+                                <label>Tipo NF</label>
+                                <select id="f_tipo_nf">
+                                    <option value="ENVIO"             ${(!c||c.tipo_nf==='ENVIO')              ?'selected':''}>Envio</option>
+                                    <option value="CANCELADA"         ${c?.tipo_nf==='CANCELADA'               ?'selected':''}>Cancelada</option>
+                                    <option value="REMESSA DE AMOSTRA"${c?.tipo_nf==='REMESSA DE AMOSTRA'      ?'selected':''}>Remessa de Amostra</option>
+                                    <option value="SIMPLES REMESSA"   ${c?.tipo_nf==='SIMPLES REMESSA'         ?'selected':''}>Simples Remessa</option>
+                                    <option value="DEVOLUÇÃO"         ${c?.tipo_nf==='DEVOLUÇÃO'               ?'selected':''}>Devolução</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Status</label>
+                                <select id="f_status">
+                                    <option value="A RECEBER" ${(!c||c.status==='A RECEBER')?'selected':''}>A Receber</option>
+                                    <option value="PAGO"      ${c?.status==='PAGO'         ?'selected':''}>Pago</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
-                    <div class="modal-actions">
-                        <button type="submit" class="save">${isEditing ? 'Atualizar' : 'Salvar'}</button>
-                        <button type="button" class="secondary" onclick="closeFormModal(true)">Cancelar</button>
+
+                    <!-- ABA: VALORES E DATAS -->
+                    <div id="ftab-valores" class="tab-content">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label>Valor NF (R$)</label>
+                                <input type="number" id="f_valor" step="0.01" min="0" value="${c?.valor || ''}">
+                            </div>
+                            <div class="form-group">
+                                <label>Valor Pago Total (R$) <span style="color:var(--text-secondary);font-size:.8rem;">(calculado pelas parcelas)</span></label>
+                                <input type="number" id="f_valor_pago" step="0.01" min="0" value="${valorPagoAtual || c?.valor_pago || '0'}" readonly style="background:var(--table-stripe);cursor:not-allowed;">
+                            </div>
+                            <div class="form-group">
+                                <label>Data Emissão *</label>
+                                <input type="date" id="f_data_emissao" value="${c?.data_emissao || ''}" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Vencimento</label>
+                                <input type="date" id="f_data_vencimento" value="${c?.data_vencimento || ''}">
+                            </div>
+                            <div class="form-group">
+                                <label>Data Pagamento <span style="color:var(--text-secondary);font-size:.8rem;">(última parcela)</span></label>
+                                <input type="date" id="f_data_pagamento" value="${c?.data_pagamento || ''}" readonly style="background:var(--table-stripe);cursor:not-allowed;">
+                            </div>
+                        </div>
                     </div>
-                </form>
+
+                    <!-- ABA: PAGAMENTO PARCELADO -->
+                    <div id="ftab-parcelas" class="tab-content ${focusPagamento ? 'active' : ''}">
+                        <div style="margin-bottom:1.5rem;">
+                            <p style="color:var(--text-secondary);font-size:.9rem;margin-bottom:1rem;">
+                                Adicione parcelas de pagamento. O <strong>Valor Pago Total</strong> será calculado automaticamente.
+                                Se o total das parcelas igualar o Valor NF, o status será marcado como <strong>PAGO</strong>.
+                            </p>
+                            <button type="button" class="btn-add-obs" onclick="adicionarParcelaForm()">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Adicionar Parcela
+                            </button>
+                        </div>
+                        <div id="parcelasFormList"></div>
+                    </div>
+
+                    <!-- ABA: OBSERVAÇÕES -->
+                    <div id="ftab-obs" class="tab-content">
+                        <div class="observacoes-section">
+                            <div class="observacoes-list" id="obsFormList">
+                                ${notas.map((n, i) => `
+                                    <div class="observacao-item" id="obs-form-${i}">
+                                        <div class="observacao-header">
+                                            <span class="observacao-data">${n.data || ''}</span>
+                                            <button type="button" class="btn-remove-obs" onclick="removerObsForm(${i})">✕</button>
+                                        </div>
+                                        <p class="observacao-texto">${n.texto || ''}</p>
+                                    </div>`).join('')}
+                            </div>
+                            <div class="nova-observacao">
+                                <h4>Nova Observação</h4>
+                                <textarea id="novaObsInput" placeholder="Digite uma observação..."></textarea>
+                                <button type="button" class="btn-add-obs" onclick="adicionarObsForm()">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                    Adicionar Observação
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NAVEGAÇÃO DE ABAS + AÇÕES -->
+                <div class="modal-actions" style="justify-content:space-between;">
+                    <div style="display:flex;gap:.75rem;">
+                        <button type="button" id="btnFormPrev" class="btn-tab-nav btn-prev" onclick="navFormTab(-1)">← Anterior</button>
+                        <button type="button" id="btnFormNext" class="btn-tab-nav btn-next" onclick="navFormTab(1)">Próximo →</button>
+                        <button type="button" id="btnFormSave" class="btn-save-form" onclick="handleSubmitForm('${editingId || ''}')">
+                            ${isEditing ? 'Atualizar' : 'Salvar'}
+                        </button>
+                    </div>
+                    <button type="button" class="btn-cancel" onclick="closeFormModal()">Cancelar</button>
+                </div>
             </div>
-        </div>
-    `;
+        </div>`;
 
     document.getElementById('formModal')?.remove();
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    document.body.insertAdjacentHTML('beforeend', html);
 
     // Maiúsculas automáticas
-    ['numero_nf', 'orgao', 'banco'].forEach(id => {
+    ['f_numero_nf', 'f_orgao', 'f_banco'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', e => {
             const s = e.target.selectionStart;
@@ -543,53 +786,240 @@ window.showFormModal = function (editingId = null) {
             e.target.setSelectionRange(s, s);
         });
     });
+
+    // Renderizar parcelas existentes
+    renderParcelasForm();
+    updateFormNavState();
+
+    // Guardar aba ativa
+    window._formTabIndex = focusPagamento ? 2 : 0;
+    updateFormNavState();
 };
 
-window.closeFormModal = function (showMsg = false) {
+// Abas do formulário
+const FORM_TABS = ['ftab-geral', 'ftab-valores', 'ftab-parcelas', 'ftab-obs'];
+
+window.switchFormTab = function(tabId, btn) {
     const modal = document.getElementById('formModal');
-    if (modal) {
-        const editId = document.getElementById('editId')?.value;
-        if (showMsg) showToast(editId ? 'Atualização cancelada' : 'Registro cancelado', 'error');
-        modal.style.animation = 'fadeOut 0.2s ease forwards';
-        setTimeout(() => modal.remove(), 200);
-    }
+    if (!modal) return;
+    modal.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    modal.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(tabId)?.classList.add('active');
+    btn?.classList.add('active');
+    window._formTabIndex = FORM_TABS.indexOf(tabId);
+    updateFormNavState();
 };
 
-window.handleSubmit = async function (event) {
-    event.preventDefault();
+window.navFormTab = function(dir) {
+    const idx = (window._formTabIndex || 0) + dir;
+    if (idx < 0 || idx >= FORM_TABS.length) return;
+    const tabId = FORM_TABS[idx];
+    const btn = document.querySelector(`#formModal .tab-btn:nth-child(${idx+1})`);
+    switchFormTab(tabId, btn);
+};
 
-    const editId = document.getElementById('editId').value;
+function updateFormNavState() {
+    const idx  = window._formTabIndex || 0;
+    const prev = document.getElementById('btnFormPrev');
+    const next = document.getElementById('btnFormNext');
+    const save = document.getElementById('btnFormSave');
+    if (prev) prev.style.display = idx === 0 ? 'none' : 'inline-flex';
+    if (next) next.style.display = idx === FORM_TABS.length - 1 ? 'none' : 'inline-flex';
+    if (save) save.style.display = idx === FORM_TABS.length - 1 ? 'inline-flex' : 'none';
+}
+
+window.closeFormModal = function() {
+    const modal = document.getElementById('formModal');
+    if (modal) modal.remove();
+    _editingParcelasTemp = [];
+};
+
+// ============================================
+// PARCELAS NO FORMULÁRIO
+// ============================================
+function renderParcelasForm() {
+    const container = document.getElementById('parcelasFormList');
+    if (!container) return;
+
+    if (_editingParcelasTemp.length === 0) {
+        container.innerHTML = `<p style="color:var(--text-secondary);font-style:italic;text-align:center;padding:1rem 0;">Nenhuma parcela adicionada ainda.</p>`;
+        return;
+    }
+
+    container.innerHTML = _editingParcelasTemp.map((p, i) => `
+        <div class="observacao-item" style="margin-bottom:.75rem;">
+            <div class="observacao-header">
+                <span class="observacao-data" style="font-weight:600;color:var(--text-primary);">${p.numero || (i+1) + 'ª Parcela'}</span>
+                <button type="button" class="btn-remove-obs" onclick="removerParcelaForm(${i})">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.5rem;">
+                <div>
+                    <label style="font-size:.8rem;margin-bottom:.25rem;">Valor (R$)</label>
+                    <input type="number" step="0.01" min="0" value="${p.valor || ''}"
+                        onchange="_editingParcelasTemp[${i}].valor = parseFloat(this.value)||0; atualizarValorPagoForm();"
+                        style="padding:8px 12px;font-size:.9rem;">
+                </div>
+                <div>
+                    <label style="font-size:.8rem;margin-bottom:.25rem;">Data de Pagamento</label>
+                    <input type="date" value="${p.data || ''}"
+                        onchange="_editingParcelasTemp[${i}].data = this.value; atualizarValorPagoForm();"
+                        style="padding:8px 12px;font-size:.9rem;">
+                </div>
+            </div>
+        </div>`).join('');
+}
+
+window.adicionarParcelaForm = function() {
+    const numero = (_editingParcelasTemp.length + 1);
+    const sufixos = ['ª','ª','ª','ª','ª','ª','ª','ª','ª','ª'];
+    const label = numero + (sufixos[numero-1] || 'ª') + ' Parcela';
+    _editingParcelasTemp.push({ numero: label, valor: 0, data: '' });
+    renderParcelasForm();
+    atualizarValorPagoForm();
+};
+
+window.removerParcelaForm = function(i) {
+    _editingParcelasTemp.splice(i, 1);
+    // Renumerar
+    _editingParcelasTemp.forEach((p, idx) => {
+        p.numero = (idx + 1) + 'ª Parcela';
+    });
+    renderParcelasForm();
+    atualizarValorPagoForm();
+};
+
+function atualizarValorPagoForm() {
+    const total = _editingParcelasTemp.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
+    const el = document.getElementById('f_valor_pago');
+    if (el) el.value = total.toFixed(2);
+
+    // Data de pagamento = última parcela com data preenchida
+    const datas = _editingParcelasTemp.map(p => p.data).filter(Boolean).sort();
+    const elData = document.getElementById('f_data_pagamento');
+    if (elData) elData.value = datas.length > 0 ? datas[datas.length - 1] : '';
+}
+
+// ============================================
+// OBSERVAÇÕES NO FORMULÁRIO
+// ============================================
+window.adicionarObsForm = function() {
+    const input = document.getElementById('novaObsInput');
+    if (!input || !input.value.trim()) return showToast('Digite uma observação primeiro', 'error');
+
+    const notas = obterNotasForm();
+    notas.push({
+        texto: input.value.trim(),
+        data: new Date().toLocaleString('pt-BR')
+    });
+    input.value = '';
+    renderObsForm(notas);
+};
+
+window.removerObsForm = function(i) {
+    const notas = obterNotasForm();
+    notas.splice(i, 1);
+    renderObsForm(notas);
+};
+
+function obterNotasForm() {
+    const list = document.getElementById('obsFormList');
+    if (!list) return [];
+    const notas = [];
+    list.querySelectorAll('.observacao-item').forEach(item => {
+        notas.push({
+            texto: item.querySelector('.observacao-texto')?.textContent || '',
+            data:  item.querySelector('.observacao-data')?.textContent || ''
+        });
+    });
+    return notas;
+}
+
+function renderObsForm(notas) {
+    const list = document.getElementById('obsFormList');
+    if (!list) return;
+    list.innerHTML = notas.map((n, i) => `
+        <div class="observacao-item" id="obs-form-${i}">
+            <div class="observacao-header">
+                <span class="observacao-data">${n.data || ''}</span>
+                <button type="button" class="btn-remove-obs" onclick="removerObsForm(${i})">✕</button>
+            </div>
+            <p class="observacao-texto">${n.texto || ''}</p>
+        </div>`).join('');
+}
+
+// ============================================
+// SUBMIT DO FORMULÁRIO
+// ============================================
+window.handleSubmitForm = async function(editId) {
+    const numero_nf     = document.getElementById('f_numero_nf')?.value.trim();
+    const orgao         = document.getElementById('f_orgao')?.value.trim();
+    const vendedor      = document.getElementById('f_vendedor')?.value;
+    const banco         = document.getElementById('f_banco')?.value.trim() || null;
+    const tipo_nf       = document.getElementById('f_tipo_nf')?.value;
+    const valor         = parseFloat(document.getElementById('f_valor')?.value) || 0;
+    const data_emissao  = document.getElementById('f_data_emissao')?.value;
+    const data_vencimento = document.getElementById('f_data_vencimento')?.value || null;
+
+    if (!numero_nf || !orgao || !vendedor || !data_emissao) {
+        showToast('Preencha os campos obrigatórios: NF, Órgão, Vendedor e Data Emissão', 'error');
+        return;
+    }
+
+    // Calcular parcelas e status
+    const parcelas = _editingParcelasTemp.filter(p => p.valor > 0 || p.data);
+    const totalPago = parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
+
+    // Validação: se há parcelas, todas precisam de data
+    for (const p of parcelas) {
+        if (p.valor > 0 && !p.data) {
+            showToast(`Preencha a data de pagamento da ${p.numero}`, 'error');
+            return;
+        }
+    }
+
+    let status = document.getElementById('f_status')?.value || 'A RECEBER';
+    let data_pagamento = null;
+
+    if (parcelas.length > 0) {
+        if (totalPago >= valor && valor > 0) {
+            status = 'PAGO';
+        } else if (totalPago > 0) {
+            status = parcelas.length + 'ª PARCELA';
+        }
+        const datas = parcelas.map(p => p.data).filter(Boolean).sort();
+        data_pagamento = datas.length > 0 ? datas[datas.length - 1] : null;
+    }
+
+    const notas = obterNotasForm();
+    const observacoes = buildObservacoesJson(notas, parcelas);
+
     const formData = {
-        numero_nf: document.getElementById('numero_nf').value.trim(),
-        orgao: document.getElementById('orgao').value.trim(),
-        vendedor: document.getElementById('vendedor').value,
-        banco: document.getElementById('banco').value.trim() || null,
-        valor: parseFloat(document.getElementById('valor').value) || 0,
-        valor_pago: parseFloat(document.getElementById('valor_pago').value) || 0,
-        data_emissao: document.getElementById('data_emissao').value,
-        data_vencimento: document.getElementById('data_vencimento').value || null,
-        data_pagamento: document.getElementById('data_pagamento').value || null,
-        status: document.getElementById('status').value,
-        tipo_nf: document.getElementById('tipo_nf').value
+        numero_nf, orgao, vendedor, banco, tipo_nf,
+        valor, valor_pago: totalPago,
+        data_emissao, data_vencimento, data_pagamento,
+        status, observacoes
     };
 
+    await salvarConta(editId || null, formData, false);
+};
+
+// ============================================
+// SALVAR CONTA (API)
+// ============================================
+async function salvarConta(id, data, silencioso = false) {
     if (!isOnline && !DEVELOPMENT_MODE) {
         showToast('Sistema offline. Não foi possível salvar.', 'error');
-        closeFormModal();
         return;
     }
 
     try {
-        const url = editId ? `${API_URL}/receber/${editId}` : `${API_URL}/receber`;
-        const method = editId ? 'PUT' : 'POST';
+        const url    = id ? `${API_URL}/receber/${id}` : `${API_URL}/receber`;
+        const method = id ? 'PUT' : 'POST';
 
         const r = await fetch(url, {
             method,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Session-Token': sessionToken
-            },
-            body: JSON.stringify(formData)
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
+            body: JSON.stringify(data)
         });
 
         if (!DEVELOPMENT_MODE && r.status === 401) {
@@ -605,30 +1035,31 @@ window.handleSubmit = async function (event) {
 
         const saved = await r.json();
 
-        if (editId) {
-            const idx = contas.findIndex(x => String(x.id) === String(editId));
+        if (id) {
+            const idx = contas.findIndex(x => String(x.id) === String(id));
             if (idx !== -1) contas[idx] = saved;
-            showToast(`NF ${formData.numero_nf} atualizada`, 'success');
         } else {
             contas.push(saved);
-            showToast(`NF ${formData.numero_nf} registrada`, 'success');
         }
 
         updateFilters();
         updateDashboard();
         filterContas();
-        closeFormModal();
+
+        if (!silencioso) {
+            showToast(id ? `NF ${data.numero_nf || ''} atualizada` : `NF ${data.numero_nf || ''} registrada`, 'success');
+            closeFormModal();
+        }
     } catch (err) {
         console.error('❌ Erro:', err);
         showToast(`Erro: ${err.message}`, 'error');
-        closeFormModal();
     }
-};
+}
 
 // ============================================
 // MODAL DE VENCIDOS
 // ============================================
-window.showVencidosModal = function () {
+window.showVencidosModal = function() {
     const hoje = new Date().toISOString().split('T')[0];
     const vencidos = contas.filter(c =>
         c.status === 'A RECEBER' && c.data_vencimento && c.data_vencimento < hoje
@@ -638,54 +1069,34 @@ window.showVencidosModal = function () {
     if (!body) return;
 
     if (vencidos.length === 0) {
-        body.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Nenhuma conta vencida</div>';
+        body.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Nenhuma conta vencida</div>';
     } else {
         body.innerHTML = `
-            <div style="overflow-x: auto;">
+            <div style="overflow-x:auto;">
                 <table>
-                    <thead>
-                        <tr>
-                            <th>NF</th>
-                            <th>Órgão</th>
-                            <th>Vendedor</th>
-                            <th>Vencimento</th>
-                            <th>Valor</th>
-                        </tr>
-                    </thead>
+                    <thead><tr><th>NF</th><th>Órgão</th><th>Vendedor</th><th>Vencimento</th><th>Valor</th></tr></thead>
                     <tbody>
                         ${vencidos.map(c => `
                             <tr>
                                 <td><strong>${c.numero_nf || '-'}</strong></td>
                                 <td>${c.orgao || '-'}</td>
                                 <td>${c.vendedor || '-'}</td>
-                                <td style="color: #EF4444; font-weight: 600;">${formatDate(c.data_vencimento)}</td>
-                                <td>R$ ${parseFloat(c.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                            </tr>
-                        `).join('')}
+                                <td style="color:#EF4444;font-weight:600;">${formatDate(c.data_vencimento)}</td>
+                                <td>R$ ${parseFloat(c.valor || 0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td>
+                            </tr>`).join('')}
                     </tbody>
                 </table>
-            </div>
-        `;
+            </div>`;
     }
 
     const modal = document.getElementById('vencidosModal');
     if (modal) modal.style.display = 'flex';
 };
 
-window.closeVencidosModal = function () {
+window.closeVencidosModal = function() {
     const modal = document.getElementById('vencidosModal');
     if (modal) modal.style.display = 'none';
 };
-
-function verificarVencidos() {
-    const hoje = new Date().toISOString().split('T')[0];
-    const vencidos = contas.filter(c =>
-        c.status === 'A RECEBER' && c.data_vencimento && c.data_vencimento < hoje
-    );
-    if (vencidos.length > 0) {
-        showToast(`⚠️ ${vencidos.length} conta(s) vencida(s)!`, 'error');
-    }
-}
 
 // ============================================
 // UTILITÁRIOS
