@@ -1083,27 +1083,7 @@ button.small {
     margin: 0;
 }
 
-/* BOTÃO FECHAR (X) - SEM FUNDO COLORIDO */
-.close-modal {
-    background: transparent !important;
-    border: none;
-    font-size: 1.5rem;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 0;
-    margin: 0;
-    width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    transition: color 0.2s ease;
-}
-
-.close-modal:hover {
-    color: var(--text-primary);
-    background: transparent !important;
-}
+/* .close-modal definido na seção de adições abaixo */
 
 /* SISTEMA DE ABAS */
 .tabs-container {
@@ -1376,6 +1356,194 @@ button.small {
     color: var(--text-secondary);
     padding: 3rem 1rem;
     font-style: italic;
+}
+
+/* ============================================
+   CHECKBOX CUSTOMIZADO
+   ============================================ */
+.checkbox-wrapper {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.styled-checkbox {
+    display: none;
+}
+
+.checkbox-label-styled {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 2px solid var(--border-color);
+    background: var(--input-bg);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    position: relative;
+    margin: 0;
+}
+
+.checkbox-label-styled:hover {
+    border-color: var(--success-color);
+    background: rgba(34, 197, 94, 0.08);
+}
+
+.styled-checkbox:checked + .checkbox-label-styled {
+    background: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.styled-checkbox:checked + .checkbox-label-styled::after {
+    content: '';
+    display: block;
+    width: 5px;
+    height: 9px;
+    border: 2px solid white;
+    border-top: none;
+    border-left: none;
+    transform: rotate(45deg) translateY(-1px);
+}
+
+/* ============================================
+   BADGE DE PARCELA (verde como PAGO)
+   ============================================ */
+.badge.status-parcela {
+    background: rgba(34, 197, 94, 0.12);
+    color: #16A34A;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+/* ============================================
+   BOTÕES DE NAVEGAÇÃO DE ABAS (cinza)
+   ============================================ */
+.btn-tab-nav {
+    background: #6B7280 !important;
+    color: white !important;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 0.2s ease;
+    margin: 0;
+}
+
+.btn-tab-nav:hover:not(:disabled) {
+    background: #4B5563 !important;
+    opacity: 1;
+    transform: none;
+}
+
+/* Botão Salvar do formulário */
+.btn-save-form {
+    background: var(--btn-save) !important;
+    color: white !important;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 0.2s ease;
+    margin: 0;
+}
+
+.btn-save-form:hover {
+    background: #16A34A !important;
+    opacity: 1;
+    transform: translateY(-1px);
+}
+
+/* Botão Cancelar — vermelho, sempre à direita */
+.btn-cancel {
+    background: var(--btn-delete) !important;
+    color: white !important;
+    padding: 10px 24px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: all 0.2s ease;
+    margin: 0;
+}
+
+.btn-cancel:hover {
+    background: #DC2626 !important;
+    opacity: 1;
+    transform: translateY(-1px);
+}
+
+/* ============================================
+   BOTÃO FECHAR X — sem efeito de hover colorido
+   ============================================ */
+.close-modal {
+    background: transparent !important;
+    border: none !important;
+    font-size: 1.4rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    margin: 0;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: color 0.2s ease;
+    line-height: 1;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.close-modal:hover {
+    background: transparent !important;
+    color: var(--text-primary) !important;
+    transform: none !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+}
+
+/* ============================================
+   INFO-ROW (visualização por abas)
+   ============================================ */
+.info-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    min-width: 140px;
+    flex-shrink: 0;
+}
+
+.info-value {
+    color: var(--text-primary);
+    font-size: 0.9rem;
 }
 
 .hidden {
