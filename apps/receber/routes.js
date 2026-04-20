@@ -258,6 +258,18 @@ async function sincronizarVendas(supabase, conta) {
 
     const statusPagamento = conta.status || 'A RECEBER';
 
+    // Calcular valor_pago a partir das parcelas (se houver)
+    let valorPago = parseFloat(conta.valor_pago) || 0;
+    try {
+        const obs = conta.observacoes;
+        if (obs) {
+            const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
+            if (parsed && Array.isArray(parsed.parcelas) && parsed.parcelas.length > 0) {
+                valorPago = parsed.parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
+            }
+        }
+    } catch {}
+
     const tipoNfMap = {
         'ENVIO': 'ENVIO',
         'CANCELADA': 'CANCELADA',
@@ -279,6 +291,7 @@ async function sincronizarVendas(supabase, conta) {
         data_vencimento: conta.data_vencimento || null,
         data_pagamento: conta.data_pagamento || null,
         status_pagamento: statusPagamento,
+        valor_pago: valorPago,
         id_contas_receber: conta.id,
         updated_at: new Date().toISOString()
     };
@@ -296,7 +309,6 @@ async function sincronizarVendas(supabase, conta) {
             .update(payload)
             .eq('id_contas_receber', conta.id);
     } else {
-        // Tenta encontrar pelo número da NF + vendedor (pode vir do frete)
         const { data: porNF } = await supabase
             .from('vendas')
             .select('id, origem')
