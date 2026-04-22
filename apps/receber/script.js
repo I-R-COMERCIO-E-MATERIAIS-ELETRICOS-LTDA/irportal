@@ -484,11 +484,11 @@ function showConfirmacaoPagamentoModal(id, conta) {
                 </div>
                 <div style="padding:1.5rem 0 0.5rem;">
                     <p style="font-size:1rem;color:var(--text-primary);margin-bottom:1.5rem;text-align:center;">
-                        O pagamento para a NF <strong>${conta.numero_nf}</strong> será parcelado?
+                        O pagamento da NF <strong>${conta.numero_nf}</strong> será parcelado?
                     </p>
                     <div class="modal-actions" style="justify-content:center;gap:1rem;">
-                        <button class="action-btn edit" style="min-width:110px;" onclick="document.getElementById('confirmPagModal').remove(); showFormModal('${id}', true);">Sim, parcelado</button>
-                        <button class="action-btn success" style="min-width:110px;background:var(--btn-save);" onclick="confirmarPagamentoTotal('${id}')">Não, integral</button>
+                        <button class="action-btn edit" style="min-width:110px;" onclick="document.getElementById('confirmPagModal').remove(); showFormModal('${id}', true);">Sim</button>
+                        <button class="action-btn success" style="min-width:110px;background:var(--btn-save);" onclick="confirmarPagamentoTotal('${id}')">Não</button>
                         <button class="btn-cancel" style="min-width:110px;" onclick="document.getElementById('confirmPagModal').remove()">Cancelar</button>
                     </div>
                 </div>
