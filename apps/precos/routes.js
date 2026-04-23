@@ -6,6 +6,25 @@ module.exports = function(supabase) {
 
     router.head('/', (req, res) => res.status(200).end());
 
+    // ─── LISTA COMPLETA DE MARCAS DISTINTAS ──────────────────────────────────
+    router.get('/marcas', async (req, res) => {
+        try {
+            const { data, error } = await supabase
+                .from('precos')
+                .select('marca')
+                .order('marca', { ascending: true });
+
+            if (error) throw error;
+
+            // Extrai valores únicos e ordena
+            const marcas = [...new Set(data.map(p => p.marca.trim().toUpperCase()))].sort();
+            res.json(marcas);
+        } catch (e) {
+            console.error('Erro ao buscar marcas:', e);
+            res.status(500).json({ error: 'Erro ao buscar marcas' });
+        }
+    });
+
     // ─── PREÇOS ───────────────────────────────────────────────────────────────
     router.get('/', async (req, res) => {
         try {
@@ -44,7 +63,7 @@ module.exports = function(supabase) {
                 preco: p.preco,
                 descricao: p.descricao,
                 timestamp: p.timestamp,
-                marca_nome: p.marca  // campo para manter compatibilidade com frontend
+                marca_nome: p.marca
             }));
 
             res.json({
