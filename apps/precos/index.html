@@ -29,8 +29,15 @@
 
             <!-- Filtro por Marca -->
             <div class="card filter-section">
-                <h3>Filtrar por Marca</h3>
-                <div id="marcasFilter"></div>
+                <div class="filter-header">
+                    <h3>Filtrar por Marca</h3>
+                    <div class="filter-header-actions">
+                        <button id="collapseBtn" class="icon-btn" onclick="toggleFilterSection()" title="Minimizar">▲</button>
+                    </div>
+                </div>
+                <div id="marcasFilterWrapper">
+                    <div id="marcasFilter"></div>
+                </div>
             </div>
 
             <!-- Search Bar -->
@@ -41,6 +48,7 @@
                         <path d="m21 21-4.35-4.35"></path>
                     </svg>
                     <input type="text" id="search" placeholder="Buscar por código, marca ou descrição..." oninput="filterPrecos()">
+                    <button class="sync-btn" onclick="sincronizarDados()" title="Sincronizar dados">⟳</button>
                 </div>
             </div>
 
