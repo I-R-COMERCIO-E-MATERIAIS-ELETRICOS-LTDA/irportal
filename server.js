@@ -180,7 +180,7 @@ app.use('/api', verificarAutenticacao);
 // ─── API DE PREÇOS ────────────────────────────────────────────────────────────
 const precosRoutes = require('./apps/precos/routes');
 app.use('/api/precos', precosRoutes(supabase));
-app.use('/api/marcas', precosRoutes(supabase));
+// (Rotas de marcas removidas — agora as marcas são extraídas dinamicamente dos próprios preços)
 
 // ─── API DE COMPRAS ────────────────────────────────────────────────────────────
 const compraRoutes = require('./apps/compra/routes');
@@ -199,8 +199,6 @@ const faturamentoRoutes = require('./apps/faturamento/routes');
 app.use('/api/pedidos', faturamentoRoutes(supabase));
 
 // ─── API DE CONTROLE DE FRETE ─────────────────────────────────────────────────
-// Substitui o backend legado em controle-frete.onrender.com
-// Os frontends devem apontar API_URL para este servidor central em /api/fretes
 const freteRoutes = require('./apps/frete/routes');
 app.use('/api/fretes', freteRoutes(supabase));
 
@@ -298,11 +296,9 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
     console.log('  GET  /api/estoque          → Estoque');
     console.log('  GET  /api/precos           → Preços');
-    console.log('  CRUD /api/marcas           → Marcas              ✅ NOVO');
     console.log('  GET  /api/ordens           → Compras');
-    console.log('  ---');
-    console.log('  CRUD /api/fretes           → Controle de Frete ✅ NOVO');
-    console.log('  CRUD /api/receber          → Contas a Receber  ✅ NOVO');
-    console.log('  CRUD /api/vendas           → Vendas            ✅ NOVO');
-    console.log('  POST /api/vendas/sincronizar → Sync manual     ✅ NOVO\n');
+    console.log('  CRUD /api/fretes           → Controle de Frete');
+    console.log('  CRUD /api/receber          → Contas a Receber');
+    console.log('  CRUD /api/vendas           → Vendas');
+    console.log('  POST /api/vendas/sincronizar → Sync manual\n');
 });
