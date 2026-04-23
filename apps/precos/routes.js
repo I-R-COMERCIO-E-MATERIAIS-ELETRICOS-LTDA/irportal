@@ -87,8 +87,10 @@ module.exports = function(supabase) {
                 .order('marca', { ascending: true })
                 .order('codigo', { ascending: true });
 
+            // CORRIGIDO: filtrar pelo campo "marca" diretamente (texto),
+            // pois .eq() em colunas de join (marcas.nome) não funciona no Supabase PostgREST
             if (marca && marca !== 'TODAS') {
-                query = query.eq('marcas.nome', marca);
+                query = query.eq('marca', marca);
             }
 
             if (search) {
@@ -145,7 +147,7 @@ module.exports = function(supabase) {
             const { data, error } = await supabase
                 .from('precos')
                 .insert([{
-                    marca:     marca.trim(),
+                    marca:     marca.trim().toUpperCase(),
                     marca_id:  marcaRow?.id || null,
                     codigo:    codigo.trim(),
                     preco:     parseFloat(preco),
@@ -174,7 +176,7 @@ module.exports = function(supabase) {
             const { data, error } = await supabase
                 .from('precos')
                 .update({
-                    marca:     marca.trim(),
+                    marca:     marca.trim().toUpperCase(),
                     marca_id:  marcaRow?.id || null,
                     codigo:    codigo.trim(),
                     preco:     parseFloat(preco),
