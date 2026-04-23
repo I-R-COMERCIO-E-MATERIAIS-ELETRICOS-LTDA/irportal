@@ -6,7 +6,8 @@ module.exports = function(supabase) {
 
     router.head('/', (req, res) => res.status(200).end());
 
-    // Listar marcas (retrocompatibilidade — agora servido por /api/marcas)
+    // ─── MARCAS ───────────────────────────────────────────────────────────────
+
     router.get('/marcas', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -20,15 +21,65 @@ module.exports = function(supabase) {
         }
     });
 
-    // Listar preços com join de marcas
+    router.post('/marcas', async (req, res) => {
+        try {
+            const { nome } = req.body;
+            if (!nome) return res.status(400).json({ error: 'Nome é obrigatório' });
+            const { data, error } = await supabase
+                .from('marcas')
+                .insert([{ nome: nome.trim().toUpperCase() }])
+                .select()
+                .single();
+            if (error) throw error;
+            res.status(201).json(data);
+        } catch (e) {
+            res.status(500).json({ error: 'Erro ao criar marca' });
+        }
+    });
+
+    router.put('/marcas/:id', async (req, res) => {
+        try {
+            const { nome } = req.body;
+            if (!nome) return res.status(400).json({ error: 'Nome é obrigatório' });
+            const nomeUp = nome.trim().toUpperCase();
+            const { data, error } = await supabase
+                .from('marcas')
+                .update({ nome: nomeUp })
+                .eq('id', req.params.id)
+                .select()
+                .single();
+            if (error) return res.status(404).json({ error: 'Marca não encontrada' });
+            await supabase
+                .from('precos')
+                .update({ marca: nomeUp })
+                .eq('marca_id', req.params.id);
+            res.json(data);
+        } catch (e) {
+            res.status(500).json({ error: 'Erro ao renomear marca' });
+        }
+    });
+
+    router.delete('/marcas/:id', async (req, res) => {
+        try {
+            await supabase.from('precos').delete().eq('marca_id', req.params.id);
+            const { error } = await supabase.from('marcas').delete().eq('id', req.params.id);
+            if (error) throw error;
+            res.status(204).end();
+        } catch (e) {
+            res.status(500).json({ error: 'Erro ao excluir marca' });
+        }
+    });
+
+    // ─── PREÇOS ───────────────────────────────────────────────────────────────
+
     router.get('/', async (req, res) => {
         try {
-            const page  = parseInt(req.query.page)  || 1;
-            const limit = Math.min(parseInt(req.query.limit) || 50, 50);
+            const page   = parseInt(req.query.page)  || 1;
+            const limit  = Math.min(parseInt(req.query.limit) || 50, 50);
             const marca  = req.query.marca  || null;
             const search = req.query.search || null;
-            const from = (page - 1) * limit;
-            const to   = from + limit - 1;
+            const from   = (page - 1) * limit;
+            const to     = from + limit - 1;
 
             let query = supabase
                 .from('precos')
@@ -37,7 +88,6 @@ module.exports = function(supabase) {
                 .order('codigo', { ascending: true });
 
             if (marca && marca !== 'TODAS') {
-                // Filtra pelo nome via join
                 query = query.eq('marcas.nome', marca);
             }
 
@@ -52,7 +102,6 @@ module.exports = function(supabase) {
             const { data, error, count } = await query;
             if (error) throw error;
 
-            // Normaliza para o frontend
             const normalized = (data || []).map(p => ({
                 ...p,
                 marca_nome: p.marcas?.nome || p.marca || '',
@@ -70,7 +119,6 @@ module.exports = function(supabase) {
         }
     });
 
-    // Buscar preço específico
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -85,14 +133,12 @@ module.exports = function(supabase) {
         }
     });
 
-    // Criar preço
     router.post('/', async (req, res) => {
         try {
             const { marca, codigo, preco, descricao } = req.body;
             if (!marca || !codigo || !preco || !descricao)
                 return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
 
-            // Resolve marca_id pelo nome
             const { data: marcaRow } = await supabase
                 .from('marcas').select('id').eq('nome', marca.trim().toUpperCase()).single();
 
@@ -116,7 +162,6 @@ module.exports = function(supabase) {
         }
     });
 
-    // Atualizar preço
     router.put('/:id', async (req, res) => {
         try {
             const { marca, codigo, preco, descricao } = req.body;
@@ -147,7 +192,6 @@ module.exports = function(supabase) {
         }
     });
 
-    // Deletar preço
     router.delete('/:id', async (req, res) => {
         try {
             const { error } = await supabase.from('precos').delete().eq('id', req.params.id);
