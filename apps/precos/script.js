@@ -121,6 +121,32 @@ window.toggleFilterSection = function() {
     }
 };
 
+// ─── CORRIGIDO: parseia a resposta de /marcas de forma robusta e,
+//     se vier vazia, extrai as marcas únicas dos próprios registros já carregados ──
+function normalizarMarcas(marcas) {
+    if (!Array.isArray(marcas) || marcas.length === 0) return [];
+    if (typeof marcas[0] === 'object' && marcas[0] !== null) {
+        // formato esperado: [{ id, nome }, ...]
+        return marcas.filter(function(m) { return m && m.nome; });
+    }
+    // formato legado: array de strings
+    return marcas.map(function(m) { return { id: m, nome: String(m) }; });
+}
+
+function extrairMarcasDosPrecos(precos) {
+    var vistas = {};
+    var resultado = [];
+    precos.forEach(function(p) {
+        var nome = (p.marca_nome || p.marca || '').trim().toUpperCase();
+        if (nome && !vistas[nome]) {
+            vistas[nome] = true;
+            resultado.push({ id: nome, nome: nome });
+        }
+    });
+    resultado.sort(function(a, b) { return a.nome.localeCompare(b.nome); });
+    return resultado;
+}
+
 async function carregarTudo() {
     try {
         var results = await Promise.all([
@@ -129,23 +155,21 @@ async function carregarTudo() {
         ]);
         var marcasRes = results[0], precosRes = results[1];
 
-        if (marcasRes.ok) {
-            var marcas = await marcasRes.json();
-            if (Array.isArray(marcas) && marcas.length > 0 && typeof marcas[0] === 'object') {
-                state.marcasDisponiveis = marcas;
-            } else if (Array.isArray(marcas)) {
-                state.marcasDisponiveis = marcas.map(function(m) { return { id: m, nome: m }; });
-            }
-            renderMarcasFilter();
-        }
-
+        // --- preços primeiro para ter fallback disponível ---
+        var precosCarregados = [];
         if (precosRes.ok) {
             var result = await precosRes.json();
             if (Array.isArray(result)) {
-                state.precos = result.map(function(item) { return Object.assign({}, item, { descricao: item.descricao.toUpperCase() }); });
+                precosCarregados = result.map(function(item) {
+                    return Object.assign({}, item, { descricao: item.descricao.toUpperCase() });
+                });
+                state.precos = precosCarregados;
                 state.totalRecords = result.length; state.totalPages = 1; state.currentPage = 1;
             } else {
-                state.precos = (result.data || []).map(function(item) { return Object.assign({}, item, { descricao: item.descricao.toUpperCase() }); });
+                precosCarregados = (result.data || []).map(function(item) {
+                    return Object.assign({}, item, { descricao: item.descricao.toUpperCase() });
+                });
+                state.precos = precosCarregados;
                 state.totalRecords = result.total || 0;
                 state.totalPages = result.totalPages || 1;
                 state.currentPage = result.page || 1;
@@ -154,6 +178,23 @@ async function carregarTudo() {
             renderPrecos();
             renderPaginacao();
         }
+
+        // --- marcas: usa a tabela dedicada; se vier vazia extrai dos preços ---
+        if (marcasRes.ok) {
+            var marcasBruto = await marcasRes.json();
+            var marcasNorm = normalizarMarcas(marcasBruto);
+            if (marcasNorm.length > 0) {
+                state.marcasDisponiveis = marcasNorm;
+            } else {
+                // Tabela marcas vazia ou retorno inesperado: deriva das linhas de preços
+                state.marcasDisponiveis = extrairMarcasDosPrecos(precosCarregados);
+            }
+        } else {
+            // Endpoint falhou: deriva das linhas de preços
+            state.marcasDisponiveis = extrairMarcasDosPrecos(precosCarregados);
+        }
+        renderMarcasFilter();
+
     } catch (err) { console.error('Erro ao carregar dados:', err); }
 }
 
@@ -161,11 +202,12 @@ async function atualizarMarcas() {
     try {
         var response = await fetchWithTimeout(API_URL + '/marcas', { method: 'GET', headers: getHeaders() });
         if (response.ok) {
-            var marcas = await response.json();
-            if (Array.isArray(marcas) && marcas.length > 0 && typeof marcas[0] === 'object') {
-                state.marcasDisponiveis = marcas;
-            } else if (Array.isArray(marcas)) {
-                state.marcasDisponiveis = marcas.map(function(m) { return { id: m, nome: m }; });
+            var marcasBruto = await response.json();
+            var marcasNorm = normalizarMarcas(marcasBruto);
+            if (marcasNorm.length > 0) {
+                state.marcasDisponiveis = marcasNorm;
+            } else {
+                state.marcasDisponiveis = extrairMarcasDosPrecos(state.precos);
             }
             renderMarcasFilter();
         }
