@@ -180,6 +180,7 @@ app.use('/api', verificarAutenticacao);
 // ─── API DE PREÇOS ────────────────────────────────────────────────────────────
 const precosRoutes = require('./apps/precos/routes');
 app.use('/api/precos', precosRoutes(supabase));
+app.use('/api/marcas', precosRoutes(supabase));
 
 // ─── API DE COMPRAS ────────────────────────────────────────────────────────────
 const compraRoutes = require('./apps/compra/routes');
@@ -297,6 +298,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
     console.log('  GET  /api/estoque          → Estoque');
     console.log('  GET  /api/precos           → Preços');
+    console.log('  CRUD /api/marcas           → Marcas              ✅ NOVO');
     console.log('  GET  /api/ordens           → Compras');
     console.log('  ---');
     console.log('  CRUD /api/fretes           → Controle de Frete ✅ NOVO');
