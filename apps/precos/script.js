@@ -7,10 +7,11 @@ let state = {
     currentPage: 1,
     totalPages: 1,
     totalRecords: 0,
-    marcaSelecionada: '',
+    marcaSelecionada: 'TODAS',
     searchTerm: '',
     marcasDisponiveis: [],
-    isLoading: false
+    isLoading: false,
+    filterCollapsed: false
 };
 
 let isOnline = false;
@@ -108,7 +109,30 @@ window.sincronizarDados = async function() {
     }
 };
 
-// ─── Extrai marcas únicas dos preços carregados e atualiza o select ──────────
+window.toggleFilterSection = function() {
+    state.filterCollapsed = !state.filterCollapsed;
+    var wrapper = document.getElementById('marcasFilterWrapper');
+    var btn = document.getElementById('collapseBtn');
+    if (!wrapper || !btn) return;
+    if (state.filterCollapsed) {
+        wrapper.classList.add('collapsed'); btn.textContent = '\u25BC'; btn.title = 'Maximizar';
+    } else {
+        wrapper.classList.remove('collapsed'); btn.textContent = '\u25B2'; btn.title = 'Minimizar';
+    }
+};
+
+// ─── CORRIGIDO: parseia a resposta de /marcas de forma robusta e,
+//     se vier vazia, extrai as marcas únicas dos próprios registros já carregados ──
+function normalizarMarcas(marcas) {
+    if (!Array.isArray(marcas) || marcas.length === 0) return [];
+    if (typeof marcas[0] === 'object' && marcas[0] !== null) {
+        // formato esperado: [{ id, nome }, ...]
+        return marcas.filter(function(m) { return m && m.nome; });
+    }
+    // formato legado: array de strings
+    return marcas.map(function(m) { return { id: m, nome: String(m) }; });
+}
+
 function extrairMarcasDosPrecos(precos) {
     var vistas = {};
     var resultado = [];
@@ -116,80 +140,222 @@ function extrairMarcasDosPrecos(precos) {
         var nome = (p.marca_nome || p.marca || '').trim().toUpperCase();
         if (nome && !vistas[nome]) {
             vistas[nome] = true;
-            resultado.push(nome);
+            resultado.push({ id: nome, nome: nome });
         }
     });
-    resultado.sort(function(a, b) { return a.localeCompare(b); });
+    resultado.sort(function(a, b) { return a.nome.localeCompare(b.nome); });
     return resultado;
-}
-
-function atualizarMarcaSelect(marcas) {
-    var select = document.getElementById('marcaFilterSelect');
-    if (!select) return;
-    var valorAtual = select.value;
-    // Remove todas as opções exceto a primeira ("Todas as marcas")
-    while (select.options.length > 1) select.remove(1);
-    marcas.forEach(function(nome) {
-        var opt = document.createElement('option');
-        opt.value = nome;
-        opt.textContent = nome;
-        select.appendChild(opt);
-    });
-    // Restaura seleção anterior se ainda existir
-    if (valorAtual && marcas.indexOf(valorAtual) !== -1) {
-        select.value = valorAtual;
-    } else {
-        select.value = '';
-        state.marcaSelecionada = '';
-    }
 }
 
 async function carregarTudo() {
     try {
-        var response = await fetchWithTimeout(
-            API_URL + '/precos?page=1&limit=' + PAGE_SIZE,
-            { method: 'GET', headers: getHeaders() }
-        );
-        if (response.status === 401) {
-            sessionStorage.removeItem(SESSION_KEY);
-            mostrarTelaAcessoNegado('Sua sessão expirou');
-            return;
-        }
-        if (!response.ok) { console.error('Erro ao carregar preços:', response.status); return; }
+        var results = await Promise.all([
+            fetchWithTimeout(API_URL + '/marcas', { method: 'GET', headers: getHeaders() }),
+            fetchWithTimeout(API_URL + '/precos?page=1&limit=' + PAGE_SIZE, { method: 'GET', headers: getHeaders() })
+        ]);
+        var marcasRes = results[0], precosRes = results[1];
 
-        var result = await response.json();
+        // --- preços primeiro para ter fallback disponível ---
         var precosCarregados = [];
-        if (Array.isArray(result)) {
-            precosCarregados = result.map(function(item) {
-                return Object.assign({}, item, { descricao: item.descricao.toUpperCase() });
-            });
-            state.precos = precosCarregados;
-            state.totalRecords = result.length; state.totalPages = 1; state.currentPage = 1;
-        } else {
-            precosCarregados = (result.data || []).map(function(item) {
-                return Object.assign({}, item, { descricao: item.descricao.toUpperCase() });
-            });
-            state.precos = precosCarregados;
-            state.totalRecords = result.total || 0;
-            state.totalPages = result.totalPages || 1;
-            state.currentPage = result.page || 1;
+        if (precosRes.ok) {
+            var result = await precosRes.json();
+            if (Array.isArray(result)) {
+                precosCarregados = result.map(function(item) {
+                    return Object.assign({}, item, { descricao: item.descricao.toUpperCase() });
+                });
+                state.precos = precosCarregados;
+                state.totalRecords = result.length; state.totalPages = 1; state.currentPage = 1;
+            } else {
+                precosCarregados = (result.data || []).map(function(item) {
+                    return Object.assign({}, item, { descricao: item.descricao.toUpperCase() });
+                });
+                state.precos = precosCarregados;
+                state.totalRecords = result.total || 0;
+                state.totalPages = result.totalPages || 1;
+                state.currentPage = result.page || 1;
+            }
+            isOnline = true;
+            renderPrecos();
+            renderPaginacao();
         }
-        isOnline = true;
 
-        // Atualiza lista de marcas derivando dos preços carregados
-        state.marcasDisponiveis = extrairMarcasDosPrecos(precosCarregados);
-        atualizarMarcaSelect(state.marcasDisponiveis);
+        // --- marcas: usa a tabela dedicada; se vier vazia extrai dos preços ---
+        if (marcasRes.ok) {
+            var marcasBruto = await marcasRes.json();
+            var marcasNorm = normalizarMarcas(marcasBruto);
+            if (marcasNorm.length > 0) {
+                state.marcasDisponiveis = marcasNorm;
+            } else {
+                // Tabela marcas vazia ou retorno inesperado: deriva das linhas de preços
+                state.marcasDisponiveis = extrairMarcasDosPrecos(precosCarregados);
+            }
+        } else {
+            // Endpoint falhou: deriva das linhas de preços
+            state.marcasDisponiveis = extrairMarcasDosPrecos(precosCarregados);
+        }
+        renderMarcasFilter();
 
-        renderPrecos();
-        renderPaginacao();
     } catch (err) { console.error('Erro ao carregar dados:', err); }
 }
 
-// Recarrega lista de marcas a partir dos preços já em memória (após salvar novo item)
-function atualizarMarcasDoEstado() {
-    state.marcasDisponiveis = extrairMarcasDosPrecos(state.precos);
-    atualizarMarcaSelect(state.marcasDisponiveis);
+async function atualizarMarcas() {
+    try {
+        var response = await fetchWithTimeout(API_URL + '/marcas', { method: 'GET', headers: getHeaders() });
+        if (response.ok) {
+            var marcasBruto = await response.json();
+            var marcasNorm = normalizarMarcas(marcasBruto);
+            if (marcasNorm.length > 0) {
+                state.marcasDisponiveis = marcasNorm;
+            } else {
+                state.marcasDisponiveis = extrairMarcasDosPrecos(state.precos);
+            }
+            renderMarcasFilter();
+        }
+    } catch (err) { console.error('Erro ao atualizar marcas:', err); }
 }
+
+function renderMarcasFilter() {
+    var container = document.getElementById('marcasFilter');
+    if (!container) return;
+    container.innerHTML = '';
+
+    var btnTodas = document.createElement('button');
+    btnTodas.className = 'brand-button' + (state.marcaSelecionada === 'TODAS' ? ' active' : '');
+    btnTodas.textContent = 'TODAS';
+    btnTodas.onclick = function() { selecionarMarca('TODAS', null); };
+    container.appendChild(btnTodas);
+
+    state.marcasDisponiveis.forEach(function(marca) {
+        var nome = marca.nome || marca;
+        var id   = marca.id   || marca;
+        var button = document.createElement('button');
+        button.className = 'brand-button' + (state.marcaSelecionada === nome ? ' active' : '');
+        button.textContent = nome;
+        button.onclick = function() { selecionarMarca(nome, id); };
+        container.appendChild(button);
+    });
+
+    var addBtn = document.createElement('button');
+    addBtn.className = 'add-brand-btn';
+    addBtn.title = 'Adicionar nova marca';
+    addBtn.textContent = '+';
+    addBtn.onclick = function() { showAddMarcaModal(); };
+    container.appendChild(addBtn);
+
+    var gearBtn = document.createElement('button');
+    gearBtn.className = 'icon-btn gear-btn';
+    gearBtn.title = 'Gerenciar marcas';
+    gearBtn.textContent = '\u2699';
+    gearBtn.onclick = function() { showGerenciarMarcasModal(); };
+    container.appendChild(gearBtn);
+}
+
+function selecionarMarca(nome, id) {
+    state.marcaSelecionada = nome;
+    state.searchTerm = '';
+    var searchInput = document.getElementById('search');
+    if (searchInput) searchInput.value = '';
+    renderMarcasFilter();
+    loadPrecos(1);
+}
+
+function showAddMarcaModal() {
+    document.body.insertAdjacentHTML('beforeend',
+        '<div class="modal-overlay" id="addMarcaModal" style="display:flex;">' +
+        '<div class="modal-content">' +
+        '<div class="modal-header">' +
+        '<h3 class="modal-title">Nova Marca</h3>' +
+        '<button class="close-modal" onclick="closeModal(\'addMarcaModal\')">&#x2715;</button>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label for="novaMarcaNome">Nome da Marca *</label>' +
+        '<input type="text" id="novaMarcaNome" placeholder="Ex: SAMSUNG">' +
+        '</div>' +
+        '<div class="modal-actions modal-actions-right">' +
+        '<button type="button" class="save" onclick="confirmarAddMarca()">Salvar</button>' +
+        '<button type="button" class="success" onclick="closeModal(\'addMarcaModal\')">Cancelar</button>' +
+        '</div></div></div>');
+    setTimeout(function() { var el = document.getElementById('novaMarcaNome'); if (el) el.focus(); }, 100);
+}
+
+window.confirmarAddMarca = async function() {
+    var el = document.getElementById('novaMarcaNome');
+    var nome = el ? el.value.trim().toUpperCase() : '';
+    if (!nome) { showToast('Informe o nome da marca', 'error'); return; }
+    try {
+        var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+        var response = await fetchWithTimeout(API_URL + '/marcas', { method: 'POST', headers: headers, body: JSON.stringify({ nome: nome }) });
+        if (!response.ok) { var err = await response.json().catch(function() { return {}; }); throw new Error(err.error || 'Erro ' + response.status); }
+        closeModal('addMarcaModal');
+        showToast('Marca adicionada', 'success');
+        atualizarMarcas();
+    } catch (error) { showToast('Erro: ' + error.message, 'error'); }
+};
+
+function showGerenciarMarcasModal() {
+    var listaHTML = state.marcasDisponiveis.map(function(m) {
+        var nome = (m.nome || m).replace(/'/g, '&#39;');
+        var id   = String(m.id || m).replace(/'/g, '&#39;');
+        return '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;">' +
+            '<input type="text" value="' + nome + '" id="marca-nome-' + id + '" style="flex:1;padding:8px 12px;font-size:0.9rem;">' +
+            '<button class="action-btn save" style="min-width:auto;padding:8px 12px;" onclick="confirmarRenameMarca(\'' + id + '\')">&#10003;</button>' +
+            '<button class="action-btn delete" style="min-width:auto;padding:8px 12px;" onclick="confirmarDeleteMarca(\'' + id + '\',\'' + nome + '\')">&#x2715;</button>' +
+            '</div>';
+    }).join('');
+    document.body.insertAdjacentHTML('beforeend',
+        '<div class="modal-overlay" id="gerenciarMarcasModal" style="display:flex;">' +
+        '<div class="modal-content">' +
+        '<div class="modal-header"><h3 class="modal-title">Gerenciar Marcas</h3>' +
+        '<button class="close-modal" onclick="closeModal(\'gerenciarMarcasModal\')">&#x2715;</button></div>' +
+        '<div style="max-height:60vh;overflow-y:auto;padding-right:0.25rem;">' +
+        (listaHTML || '<p style="color:var(--text-secondary);text-align:center;">Nenhuma marca cadastrada</p>') +
+        '</div><div class="modal-actions modal-actions-right" style="margin-top:1rem;">' +
+        '<button type="button" class="secondary" onclick="closeModal(\'gerenciarMarcasModal\')">Fechar</button>' +
+        '</div></div></div>');
+}
+
+window.confirmarRenameMarca = async function(id) {
+    var el = document.getElementById('marca-nome-' + id);
+    var novoNome = el ? el.value.trim().toUpperCase() : '';
+    if (!novoNome) { showToast('Informe o novo nome', 'error'); return; }
+    try {
+        var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+        var response = await fetchWithTimeout(API_URL + '/marcas/' + id, { method: 'PUT', headers: headers, body: JSON.stringify({ nome: novoNome }) });
+        if (!response.ok) { var err = await response.json().catch(function() { return {}; }); throw new Error(err.error || 'Erro ' + response.status); }
+        closeModal('gerenciarMarcasModal');
+        showToast('Marca renomeada', 'success');
+        if (state.marcaSelecionada !== 'TODAS') state.marcaSelecionada = novoNome;
+        atualizarMarcas();
+        loadPrecos(state.currentPage);
+    } catch (error) { showToast('Erro: ' + error.message, 'error'); }
+};
+
+window.confirmarDeleteMarca = function(id, nome) {
+    closeModal('gerenciarMarcasModal');
+    document.body.insertAdjacentHTML('beforeend',
+        '<div class="modal-overlay" id="deleteMarcaModal" style="display:flex;">' +
+        '<div class="modal-content modal-delete">' +
+        '<button class="close-modal" onclick="closeModal(\'deleteMarcaModal\')">&#x2715;</button>' +
+        '<div class="modal-message-delete">Excluir a marca <strong>' + nome + '</strong> e todos os seus itens?</div>' +
+        '<div class="modal-actions modal-actions-no-border">' +
+        '<button type="button" class="danger" onclick="executarDeleteMarca(\'' + id + '\')">Sim, excluir</button>' +
+        '<button type="button" class="success" onclick="closeModal(\'deleteMarcaModal\')">Cancelar</button>' +
+        '</div></div></div>');
+};
+
+window.executarDeleteMarca = async function(id) {
+    closeModal('deleteMarcaModal');
+    try {
+        var response = await fetchWithTimeout(API_URL + '/marcas/' + id, { method: 'DELETE', headers: getHeaders() });
+        if (!response.ok) throw new Error('Erro ao excluir marca');
+        showToast('Marca e itens excluídos', 'success');
+        if (state.marcaSelecionada !== 'TODAS') state.marcaSelecionada = 'TODAS';
+        atualizarMarcas();
+        loadPrecos(1);
+    } catch (error) { showToast('Erro: ' + error.message, 'error'); }
+};
 
 async function loadPrecos(page) {
     page = page || 1;
@@ -198,20 +364,17 @@ async function loadPrecos(page) {
     state.currentPage = page;
     try {
         var params = new URLSearchParams({ page: page, limit: PAGE_SIZE });
-        if (state.marcaSelecionada) params.set('marca', state.marcaSelecionada);
+        if (state.marcaSelecionada !== 'TODAS') params.set('marca', state.marcaSelecionada);
         if (state.searchTerm) params.set('search', state.searchTerm);
         var response = await fetchWithTimeout(API_URL + '/precos?' + params.toString(), { method: 'GET', headers: getHeaders() });
         if (response.status === 401) { sessionStorage.removeItem(SESSION_KEY); mostrarTelaAcessoNegado('Sua sessão expirou'); return; }
         if (!response.ok) { console.error('Erro ao carregar preços:', response.status); return; }
         var result = await response.json();
-        var dados = [];
         if (Array.isArray(result)) {
-            dados = result.map(function(item) { return Object.assign({}, item, { descricao: item.descricao.toUpperCase() }); });
-            state.precos = dados;
+            state.precos = result.map(function(item) { return Object.assign({}, item, { descricao: item.descricao.toUpperCase() }); });
             state.totalRecords = result.length; state.totalPages = 1; state.currentPage = 1;
         } else {
-            dados = (result.data || []).map(function(item) { return Object.assign({}, item, { descricao: item.descricao.toUpperCase() }); });
-            state.precos = dados;
+            state.precos = (result.data || []).map(function(item) { return Object.assign({}, item, { descricao: item.descricao.toUpperCase() }); });
             state.totalRecords = result.total || 0;
             state.totalPages = result.totalPages || 1;
             state.currentPage = result.page || page;
@@ -223,13 +386,6 @@ async function loadPrecos(page) {
         console.error(error.name === 'AbortError' ? 'Timeout' : 'Erro:', error);
     } finally { state.isLoading = false; }
 }
-
-// ─── Filtro de marca via select ───────────────────────────────────────────────
-window.filtrarPorMarca = function() {
-    var select = document.getElementById('marcaFilterSelect');
-    state.marcaSelecionada = select ? select.value : '';
-    loadPrecos(1);
-};
 
 var searchDebounceTimer = null;
 window.filterPrecos = function() {
@@ -295,6 +451,15 @@ function renderPaginacao() {
 
 window.toggleForm = function() { showFormModal(null); };
 
+function buildMarcaSelectHTML(selectedNome) {
+    var options = state.marcasDisponiveis.map(function(m) {
+        var nome = m.nome || m;
+        var sel  = nome === selectedNome ? ' selected' : '';
+        return '<option value="' + nome + '"' + sel + '>' + nome + '</option>';
+    }).join('');
+    return '<select id="modalMarca" required><option value="">Selecione...</option>' + options + '</select>';
+}
+
 function showFormModal(editingId) {
     var isEditing = editingId !== null && editingId !== undefined;
     var preco = isEditing ? state.precos.find(function(p) { return p.id === editingId; }) : null;
@@ -310,7 +475,9 @@ function showFormModal(editingId) {
         '<input type="hidden" id="modalEditId" value="' + (editingId || '') + '">' +
         '<div class="form-grid">' +
         '<div class="form-group"><label for="modalMarca">Marca *</label>' +
-        '<input type="text" id="modalMarca" value="' + marcaAtual + '" placeholder="Ex: SAMSUNG" required autocomplete="off"></div>' +
+        '<div class="input-with-action">' + buildMarcaSelectHTML(marcaAtual) +
+        '<button type="button" class="btn-add-inline" title="Adicionar nova marca" onclick="showAddMarcaModalInline()">+</button>' +
+        '</div></div>' +
         '<div class="form-group"><label for="modalCodigo">Código *</label>' +
         '<input type="text" id="modalCodigo" value="' + (preco && preco.codigo ? preco.codigo : '') + '" required></div>' +
         '<div class="form-group"><label for="modalPreco">Preço (R$) *</label>' +
@@ -323,14 +490,6 @@ function showFormModal(editingId) {
         '<button type="button" onclick="closeFormModal(true)" class="danger">Cancelar</button>' +
         '</div></form></div></div>');
     setTimeout(function() {
-        // Marca: força uppercase ao digitar
-        var marcaInput = document.getElementById('modalMarca');
-        if (marcaInput) marcaInput.addEventListener('input', function(e) {
-            var start = e.target.selectionStart;
-            e.target.value = e.target.value.toUpperCase();
-            e.target.setSelectionRange(start, start);
-        });
-        // Descrição: força uppercase ao digitar
         var ta = document.getElementById('modalDescricao');
         if (ta) ta.addEventListener('input', function(e) {
             var start = e.target.selectionStart;
@@ -339,6 +498,54 @@ function showFormModal(editingId) {
         });
     }, 100);
 }
+
+window.showAddMarcaModalInline = function() {
+    var editId    = document.getElementById('modalEditId') ? document.getElementById('modalEditId').value : null;
+    var codigo    = encodeURIComponent(document.getElementById('modalCodigo') ? document.getElementById('modalCodigo').value : '');
+    var precoVal  = encodeURIComponent(document.getElementById('modalPreco') ? document.getElementById('modalPreco').value : '');
+    var descricao = encodeURIComponent(document.getElementById('modalDescricao') ? document.getElementById('modalDescricao').value : '');
+    var marcaAtu  = encodeURIComponent(document.getElementById('modalMarca') ? document.getElementById('modalMarca').value : '');
+    closeFormModal(false);
+    document.body.insertAdjacentHTML('beforeend',
+        '<div class="modal-overlay" id="addMarcaInlineModal" style="display:flex;">' +
+        '<div class="modal-content">' +
+        '<div class="modal-header"><h3 class="modal-title">Nova Marca</h3>' +
+        '<button class="close-modal" onclick="closeModal(\'addMarcaInlineModal\')">&#x2715;</button></div>' +
+        '<div class="form-group"><label for="novaMarcaNomeInline">Nome da Marca *</label>' +
+        '<input type="text" id="novaMarcaNomeInline" placeholder="Ex: SAMSUNG"></div>' +
+        '<div class="modal-actions modal-actions-right">' +
+        '<button type="button" class="save" onclick="confirmarAddMarcaInline(\'' + editId + '\',\'' + codigo + '\',\'' + precoVal + '\',\'' + descricao + '\',\'' + marcaAtu + '\')">Salvar</button>' +
+        '<button type="button" class="success" onclick="closeModal(\'addMarcaInlineModal\')">Cancelar</button>' +
+        '</div></div></div>');
+    setTimeout(function() { var el = document.getElementById('novaMarcaNomeInline'); if (el) el.focus(); }, 100);
+};
+
+window.confirmarAddMarcaInline = async function(editId, codigoEnc, precoEnc, descEnc, marcaEnc) {
+    var el = document.getElementById('novaMarcaNomeInline');
+    var nome = el ? el.value.trim().toUpperCase() : '';
+    if (!nome) { showToast('Informe o nome da marca', 'error'); return; }
+    try {
+        var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+        var response = await fetchWithTimeout(API_URL + '/marcas', { method: 'POST', headers: headers, body: JSON.stringify({ nome: nome }) });
+        if (!response.ok) { var err = await response.json().catch(function() { return {}; }); throw new Error(err.error || 'Erro ' + response.status); }
+        closeModal('addMarcaInlineModal');
+        showToast('Marca adicionada', 'success');
+        await atualizarMarcas();
+        var idNum = editId && editId !== 'null' ? editId : null;
+        showFormModal(idNum);
+        setTimeout(function() {
+            var s = document.getElementById('modalMarca');
+            var c = document.getElementById('modalCodigo');
+            var p = document.getElementById('modalPreco');
+            var d = document.getElementById('modalDescricao');
+            if (s) s.value = nome;
+            if (c) c.value = decodeURIComponent(codigoEnc);
+            if (p) p.value = decodeURIComponent(precoEnc);
+            if (d) d.value = decodeURIComponent(descEnc);
+        }, 50);
+    } catch (error) { showToast('Erro: ' + error.message, 'error'); }
+};
 
 function closeFormModal(showCancelMessage) {
     var modal = document.getElementById('formModal');
@@ -353,7 +560,7 @@ async function handleSubmit(event) {
     event.preventDefault();
     var editId = document.getElementById('modalEditId').value;
     var formData = {
-        marca:     document.getElementById('modalMarca').value.trim().toUpperCase(),
+        marca:     document.getElementById('modalMarca').value.trim(),
         codigo:    document.getElementById('modalCodigo').value.trim(),
         preco:     parseFloat(document.getElementById('modalPreco').value),
         descricao: document.getElementById('modalDescricao').value.trim().toUpperCase()
@@ -369,9 +576,8 @@ async function handleSubmit(event) {
         if (!response.ok) { var err = await response.json().catch(function() { return {}; }); throw new Error(err.error || 'Erro ' + response.status); }
         closeFormModal(false);
         showToast(editId ? 'Item atualizado' : 'Item registrado', 'success');
-        // Recarrega preços e depois atualiza o select de marcas com os novos dados
-        await loadPrecos(editId ? state.currentPage : 1);
-        atualizarMarcasDoEstado();
+        atualizarMarcas();
+        loadPrecos(editId ? state.currentPage : 1);
     } catch (error) { showToast(error.name === 'AbortError' ? 'Timeout: Operação demorou muito' : 'Erro: ' + error.message, 'error'); }
 }
 
@@ -404,8 +610,8 @@ async function confirmDelete(id) {
         if (!response.ok) throw new Error('Erro ao deletar');
         showToast('Preço excluído com sucesso!', 'success');
         var pageToLoad = state.precos.length === 1 && state.currentPage > 1 ? state.currentPage - 1 : state.currentPage;
-        await loadPrecos(pageToLoad);
-        atualizarMarcasDoEstado();
+        atualizarMarcas();
+        loadPrecos(pageToLoad);
     } catch (error) { showToast(error.name === 'AbortError' ? 'Timeout: Operação demorou muito' : 'Erro ao excluir preço', 'error'); }
 }
 
