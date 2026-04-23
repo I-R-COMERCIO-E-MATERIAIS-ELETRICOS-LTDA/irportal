@@ -27,20 +27,7 @@
                 </button>
             </div>
 
-            <!-- Filtro por Marca -->
-            <div class="card filter-section">
-                <div class="filter-header">
-                    <h3>Filtrar por Marca</h3>
-                    <div class="filter-header-actions">
-                        <button id="collapseBtn" class="icon-btn" onclick="toggleFilterSection()" title="Minimizar">▲</button>
-                    </div>
-                </div>
-                <div id="marcasFilterWrapper">
-                    <div id="marcasFilter"></div>
-                </div>
-            </div>
-
-            <!-- Search Bar -->
+            <!-- Search Bar com filtro de marca -->
             <div class="search-bar-wrapper">
                 <div class="search-bar">
                     <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -48,6 +35,9 @@
                         <path d="m21 21-4.35-4.35"></path>
                     </svg>
                     <input type="text" id="search" placeholder="Buscar por código, marca ou descrição..." oninput="filterPrecos()">
+                    <select id="marcaSelect" class="search-select" onchange="selecionarMarca(this.value)">
+                        <option value="TODAS">TODAS</option>
+                    </select>
                     <button class="sync-btn" onclick="sincronizarDados()" title="Sincronizar dados">⟳</button>
                 </div>
             </div>
