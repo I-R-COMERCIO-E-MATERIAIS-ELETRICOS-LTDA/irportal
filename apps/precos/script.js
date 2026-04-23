@@ -109,67 +109,39 @@ window.sincronizarDados = async function() {
     }
 };
 
-// ─── MARCAS EXTRAÍDAS DOS PREÇOS ──────────────────────────────────────────
-function extrairMarcasDosPrecos(precos) {
-    var vistas = {};
-    var resultado = [];
-    precos.forEach(function(p) {
-        var nome = (p.marca_nome || p.marca || '').trim().toUpperCase();
-        if (nome && !vistas[nome]) {
-            vistas[nome] = true;
-            resultado.push(nome);
-        }
-    });
-    resultado.sort(function(a, b) { return a.localeCompare(b); });
-    return resultado;
-}
-
-function atualizarMarcasDisponiveis() {
-    state.marcasDisponiveis = extrairMarcasDosPrecos(state.precos);
-    renderMarcaSelect();
-}
-
-// ─── CARREGAR TUDO ────────────────────────────────────────────────────────
-async function carregarTudo() {
+// ─── ATUALIZA LISTA COMPLETA DE MARCAS A PARTIR DO ENDPOINT ────────────────
+async function atualizarMarcasDisponiveis() {
     try {
-        var response = await fetchWithTimeout(API_URL + '/precos?page=1&limit=' + PAGE_SIZE, { method: 'GET', headers: getHeaders() });
-        var precosCarregados = [];
+        var response = await fetchWithTimeout(API_URL + '/precos/marcas', { method: 'GET', headers: getHeaders() });
         if (response.ok) {
-            var result = await response.json();
-            if (Array.isArray(result)) {
-                precosCarregados = result.map(function(item) {
-                    return Object.assign({}, item, { descricao: item.descricao.toUpperCase() });
-                });
-                state.precos = precosCarregados;
-                state.totalRecords = result.length; state.totalPages = 1; state.currentPage = 1;
-            } else {
-                precosCarregados = (result.data || []).map(function(item) {
-                    return Object.assign({}, item, { descricao: item.descricao.toUpperCase() });
-                });
-                state.precos = precosCarregados;
-                state.totalRecords = result.total || 0;
-                state.totalPages = result.totalPages || 1;
-                state.currentPage = result.page || 1;
-            }
-            isOnline = true;
-            state.marcasDisponiveis = extrairMarcasDosPrecos(precosCarregados);
-            renderMarcaSelect();
-            renderPrecos();
-            renderPaginacao();
+            var marcas = await response.json();
+            state.marcasDisponiveis = marcas;
+        } else {
+            // fallback: extrai localmente da página atual (menos ideal)
+            var nomes = {};
+            state.precos.forEach(function(p) {
+                var nome = (p.marca_nome || p.marca || '').trim().toUpperCase();
+                if (nome) nomes[nome] = true;
+            });
+            state.marcasDisponiveis = Object.keys(nomes).sort();
         }
-    } catch (err) { console.error('Erro ao carregar dados:', err); }
+    } catch (e) {
+        console.error('Erro ao atualizar marcas:', e);
+    }
+    renderMarcaSelect();
 }
 
 // ─── RENDER DO SELETOR DE MARCA ────────────────────────────────────────────
 function renderMarcaSelect() {
     var select = document.getElementById('marcaSelect');
     if (!select) return;
+    var selecionada = state.marcaSelecionada;
     select.innerHTML = '<option value="TODAS">TODAS</option>';
     state.marcasDisponiveis.forEach(function(nome) {
         var option = document.createElement('option');
         option.value = nome;
         option.textContent = nome;
-        if (nome === state.marcaSelecionada) option.selected = true;
+        if (nome === selecionada) option.selected = true;
         select.appendChild(option);
     });
 }
@@ -182,6 +154,18 @@ function selecionarMarca(nome) {
     if (searchInput) searchInput.value = '';
     renderMarcaSelect();
     loadPrecos(1);
+}
+
+// ─── CARREGAR TUDO (inicial) ───────────────────────────────────────────────
+async function carregarTudo() {
+    try {
+        await Promise.all([
+            atualizarMarcasDisponiveis(),
+            loadPrecos(state.currentPage)
+        ]);
+    } catch (err) {
+        console.error('Erro ao carregar dados:', err);
+    }
 }
 
 // ─── LOAD PRECOS ──────────────────────────────────────────────────────────
@@ -208,8 +192,6 @@ async function loadPrecos(page) {
             state.currentPage = result.page || page;
         }
         isOnline = true;
-        state.marcasDisponiveis = extrairMarcasDosPrecos(state.precos);
-        renderMarcaSelect();
         renderPrecos();
         renderPaginacao();
     } catch (error) {
@@ -353,7 +335,7 @@ async function handleSubmit(event) {
         if (!response.ok) { var err = await response.json().catch(function() { return {}; }); throw new Error(err.error || 'Erro ' + response.status); }
         closeFormModal(false);
         showToast(editId ? 'Item atualizado' : 'Item registrado', 'success');
-        atualizarMarcasDisponiveis();
+        await atualizarMarcasDisponiveis();   // 🔁 atualiza lista completa de marcas
         loadPrecos(editId ? state.currentPage : 1);
     } catch (error) { showToast(error.name === 'AbortError' ? 'Timeout: Operação demorou muito' : 'Erro: ' + error.message, 'error'); }
 }
@@ -387,7 +369,7 @@ async function confirmDelete(id) {
         if (!response.ok) throw new Error('Erro ao deletar');
         showToast('Preço excluído com sucesso!', 'success');
         var pageToLoad = state.precos.length === 1 && state.currentPage > 1 ? state.currentPage - 1 : state.currentPage;
-        atualizarMarcasDisponiveis();
+        await atualizarMarcasDisponiveis();   // 🔁 atualiza lista completa de marcas
         loadPrecos(pageToLoad);
     } catch (error) { showToast(error.name === 'AbortError' ? 'Timeout: Operação demorou muito' : 'Erro ao excluir preço', 'error'); }
 }
