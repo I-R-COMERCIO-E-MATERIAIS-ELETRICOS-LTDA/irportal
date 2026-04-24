@@ -51,11 +51,12 @@ setInterval(() => {
 }, 3600000);
 
 // ─── AUTENTICAÇÃO CENTRAL ─────────────────────────────────────────────────────
-const PUBLIC_PATHS = ['/', '/health', '/app', '/portal', '/portal/'];
+const PUBLIC_PATHS = ['/', '/health', '/app', '/portal', '/portal/', '/api/supabase-config'];
+const STATIC_EXTENSIONS = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf)$/i;
 
 async function verificarAutenticacao(req, res, next) {
     const isPublicPath = PUBLIC_PATHS.some(p => req.path === p);
-    const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf)$/i.test(req.path);
+    const isStaticAsset = STATIC_EXTENSIONS.test(req.path);
 
     if (isPublicPath || isStaticAsset) return next();
     if (req.path.startsWith('/api/portal/')) return next();
@@ -80,7 +81,6 @@ async function verificarAutenticacao(req, res, next) {
         if (error || !session || !session.users || !session.users.is_active)
             return res.status(401).json({ error: 'Sessão inválida', redirectToLogin: true });
 
-        // Atualiza last_activity de forma assíncrona (sem bloquear a requisição)
         supabase
             .from('active_sessions')
             .update({ last_activity: new Date().toISOString() })
@@ -111,6 +111,15 @@ app.get('/health', async (req, res) => {
     }
 });
 
+// ─── CONFIGURAÇÃO DO SUPABASE PARA FRONTEND ──────────────────────────────────
+app.get('/api/supabase-config', (req, res) => {
+    // Apenas a URL e chave anônima são públicas
+    res.json({
+        url: process.env.SUPABASE_URL,
+        anonKey: process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY
+    });
+});
+
 // ─── ARQUIVOS ESTÁTICOS DOS MÓDULOS ─────────────────────────────────────────
 const APPS = [
     'portal', 'precos', 'compra', 'transportadoras', 'cotacoes',
@@ -133,8 +142,7 @@ APPS.forEach(appName => {
 
 // ─── MIDDLEWARE: FALLBACK DE ASSETS NA RAIZ → REDIRECIONA PARA O APP CORRETO ─
 app.use((req, res, next) => {
-    const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|map)$/i.test(req.path);
-    if (!isStaticAsset) return next();
+    if (!STATIC_EXTENSIONS.test(req.path)) return next();
 
     const referer = req.get('Referer') || '';
 
@@ -177,10 +185,51 @@ app.use('/api/portal', portalRoutes(supabase));
 // ─── MIDDLEWARE DE AUTENTICAÇÃO (aplicado a TODAS as rotas /api a partir daqui)
 app.use('/api', verificarAutenticacao);
 
+// ─── API DE NOTIFICAÇÕES GLOBAIS (broadcast para todos os usuários) ──────────
+app.post('/api/notifications', async (req, res) => {
+    try {
+        const { message } = req.body;
+        if (!message || typeof message !== 'string') {
+            return res.status(400).json({ error: 'Mensagem inválida' });
+        }
+
+        const { data, error } = await supabase
+            .from('app_notifications')
+            .insert({ message })
+            .select()
+            .single();
+
+        if (error) {
+            console.error('Erro ao inserir notificação:', error);
+            return res.status(500).json({ error: 'Erro ao criar notificação' });
+        }
+
+        res.status(201).json({ id: data.id });
+    } catch (err) {
+        console.error('Erro no endpoint de notificações:', err);
+        res.status(500).json({ error: 'Erro interno' });
+    }
+});
+
+app.get('/api/notifications', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('app_notifications')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        if (error) throw error;
+        res.json(data || []);
+    } catch (err) {
+        console.error('Erro ao buscar notificações:', err);
+        res.status(500).json({ error: 'Erro ao buscar notificações' });
+    }
+});
+
 // ─── API DE PREÇOS ────────────────────────────────────────────────────────────
 const precosRoutes = require('./apps/precos/routes');
 app.use('/api/precos', precosRoutes(supabase));
-// (Rotas de marcas removidas — agora as marcas são extraídas dinamicamente dos próprios preços)
 
 // ─── API DE COMPRAS ────────────────────────────────────────────────────────────
 const compraRoutes = require('./apps/compra/routes');
@@ -291,6 +340,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`\n📝 Logs salvos em: acessos.log\n`);
     console.log('📡 Rotas de API registradas:');
     console.log('  POST /api/portal/...       → Portal (auth)');
+    console.log('  POST /api/notifications    → Notificações globais');
     console.log('  GET  /api/transportadoras  → Transportadoras');
     console.log('  GET  /api/cotacoes         → Cotações de Frete');
     console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
