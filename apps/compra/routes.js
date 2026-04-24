@@ -15,8 +15,16 @@ module.exports = function(supabase) {
         return newObj;
     }
 
+    // Função auxiliar para inserir notificação global
+    async function inserirNotificacao(message) {
+        try {
+            await supabase.from('app_notifications').insert({ message });
+        } catch (err) {
+            console.error('Erro ao inserir notificação:', err.message);
+        }
+    }
+
     // ─── GET /ordens/ultimo-numero ─────────────────────────────────
-    // IMPORTANTE: Esta rota deve vir ANTES de /ordens/:id para não ser engolida
     router.get('/ordens/ultimo-numero', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -60,7 +68,6 @@ module.exports = function(supabase) {
     router.post('/ordens', async (req, res) => {
         try {
             const ordem = toSnakeCase(req.body);
-            // Garantir que items seja um array JSON
             if (!ordem.items || !Array.isArray(ordem.items)) ordem.items = [];
             const { data, error } = await supabase
                 .from('ordens_compra')
@@ -68,6 +75,11 @@ module.exports = function(supabase) {
                 .select()
                 .single();
             if (error) throw error;
+            
+            // Notificação global: Ordem de Nº X aberta
+            const numeroOrdem = data.numero_ordem;
+            await inserirNotificacao(`Ordem de Nº ${numeroOrdem} aberta`);
+            
             res.status(201).json(data);
         } catch (err) {
             console.error('POST /ordens error:', err);
@@ -80,6 +92,16 @@ module.exports = function(supabase) {
         try {
             const ordem = toSnakeCase(req.body);
             if (!ordem.items || !Array.isArray(ordem.items)) ordem.items = [];
+            
+            // Buscar dados antigos para obter número da ordem
+            const { data: oldData, error: fetchError } = await supabase
+                .from('ordens_compra')
+                .select('numero_ordem')
+                .eq('id', req.params.id)
+                .single();
+            
+            if (fetchError) throw fetchError;
+            
             const { data, error } = await supabase
                 .from('ordens_compra')
                 .update(ordem)
@@ -87,6 +109,10 @@ module.exports = function(supabase) {
                 .select()
                 .single();
             if (error) throw error;
+            
+            const numeroOrdem = oldData.numero_ordem;
+            await inserirNotificacao(`Ordem de Nº ${numeroOrdem} atualizada`);
+            
             res.json(data);
         } catch (err) {
             console.error('PUT /ordens/:id error:', err);
@@ -97,11 +123,24 @@ module.exports = function(supabase) {
     // ─── DELETE /ordens/:id ────────────────────────────────────────
     router.delete('/ordens/:id', async (req, res) => {
         try {
+            // Buscar ordem antes de deletar para pegar o número
+            const { data: ordem, error: fetchError } = await supabase
+                .from('ordens_compra')
+                .select('numero_ordem')
+                .eq('id', req.params.id)
+                .single();
+            
+            if (fetchError) throw fetchError;
+            
             const { error } = await supabase
                 .from('ordens_compra')
                 .delete()
                 .eq('id', req.params.id);
             if (error) throw error;
+            
+            const numeroOrdem = ordem.numero_ordem;
+            await inserirNotificacao(`Ordem de Nº ${numeroOrdem} excluída`);
+            
             res.status(204).send();
         } catch (err) {
             console.error('DELETE /ordens/:id error:', err);
