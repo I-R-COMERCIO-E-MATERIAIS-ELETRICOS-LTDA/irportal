@@ -138,7 +138,6 @@ async function initSupabaseRealtime() {
         
         supabaseClient = window.supabase.createClient(url, anonKey);
         
-        // Buscar notificações recentes não visualizadas
         const notifResp = await fetch('/api/notifications', {
             headers: DEVELOPMENT_MODE ? {} : { 'X-Session-Token': sessionToken }
         });
@@ -154,10 +153,9 @@ async function initSupabaseRealtime() {
             localStorage.setItem('shownNotifications', JSON.stringify(shownIds.slice(-200)));
         }
         
-        // Inscrever-se para novas notificações em tempo real
         notificationsSubscription = supabaseClient
-            .channel('app_notifications')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'app_notifications' }, payload => {
+            .channel('compranotifications')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'compranotifications' }, payload => {
                 const newNotif = payload.new;
                 const shownIds = JSON.parse(localStorage.getItem('shownNotifications') || '[]');
                 if (!shownIds.includes(newNotif.id)) {
@@ -168,7 +166,7 @@ async function initSupabaseRealtime() {
             })
             .subscribe();
             
-        console.log('✅ Notificações em tempo real ativadas');
+        console.log('✅ Notificações em tempo real ativadas (compranotifications)');
     } catch (err) {
         console.error('Erro ao inicializar Realtime:', err);
     }
@@ -1175,7 +1173,6 @@ async function confirmDelete(id) {
 
         if (!response.ok) throw new Error('Erro ao deletar');
 
-        // A notificação de exclusão já é enviada pelo backend; aqui apenas removemos localmente
         ordens = ordens.filter(o => String(o.id) !== String(id));
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
@@ -1534,7 +1531,6 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
-// Função para enviar notificação de PDF
 async function sendPdfNotification(numeroOrdem) {
     try {
         await fetch('/api/notifications', {
@@ -1550,9 +1546,6 @@ async function sendPdfNotification(numeroOrdem) {
     }
 }
 
-// ============================================
-// GERAÇÃO DE PDF (com notificação)
-// ============================================
 function generatePDFFromTable(id) {
     const ordem = ordens.find(o => String(o.id) === String(id));
     if (!ordem) {
@@ -2032,7 +2025,6 @@ function adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, a
     
     doc.save(`${toUpperCase(ordem.razao_social || ordem.razaoSocial)}-${ordem.numero_ordem || ordem.numeroOrdem}.pdf`);
     
-    // Notificação global de PDF
     const numero = ordem.numero_ordem || ordem.numeroOrdem;
     sendPdfNotification(numero);
     
