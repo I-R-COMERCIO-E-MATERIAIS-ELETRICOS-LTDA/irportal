@@ -206,9 +206,10 @@ function handleNewNotification(notification) {
 
 function startNotificationPolling() {
     if (pollingInterval) clearInterval(pollingInterval);
+    // Polling a cada 5 segundos para reduzir atraso
     pollingInterval = setInterval(() => {
         fetchNotifications();
-    }, 10000);
+    }, 5000);
 }
 
 async function loadOrdensDirectly() {
@@ -795,7 +796,7 @@ function addItem() {
         <td>
             <input type="number" class="item-qtd" min="0" step="0.01" value="1" onchange="calculateItemTotal(this)">
         </td>
-        <table>
+        <td>
             <input type="text" class="item-unid" value="UN" placeholder="UN">
         </td>
         <td>
@@ -953,17 +954,20 @@ async function handleSubmit(event) {
         if (editingId) {
             const index = ordens.findIndex(o => String(o.id) === String(editingId));
             if (index !== -1) ordens[index] = savedData;
-            showToast(`Ordem de Nº ${savedData.numero_ordem} atualizada`, 'success');
+            // Notificação já será enviada pelo backend e capturada pelo sistema
         } else {
             ordens.push(savedData);
             const novoNum = parseInt(savedData.numero_ordem) || 0;
             if (novoNum > ultimoNumeroGlobal) ultimoNumeroGlobal = novoNum;
-            showToast(`Ordem de Nº ${savedData.numero_ordem} aberta`, 'success');
+            // Notificação já será enviada pelo backend
         }
 
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
         closeFormModal();
+        
+        // Força busca imediata das notificações para o autor ver a mensagem
+        await fetchNotifications();
     } catch (error) {
         console.error('Erro completo:', error);
         showToast(`Erro: ${error.message}`, 'error');
@@ -1215,7 +1219,8 @@ async function confirmDelete(id) {
         ordens = ordens.filter(o => String(o.id) !== String(id));
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
-        showToast(`Ordem excluída`, 'success');
+        // Notificação já é enviada pelo backend, apenas forçamos busca imediata
+        await fetchNotifications();
     } catch (error) {
         console.error('Erro ao deletar:', error);
         showToast('Erro ao excluir ordem', 'error');
@@ -1468,7 +1473,7 @@ function updateTable() {
     
     if (filteredOrdens.length === 0) {
         if (currentFetchController) return;
-        container.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;">Nenhuma ordem encontrada</td></tr>`;
+        container.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;">Nenhuma ordem encontrada</td>`);
         return;
     }
     
@@ -2065,7 +2070,6 @@ function adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, a
     doc.save(`${toUpperCase(ordem.razao_social || ordem.razaoSocial)}-${ordem.numero_ordem || ordem.numeroOrdem}.pdf`);
     
     const numero = ordem.numero_ordem || ordem.numeroOrdem;
-    sendPdfNotification(numero);
-    
-    showToast(`Ordem de Nº ${numero} emitida`, 'success');
+    // Envia notificação global e força busca imediata para o autor
+    sendPdfNotification(numero).then(() => fetchNotifications());
 }
