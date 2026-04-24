@@ -108,7 +108,6 @@ h1 {
     margin: 0;
 }
 
-/* NEW ORDER BUTTON IN HEADER */
 .btn-new-order-header {
     background: var(--btn-register);
     color: white;
@@ -133,9 +132,6 @@ h1 {
     box-shadow: 0 4px 8px rgba(59, 130, 246, 0.4);
 }
 
-/* ============================================
-   SEARCH BAR WITH INTEGRATED FILTERS
-   ============================================ */
 .search-bar-wrapper {
     margin-bottom: 0.5rem;
 }
@@ -175,7 +171,6 @@ h1 {
     color: var(--text-secondary);
 }
 
-/* FILTERS INTEGRATED IN SEARCH BAR */
 .search-bar-filters {
     display: flex;
     align-items: center;
@@ -222,7 +217,6 @@ h1 {
     color: var(--text-secondary);
 }
 
-/* MONTH NAVIGATION INLINE */
 .month-navigation-inline {
     display: flex;
     align-items: center;
@@ -261,7 +255,6 @@ h1 {
     white-space: nowrap;
 }
 
-/* SYNC BUTTON WITH SPIN ANIMATION */
 .sync-btn {
     background: transparent;
     border: none;
@@ -290,7 +283,6 @@ h1 {
     100% { transform: rotate(360deg); }
 }
 
-/* DASHBOARD GRID */
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -375,7 +367,6 @@ h1 {
     font-weight: 500;
 }
 
-/* ALERTA VISUAL - ORDENS ABERTAS */
 .stat-card.has-alert {
     position: relative;
     animation: pulseAlert 2s ease-in-out infinite;
@@ -418,9 +409,6 @@ h1 {
     }
 }
 
-/* ============================================
-   TABLE
-   ============================================ */
 table {
     width: 100%;
     border-collapse: separate;
@@ -471,7 +459,6 @@ tbody tr.row-fechada:hover {
     background: rgba(22, 163, 74, 0.32) !important;
 }
 
-/* Checkbox Customizado */
 .checkbox-wrapper {
     display: inline-flex;
     align-items: center;
@@ -516,7 +503,6 @@ tbody tr.row-fechada:hover {
     font-weight: 700;
 }
 
-/* Badge de status */
 .badge {
     padding: 4px 12px;
     border-radius: 6px;
@@ -665,9 +651,6 @@ button.small {
     min-width: 240px;
 }
 
-/* ============================================
-   FLOATING MESSAGES
-   ============================================ */
 .floating-message {
     position: fixed;
     bottom: 24px;
@@ -713,9 +696,6 @@ button.small {
     }
 }
 
-/* ============================================
-   MODAL
-   ============================================ */
 .modal-overlay {
     display: none;
     position: fixed;
@@ -808,7 +788,6 @@ button.small {
     box-shadow: none !important;
 }
 
-/* MODAL DELETE */
 .modal-delete {
     position: relative;
     padding: 2.5rem 2rem 2rem 2rem;
@@ -836,7 +815,6 @@ button.small {
     justify-content: center !important;
 }
 
-/* SISTEMA DE ABAS */
 .tabs-container {
     margin-bottom: 1.5rem;
 }
@@ -911,7 +889,6 @@ button.small {
     min-width: 120px;
 }
 
-/* Layout de dois campos lado a lado na aba Pedido */
 .double-field-row {
     display: flex;
     gap: 1rem;
@@ -940,7 +917,6 @@ button.small {
     line-height: 1.6;
 }
 
-/* TABELA DE ITENS */
 .items-table {
     width: 100%;
     margin: 1rem 0;
@@ -963,9 +939,6 @@ button.small {
     display: none !important;
 }
 
-/* ============================================
-   RESPONSIVE
-   ============================================ */
 @media (max-width: 768px) {
     .container {
         padding: 0 1rem 5rem 1rem;
