@@ -143,10 +143,8 @@ async function initSupabaseRealtime() {
         
         supabaseClient = window.supabase.createClient(url, anonKey);
         
-        // Buscar notificações iniciais
         await fetchNotifications();
         
-        // Tentar Realtime
         try {
             notificationsSubscription = supabaseClient
                 .channel('compranotifications')
@@ -206,7 +204,6 @@ function handleNewNotification(notification) {
 
 function startNotificationPolling() {
     if (pollingInterval) clearInterval(pollingInterval);
-    // Polling a cada 5 segundos para reduzir atraso
     pollingInterval = setInterval(() => {
         fetchNotifications();
     }, 5000);
@@ -790,22 +787,22 @@ function addItem() {
     const row = document.createElement('tr');
     row.innerHTML = `
         <td style="text-align: center;">${itemCounter}</td>
-        <td>
+        <tr>
             <textarea class="item-especificacao" placeholder="Descrição do item..." rows="2"></textarea>
         </td>
-        <td>
+        <tr>
             <input type="number" class="item-qtd" min="0" step="0.01" value="1" onchange="calculateItemTotal(this)">
         </td>
         <td>
             <input type="text" class="item-unid" value="UN" placeholder="UN">
         </td>
-        <td>
+        <tr>
             <input type="number" class="item-valor" min="0" step="0.01" value="0" onchange="calculateItemTotal(this)">
         </td>
-        <td>
+        <tr>
             <input type="text" class="item-ipi" placeholder="Ex: 15.50" onchange="calculateItemTotal(this)">
         </td>
-        <td>
+        <tr>
             <input type="text" class="item-st" placeholder="Ex: Não incluído">
         </td>
         <td>
@@ -954,19 +951,16 @@ async function handleSubmit(event) {
         if (editingId) {
             const index = ordens.findIndex(o => String(o.id) === String(editingId));
             if (index !== -1) ordens[index] = savedData;
-            // Notificação já será enviada pelo backend e capturada pelo sistema
         } else {
             ordens.push(savedData);
             const novoNum = parseInt(savedData.numero_ordem) || 0;
             if (novoNum > ultimoNumeroGlobal) ultimoNumeroGlobal = novoNum;
-            // Notificação já será enviada pelo backend
         }
 
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
         closeFormModal();
         
-        // Força busca imediata das notificações para o autor ver a mensagem
         await fetchNotifications();
     } catch (error) {
         console.error('Erro completo:', error);
@@ -1219,7 +1213,6 @@ async function confirmDelete(id) {
         ordens = ordens.filter(o => String(o.id) !== String(id));
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
-        // Notificação já é enviada pelo backend, apenas forçamos busca imediata
         await fetchNotifications();
     } catch (error) {
         console.error('Erro ao deletar:', error);
@@ -1473,7 +1466,7 @@ function updateTable() {
     
     if (filteredOrdens.length === 0) {
         if (currentFetchController) return;
-        container.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;">Nenhuma ordem encontrada</td>`);
+        container.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;">Nenhuma ordem encontrada</td></tr>`;
         return;
     }
     
@@ -1513,7 +1506,7 @@ function updateTable() {
                     <button onclick="generatePDFFromTable('${ordem.id}')" class="action-btn success" title="Gerar PDF">PDF</button>
                     <button onclick="deleteOrdem('${ordem.id}')" class="action-btn delete" title="Excluir">Excluir</button>
                 </div>
-            </td>
+            <tr>
         </tr>
     `).join('');
 }
@@ -2070,6 +2063,5 @@ function adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, a
     doc.save(`${toUpperCase(ordem.razao_social || ordem.razaoSocial)}-${ordem.numero_ordem || ordem.numeroOrdem}.pdf`);
     
     const numero = ordem.numero_ordem || ordem.numeroOrdem;
-    // Envia notificação global e força busca imediata para o autor
     sendPdfNotification(numero).then(() => fetchNotifications());
 }
