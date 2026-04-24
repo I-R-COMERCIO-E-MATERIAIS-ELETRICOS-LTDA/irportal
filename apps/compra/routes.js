@@ -18,7 +18,7 @@ module.exports = function(supabase) {
     // Função auxiliar para inserir notificação global
     async function inserirNotificacao(message) {
         try {
-            await supabase.from('app_notifications').insert({ message });
+            await supabase.from('compranotifications').insert({ message });
         } catch (err) {
             console.error('Erro ao inserir notificação:', err.message);
         }
@@ -76,7 +76,6 @@ module.exports = function(supabase) {
                 .single();
             if (error) throw error;
             
-            // Notificação global: Ordem de Nº X aberta
             const numeroOrdem = data.numero_ordem;
             await inserirNotificacao(`Ordem de Nº ${numeroOrdem} aberta`);
             
@@ -93,7 +92,6 @@ module.exports = function(supabase) {
             const ordem = toSnakeCase(req.body);
             if (!ordem.items || !Array.isArray(ordem.items)) ordem.items = [];
             
-            // Buscar dados antigos para obter número da ordem
             const { data: oldData, error: fetchError } = await supabase
                 .from('ordens_compra')
                 .select('numero_ordem')
@@ -123,7 +121,6 @@ module.exports = function(supabase) {
     // ─── DELETE /ordens/:id ────────────────────────────────────────
     router.delete('/ordens/:id', async (req, res) => {
         try {
-            // Buscar ordem antes de deletar para pegar o número
             const { data: ordem, error: fetchError } = await supabase
                 .from('ordens_compra')
                 .select('numero_ordem')
