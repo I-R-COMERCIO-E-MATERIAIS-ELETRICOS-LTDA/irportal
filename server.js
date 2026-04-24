@@ -113,10 +113,18 @@ app.get('/health', async (req, res) => {
 
 // ─── CONFIGURAÇÃO DO SUPABASE PARA FRONTEND ──────────────────────────────────
 app.get('/api/supabase-config', (req, res) => {
-    res.json({
-        url: process.env.SUPABASE_URL,
-        anonKey: process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY
-    });
+    const url = process.env.SUPABASE_URL;
+    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
+    
+    console.log('[supabase-config] URL exists:', !!url);
+    console.log('[supabase-config] ANON_KEY exists:', !!anonKey);
+    
+    if (!url || !anonKey) {
+        console.error('❌ Supabase config missing: URL or ANON_KEY not set in environment');
+        return res.status(500).json({ error: 'Configuração do Supabase incompleta no servidor' });
+    }
+    
+    res.json({ url, anonKey });
 });
 
 // ─── ARQUIVOS ESTÁTICOS DOS MÓDULOS ─────────────────────────────────────────
@@ -184,7 +192,7 @@ app.use('/api/portal', portalRoutes(supabase));
 // ─── MIDDLEWARE DE AUTENTICAÇÃO (aplicado a TODAS as rotas /api a partir daqui)
 app.use('/api', verificarAutenticacao);
 
-// ─── API DE NOTIFICAÇÕES GLOBAIS (broadcast para todos os usuários) ──────────
+// ─── API DE NOTIFICAÇÕES GLOBAIS ─────────────────────────────────────────────
 app.post('/api/notifications', async (req, res) => {
     try {
         const { message } = req.body;
@@ -290,7 +298,7 @@ app.patch('/api/estoque/:codigo', verificarAutenticacao, async (req, res) => {
     }
 });
 
-// ─── ENDPOINT DE VERIFICAÇÃO DE SESSÃO (retrocompatibilidade) ────────────────
+// ─── ENDPOINT DE VERIFICAÇÃO DE SESSÃO ────────────────────────────────────────
 app.post('/api/verify-session', async (req, res) => {
     try {
         const { sessionToken } = req.body;
