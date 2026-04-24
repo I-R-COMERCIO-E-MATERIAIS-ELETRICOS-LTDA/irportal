@@ -1,5 +1,4 @@
 const API_URL = window.location.origin + '/api';
-// Chave de sessão unificada do monorepo (mesmo nome usado pelo portal)
 const SESSION_KEY = 'irUserSession';
 
 let ordens = [];
@@ -8,20 +7,18 @@ let editingId = null;
 let itemCounter = 0;
 let currentTab = 0;
 let currentInfoTab = 0;
-let isOnline = false;
 let sessionToken = null;
 let lastDataHash = '';
-let fornecedoresCache = {};   // cache global — nunca zerado ao trocar de mês
-let ultimoNumeroGlobal = 0;   // maior número de ordem do banco inteiro
-let currentFetchController = null;  // AbortController — cancela fetch anterior ao trocar de mês
+let fornecedoresCache = {};
+let ultimoNumeroGlobal = 0;
+let currentFetchController = null;
 let currentUserName = null;
+let supabaseClient = null;
+let notificationsSubscription = null;
 const KNOWN_RESPONSAVEIS = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
 
 const tabs = ['tab-geral', 'tab-fornecedor', 'tab-pedido', 'tab-entrega', 'tab-pagamento'];
 
-// ------------------------------------------------------------
-// FUNÇÃO AUXILIAR PARA CONVERTER STRING EM NÚMERO (ACEITA VÍRGULA)
-// ------------------------------------------------------------
 function parseFloatLocale(str) {
     if (typeof str !== 'string') return NaN;
     const cleaned = str.replace(/\s+/g, '').replace(',', '.');
@@ -46,7 +43,6 @@ function toUpperCase(value) {
     return value ? String(value).toUpperCase() : '';
 }
 
-// Converter input para maiúsculo automaticamente
 function setupUpperCaseInputs() {
     const textInputs = document.querySelectorAll('input[type="text"]:not([readonly]), textarea');
     textInputs.forEach(input => {
@@ -81,7 +77,6 @@ function verificarAutenticacao() {
         sessionToken = sessionStorage.getItem('ordemCompraSession');
     }
 
-    // Tenta também a chave unificada do portal (SESSION_KEY)
     if (!sessionToken) {
         try {
             const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
@@ -125,69 +120,65 @@ function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
     `;
 }
 
-function inicializarApp() {
+async function inicializarApp() {
+    await initSupabaseRealtime();
     updateMonthDisplay();
-    // Carrega dados imediatamente — sem aguardar health check
     loadOrdensDirectly();
     loadUltimoNumero();
     loadFornecedoresGlobal();
-    // Health check e polling em paralelo
-    checkServerStatus();
-    setInterval(checkServerStatus, 15000);
-    setInterval(() => { if (isOnline) loadOrdensDirectly(); }, 10000);
+    setInterval(() => loadOrdensDirectly(), 10000);
 }
 
-async function checkServerStatus() {
+async function initSupabaseRealtime() {
     try {
-        const headers = {
-            'Accept': 'application/json'
-        };
+        const configResp = await fetch('/api/supabase-config');
+        if (!configResp.ok) throw new Error('Não foi possível obter configuração do Supabase');
+        const { url, anonKey } = await configResp.json();
+        if (!url || !anonKey) throw new Error('Configuração incompleta');
         
-        if (!DEVELOPMENT_MODE && sessionToken) {
-            headers['X-Session-Token'] = sessionToken;
-        }
-
-        const response = await fetch(`${API_URL.replace('/api', '')}/health`, {
-            method: 'GET',
-            headers: headers,
-            mode: 'cors',
-            cache: 'no-cache'
+        supabaseClient = window.supabase.createClient(url, anonKey);
+        
+        // Buscar notificações recentes não visualizadas
+        const notifResp = await fetch('/api/notifications', {
+            headers: DEVELOPMENT_MODE ? {} : { 'X-Session-Token': sessionToken }
         });
-
-        const wasOffline = !isOnline;
-        isOnline = response.ok;
-        
-        if (wasOffline && isOnline) {
-            console.log('✅ SERVIDOR ONLINE');
-            await Promise.all([loadOrdensDirectly(), loadUltimoNumero(), loadFornecedoresGlobal()]);
+        if (notifResp.ok) {
+            const recentes = await notifResp.json();
+            const shownIds = JSON.parse(localStorage.getItem('shownNotifications') || '[]');
+            recentes.reverse().forEach(notif => {
+                if (!shownIds.includes(notif.id)) {
+                    showToast(notif.message, 'success');
+                    shownIds.push(notif.id);
+                }
+            });
+            localStorage.setItem('shownNotifications', JSON.stringify(shownIds.slice(-200)));
         }
         
-        updateConnectionStatus();
-        return isOnline;
-    } catch (error) {
-        console.error('❌ Erro ao verificar servidor:', error);
-        isOnline = false;
-        updateConnectionStatus();
-        return false;
+        // Inscrever-se para novas notificações em tempo real
+        notificationsSubscription = supabaseClient
+            .channel('app_notifications')
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'app_notifications' }, payload => {
+                const newNotif = payload.new;
+                const shownIds = JSON.parse(localStorage.getItem('shownNotifications') || '[]');
+                if (!shownIds.includes(newNotif.id)) {
+                    showToast(newNotif.message, 'success');
+                    shownIds.push(newNotif.id);
+                    localStorage.setItem('shownNotifications', JSON.stringify(shownIds.slice(-200)));
+                }
+            })
+            .subscribe();
+            
+        console.log('✅ Notificações em tempo real ativadas');
+    } catch (err) {
+        console.error('Erro ao inicializar Realtime:', err);
     }
 }
 
-function updateConnectionStatus() {
-    const statusElement = document.getElementById('connectionStatus');
-    if (statusElement) {
-        statusElement.className = isOnline ? 'connection-status online' : 'connection-status offline';
-    }
-}
-
-// loadOrdensDirectly: cancela fetch anterior via AbortController,
-// garante que apenas o mês atualmente visível é renderizado
 async function loadOrdensDirectly() {
-    // Cancela qualquer requisição anterior em voo
     if (currentFetchController) currentFetchController.abort();
     currentFetchController = new AbortController();
     const signal = currentFetchController.signal;
 
-    // Captura o mês/ano no momento do clique — imutável para este fetch
     const mesFetch = currentMonth.getMonth();
     const anoFetch = currentMonth.getFullYear();
 
@@ -208,26 +199,19 @@ async function loadOrdensDirectly() {
         if (!response.ok) return;
 
         const data = await response.json();
-
-        // Descarta se o usuário já trocou de mês enquanto esperava
         if (mesFetch !== currentMonth.getMonth() || anoFetch !== currentMonth.getFullYear()) return;
 
         ordens = data;
-        isOnline = true;
-        updateConnectionStatus();
         mesclarCacheFornecedores(data);
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
-        currentFetchController = null; // fetch concluído
+        currentFetchController = null;
         updateDisplay();
     } catch (error) {
-        if (error.name === 'AbortError') return; // fetch cancelado — normal
+        if (error.name === 'AbortError') return;
         console.error('Erro ao carregar ordens:', error);
     }
 }
 
-// ============================================
-// FORNECEDORES GLOBAIS — autocomplete todos os meses
-// ============================================
 async function loadFornecedoresGlobal() {
     try {
         const headers = { 'Accept': 'application/json' };
@@ -254,9 +238,6 @@ async function loadFornecedoresGlobal() {
     } catch (e) { console.error('❌ loadFornecedoresGlobal:', e); }
 }
 
-// ============================================
-// ÚLTIMO NÚMERO GLOBAL — contador do dashboard
-// ============================================
 async function loadUltimoNumero() {
     try {
         const headers = { 'Accept': 'application/json' };
@@ -270,24 +251,18 @@ async function loadUltimoNumero() {
     } catch (e) { console.error('❌ loadUltimoNumero:', e); }
 }
 
-// FUNÇÃO DE SINCRONIZAÇÃO DE DADOS
 async function syncData() {
+    const syncBtn = document.querySelector('.sync-btn');
+    if (syncBtn && !syncBtn.classList.contains('spin')) {
+        syncBtn.classList.add('spin');
+        setTimeout(() => syncBtn.classList.remove('spin'), 1000);
+    }
+    
     console.log('🔄 Iniciando sincronização...');
     
-    if (!isOnline && !DEVELOPMENT_MODE) {
-        showToast('Erro ao sincronizar', 'error');
-        console.log('❌ Sincronização cancelada: servidor offline');
-        return;
-    }
-
     try {
-        const headers = {
-            'Accept': 'application/json'
-        };
-        
-        if (!DEVELOPMENT_MODE && sessionToken) {
-            headers['X-Session-Token'] = sessionToken;
-        }
+        const headers = { 'Accept': 'application/json' };
+        if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
 
         const mes = currentMonth.getMonth();
         const ano = currentMonth.getFullYear();
@@ -304,15 +279,11 @@ async function syncData() {
             return;
         }
 
-        if (!response.ok) {
-            throw new Error(`Erro ao sincronizar: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Erro ao sincronizar: ${response.status}`);
 
         const data = await response.json();
         ordens = data;
-
         mesclarCacheFornecedores(data);
-
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
 
@@ -321,11 +292,10 @@ async function syncData() {
         
     } catch (error) {
         console.error('❌ Erro na sincronização:', error);
-        showToast('Erro ao sincronizar', 'error');
+        showToast('Erro de sincronização', 'error');
     }
 }
 
-// Mescla no cache global — nunca apaga fornecedores de outros meses
 function mesclarCacheFornecedores(lista) {
     lista.forEach(ordem => {
         const razaoSocial = toUpperCase(ordem.razao_social || ordem.razaoSocial || '').trim();
@@ -341,16 +311,11 @@ function mesclarCacheFornecedores(lista) {
             email: ordem.email || ''
         };
     });
-    console.log(`📋 ${Object.keys(fornecedoresCache).length} fornecedores em cache`);
 }
-
-// Alias de compatibilidade
-function atualizarCacheFornecedores(lista) { mesclarCacheFornecedores(lista); }
 
 function buscarFornecedoresSimilares(termo) {
     termo = toUpperCase(termo).trim();
     if (termo.length < 2) return [];
-    
     return Object.keys(fornecedoresCache)
         .filter(key => key.includes(termo))
         .map(key => fornecedoresCache[key])
@@ -389,7 +354,6 @@ function setupFornecedorAutocomplete() {
         if (termo.length < 2) return;
         
         const fornecedores = buscarFornecedoresSimilares(termo);
-        
         if (fornecedores.length === 0) return;
         
         suggestionsDiv = document.createElement('div');
@@ -458,7 +422,6 @@ function changeMonth(direction) {
     ordens = [];
     lastDataHash = '';
     updateMonthDisplay();
-    // Limpa tabela imediatamente — sem rastro do mês anterior
     const container = document.getElementById('ordensContainer');
     if (container) container.innerHTML = '';
     loadOrdensDirectly();
@@ -699,13 +662,15 @@ function openFormModal() {
                                     <tbody id="itemsBody"></tbody>
                                 </table>
                             </div>
-                            <div class="form-group" style="margin-top: 1rem;">
-                                <label for="valorTotalOrdem">Valor Total da Ordem</label>
-                                <input type="text" id="valorTotalOrdem" readonly value="R$ 0,00">
-                            </div>
-                            <div class="form-group">
-                                <label for="frete">Frete</label>
-                                <input type="text" id="frete" value="CIF" placeholder="Ex: CIF, FOB">
+                            <div class="double-field-row">
+                                <div class="form-group">
+                                    <label for="valorTotalOrdem">Valor Total da Ordem</label>
+                                    <input type="text" id="valorTotalOrdem" readonly value="R$ 0,00">
+                                </div>
+                                <div class="form-group">
+                                    <label for="frete">Frete</label>
+                                    <input type="text" id="frete" value="CIF" placeholder="Ex: CIF, FOB">
+                                </div>
                             </div>
                         </div>
 
@@ -834,7 +799,6 @@ function renumberItems() {
     itemCounter = rows.length;
 }
 
-// IPI somado ao total do item
 function calculateItemTotal(input) {
     const row = input.closest('tr');
     const qtd = parseFloat(row.querySelector('.item-qtd').value) || 0;
@@ -843,7 +807,7 @@ function calculateItemTotal(input) {
     const ipiNum = parseFloatLocale(ipiStr);
     let total = qtd * valor;
     if (!isNaN(ipiNum)) {
-        total += ipiNum; // soma o valor do IPI (em reais)
+        total += ipiNum;
     }
     row.querySelector('.item-total').value = formatCurrency(total);
     recalculateOrderTotal();
@@ -874,7 +838,7 @@ async function handleSubmit(event) {
             quantidade: parseFloat(row.querySelector('.item-qtd').value) || 0,
             unidade: toUpperCase(row.querySelector('.item-unid').value),
             valorUnitario: parseFloat(row.querySelector('.item-valor').value) || 0,
-            ipi: row.querySelector('.item-ipi').value, // mantém como string
+            ipi: row.querySelector('.item-ipi').value,
             st: toUpperCase(row.querySelector('.item-st').value || ''),
             valorTotal: row.querySelector('.item-total').value
         });
@@ -904,7 +868,7 @@ async function handleSubmit(event) {
         status: 'aberta'
     };
     
-    if (!isOnline && !DEVELOPMENT_MODE) {
+    if (!DEVELOPMENT_MODE && !navigator.onLine) {
         showToast('Sistema offline. Dados não foram salvos.', 'error');
         closeFormModal();
         return;
@@ -952,12 +916,12 @@ async function handleSubmit(event) {
         if (editingId) {
             const index = ordens.findIndex(o => String(o.id) === String(editingId));
             if (index !== -1) ordens[index] = savedData;
-            showToast('Ordem atualizada com sucesso!', 'success');
+            showToast(`Ordem de Nº ${savedData.numero_ordem} atualizada`, 'success');
         } else {
             ordens.push(savedData);
             const novoNum = parseInt(savedData.numero_ordem) || 0;
             if (novoNum > ultimoNumeroGlobal) ultimoNumeroGlobal = novoNum;
-            showToast('Ordem criada com sucesso!', 'success');
+            showToast(`Ordem de Nº ${savedData.numero_ordem} aberta`, 'success');
         }
 
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
@@ -1074,13 +1038,15 @@ async function editOrdem(id) {
                                     <tbody id="itemsBody"></tbody>
                                 </table>
                             </div>
-                            <div class="form-group" style="margin-top: 1rem;">
-                                <label for="valorTotalOrdem">Valor Total da Ordem</label>
-                                <input type="text" id="valorTotalOrdem" readonly value="${ordem.valor_total || ordem.valorTotal}">
-                            </div>
-                            <div class="form-group">
-                                <label for="frete">Frete</label>
-                                <input type="text" id="frete" value="${toUpperCase(ordem.frete || 'CIF')}" placeholder="Ex: CIF, FOB">
+                            <div class="double-field-row">
+                                <div class="form-group">
+                                    <label for="valorTotalOrdem">Valor Total da Ordem</label>
+                                    <input type="text" id="valorTotalOrdem" readonly value="${ordem.valor_total || ordem.valorTotal}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="frete">Frete</label>
+                                    <input type="text" id="frete" value="${toUpperCase(ordem.frete || 'CIF')}" placeholder="Ex: CIF, FOB">
+                                </div>
                             </div>
                         </div>
 
@@ -1191,19 +1157,9 @@ function closeDeleteModal() {
 async function confirmDelete(id) {
     closeDeleteModal();
 
-    if (!isOnline && !DEVELOPMENT_MODE) {
-        showToast('Sistema offline. Não foi possível excluir.', 'error');
-        return;
-    }
-
     try {
-        const headers = {
-            'Accept': 'application/json'
-        };
-        
-        if (!DEVELOPMENT_MODE && sessionToken) {
-            headers['X-Session-Token'] = sessionToken;
-        }
+        const headers = { 'Accept': 'application/json' };
+        if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
 
         const response = await fetch(`${API_URL}/ordens/${id}`, {
             method: 'DELETE',
@@ -1219,10 +1175,11 @@ async function confirmDelete(id) {
 
         if (!response.ok) throw new Error('Erro ao deletar');
 
+        // A notificação de exclusão já é enviada pelo backend; aqui apenas removemos localmente
         ordens = ordens.filter(o => String(o.id) !== String(id));
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
-        showToast('Ordem excluída com sucesso!', 'success');
+        showToast(`Ordem excluída`, 'success');
     } catch (error) {
         console.error('Erro ao deletar:', error);
         showToast('Erro ao excluir ordem', 'error');
@@ -1244,44 +1201,43 @@ async function toggleStatus(id) {
         showToast(`Ordem marcada como ${novoStatus}!`, 'error');
     }
 
-    if (isOnline || DEVELOPMENT_MODE) {
-        try {
-            const headers = {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            };
-            
-            if (!DEVELOPMENT_MODE && sessionToken) {
-                headers['X-Session-Token'] = sessionToken;
-            }
+    if (!DEVELOPMENT_MODE && !navigator.onLine) return;
 
-            const response = await fetch(`${API_URL}/ordens/${id}/status`, {
-                method: 'PATCH',
-                headers: headers,
-                body: JSON.stringify({ status: novoStatus }),
-                mode: 'cors'
-            });
-
-            if (!DEVELOPMENT_MODE && response.status === 401) {
-                sessionStorage.removeItem('ordemCompraSession');
-                mostrarTelaAcessoNegado('Sua sessão expirou');
-                return;
-            }
-
-            if (!response.ok) throw new Error('Erro ao atualizar');
-
-            const data = await response.json();
-            const index = ordens.findIndex(o => String(o.id) === String(id));
-            if (index !== -1) ordens[index] = data;
-        } catch (error) {
-            ordem.status = old.status;
-            updateDisplay();
-            showToast('Erro ao atualizar status', 'error');
+    try {
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+        
+        if (!DEVELOPMENT_MODE && sessionToken) {
+            headers['X-Session-Token'] = sessionToken;
         }
+
+        const response = await fetch(`${API_URL}/ordens/${id}/status`, {
+            method: 'PATCH',
+            headers: headers,
+            body: JSON.stringify({ status: novoStatus }),
+            mode: 'cors'
+        });
+
+        if (!DEVELOPMENT_MODE && response.status === 401) {
+            sessionStorage.removeItem('ordemCompraSession');
+            mostrarTelaAcessoNegado('Sua sessão expirou');
+            return;
+        }
+
+        if (!response.ok) throw new Error('Erro ao atualizar');
+
+        const data = await response.json();
+        const index = ordens.findIndex(o => String(o.id) === String(id));
+        if (index !== -1) ordens[index] = data;
+    } catch (error) {
+        ordem.status = old.status;
+        updateDisplay();
+        showToast('Erro ao atualizar status', 'error');
     }
 }
 
-// Abre o modal de visualização ao clicar na linha (ignora cliques em botões e checkboxes)
 function handleRowClick(event, id) {
     if (event.target.closest('button') || event.target.closest('input')) return;
     viewOrdem(id);
@@ -1544,7 +1500,6 @@ function updateResponsaveisFilter() {
 }
 
 function getOrdensForCurrentMonth() {
-    // Dados já filtrados pelo servidor via ?mes=&ano=
     return ordens;
 }
 
@@ -1574,13 +1529,29 @@ function showToast(message, type = 'success') {
     document.body.appendChild(messageDiv);
     
     setTimeout(() => {
-        messageDiv.style.animation = 'slideOut 0.3s ease forwards';
+        messageDiv.style.animation = 'slideOutBottom 0.3s ease forwards';
         setTimeout(() => messageDiv.remove(), 300);
     }, 3000);
 }
 
+// Função para enviar notificação de PDF
+async function sendPdfNotification(numeroOrdem) {
+    try {
+        await fetch('/api/notifications', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...(!DEVELOPMENT_MODE && sessionToken ? { 'X-Session-Token': sessionToken } : {})
+            },
+            body: JSON.stringify({ message: `Ordem de Nº ${numeroOrdem} emitida` })
+        });
+    } catch (err) {
+        console.error('Erro ao notificar PDF:', err);
+    }
+}
+
 // ============================================
-// GERAÇÃO DE PDF
+// GERAÇÃO DE PDF (com notificação)
 // ============================================
 function generatePDFFromTable(id) {
     const ordem = ordens.find(o => String(o.id) === String(id));
@@ -2060,5 +2031,10 @@ function adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, a
     doc.text('2) FAVOR ENVIAR A NOTA FISCAL ELETRÔNICA (ARQUIVO .XML) PARA: FINANCEIRO.IRCOMERCIO@GMAIL.COM', margin + 5, yFinal);
     
     doc.save(`${toUpperCase(ordem.razao_social || ordem.razaoSocial)}-${ordem.numero_ordem || ordem.numeroOrdem}.pdf`);
-    showToast('PDF gerado com sucesso!', 'success');
+    
+    // Notificação global de PDF
+    const numero = ordem.numero_ordem || ordem.numeroOrdem;
+    sendPdfNotification(numero);
+    
+    showToast(`Ordem de Nº ${numero} emitida`, 'success');
 }
