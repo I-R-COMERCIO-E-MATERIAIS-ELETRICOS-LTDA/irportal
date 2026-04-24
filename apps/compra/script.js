@@ -133,44 +133,82 @@ async function inicializarApp() {
 async function initSupabaseRealtime() {
     try {
         const configResp = await fetch('/api/supabase-config');
-        if (!configResp.ok) throw new Error('Não foi possível obter configuração do Supabase');
+        if (!configResp.ok) {
+            throw new Error(`HTTP ${configResp.status}: ${configResp.statusText}`);
+        }
         const { url, anonKey } = await configResp.json();
-        if (!url || !anonKey) throw new Error('Configuração incompleta');
+        if (!url || !anonKey) {
+            throw new Error('URL ou chave anônima ausentes na resposta');
+        }
         
         supabaseClient = window.supabase.createClient(url, anonKey);
         
+        // Buscar notificações iniciais
+        await fetchNotifications();
+        
+        // Tentar Realtime
+        try {
+            notificationsSubscription = supabaseClient
+                .channel('compranotifications')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'compranotifications' }, payload => {
+                    handleNewNotification(payload.new);
+                })
+                .subscribe((status, err) => {
+                    if (status === 'CHANNEL_ERROR' || err) {
+                        console.warn('⚠️ Realtime falhou, usando polling', err);
+                        startNotificationPolling();
+                    } else {
+                        console.log('✅ Realtime conectado com sucesso');
+                    }
+                });
+        } catch (e) {
+            console.warn('⚠️ Erro ao conectar Realtime, usando polling', e);
+            startNotificationPolling();
+        }
+    } catch (err) {
+        console.error('❌ Erro ao inicializar sistema de notificações, usando polling:', err);
+        startNotificationPolling();
+    }
+}
+
+async function fetchNotifications() {
+    try {
         const notifResp = await fetch('/api/notifications', {
             headers: DEVELOPMENT_MODE ? {} : { 'X-Session-Token': sessionToken }
         });
-        if (notifResp.ok) {
-            const recentes = await notifResp.json();
-            const shownIds = JSON.parse(localStorage.getItem('shownNotifications') || '[]');
-            recentes.reverse().forEach(notif => {
-                if (!shownIds.includes(notif.id)) {
-                    showToast(notif.message, 'success');
-                    shownIds.push(notif.id);
-                }
-            });
-            localStorage.setItem('shownNotifications', JSON.stringify(shownIds.slice(-200)));
-        }
+        if (!notifResp.ok) return;
         
-        notificationsSubscription = supabaseClient
-            .channel('compranotifications')
-            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'compranotifications' }, payload => {
-                const newNotif = payload.new;
-                const shownIds = JSON.parse(localStorage.getItem('shownNotifications') || '[]');
-                if (!shownIds.includes(newNotif.id)) {
-                    showToast(newNotif.message, 'success');
-                    shownIds.push(newNotif.id);
-                    localStorage.setItem('shownNotifications', JSON.stringify(shownIds.slice(-200)));
-                }
-            })
-            .subscribe();
-            
-        console.log('✅ Notificações em tempo real ativadas (compranotifications)');
+        const recentes = await notifResp.json();
+        const storageKey = `shownNotifications_${sessionToken || 'anon'}`;
+        let shownIds = JSON.parse(localStorage.getItem(storageKey) || '[]');
+        
+        recentes.reverse().forEach(notif => {
+            if (!shownIds.includes(notif.id)) {
+                showToast(notif.message, 'success');
+                shownIds.push(notif.id);
+            }
+        });
+        localStorage.setItem(storageKey, JSON.stringify(shownIds.slice(-200)));
     } catch (err) {
-        console.error('Erro ao inicializar Realtime:', err);
+        console.error('Erro ao buscar notificações:', err);
     }
+}
+
+function handleNewNotification(notification) {
+    const storageKey = `shownNotifications_${sessionToken || 'anon'}`;
+    let shownIds = JSON.parse(localStorage.getItem(storageKey) || '[]');
+    if (!shownIds.includes(notification.id)) {
+        showToast(notification.message, 'success');
+        shownIds.push(notification.id);
+        localStorage.setItem(storageKey, JSON.stringify(shownIds.slice(-200)));
+    }
+}
+
+function startNotificationPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+    pollingInterval = setInterval(() => {
+        fetchNotifications();
+    }, 10000);
 }
 
 async function loadOrdensDirectly() {
@@ -757,7 +795,7 @@ function addItem() {
         <td>
             <input type="number" class="item-qtd" min="0" step="0.01" value="1" onchange="calculateItemTotal(this)">
         </td>
-        <td>
+        <table>
             <input type="text" class="item-unid" value="UN" placeholder="UN">
         </td>
         <td>
