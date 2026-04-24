@@ -59,7 +59,6 @@ body {
     overflow-y: scroll;
 }
 
-
 .app-content {
     opacity: 1;
 }
@@ -107,51 +106,6 @@ h1 {
     display: flex;
     align-items: center;
     margin: 0;
-}
-
-h2 {
-    font-size: 1.5rem;
-    margin-bottom: 1.5rem;
-    color: var(--text-primary);
-}
-
-/* STATUS DE CONEXÃO */
-.connection-status {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 0.6rem;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    font-weight: 600;
-}
-
-.status-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-}
-
-.connection-status.online .status-dot {
-    background-color: #22C55E;
-    animation: pulse-online 2s infinite;
-}
-
-.connection-status.offline .status-dot {
-    background-color: #EF4444;
-    animation: pulse-offline 2s infinite;
-}
-
-@keyframes pulse-online {
-    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-    70% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-}
-
-@keyframes pulse-offline {
-    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-    70% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
 
 /* NEW ORDER BUTTON IN HEADER */
@@ -307,50 +261,8 @@ h2 {
     white-space: nowrap;
 }
 
-.search-btn {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.search-btn:hover {
-    background: var(--input-bg);
-    color: var(--text-primary);
-}
-
-/* VIEW ICONS */
-.view-icon {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.view-icon:hover {
-    background: var(--input-bg);
-    color: var(--text-primary);
-}
-
-.view-icon.active {
-    background: var(--input-bg);
-    color: var(--primary);
-}
-
-/* CALENDAR BUTTON */
-.calendar-btn {
+/* SYNC BUTTON WITH SPIN ANIMATION */
+.sync-btn {
     background: transparent;
     border: none;
     color: var(--text-secondary);
@@ -364,106 +276,21 @@ h2 {
     margin-left: 0.25rem;
 }
 
-.calendar-btn:hover {
+.sync-btn:hover {
     background: var(--input-bg);
     color: var(--primary);
 }
 
-/* CALENDAR MODAL */
-.calendar-modal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    z-index: 10000;
-    align-items: center;
-    justify-content: center;
+.sync-btn.spin svg {
+    animation: spinSync 1s ease-in-out;
 }
 
-.calendar-modal.show {
-    display: flex;
+@keyframes spinSync {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
-.calendar-content {
-    background: var(--bg-card);
-    border-radius: 16px;
-    padding: 2rem;
-    box-shadow: 0 20px 60px var(--shadow);
-    border: 1px solid var(--border-color);
-    max-width: 400px;
-    width: 90%;
-    animation: scaleIn 0.2s ease;
-}
-
-.calendar-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1.5rem;
-}
-
-.calendar-header h3 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--text-primary);
-    margin: 0;
-}
-
-.calendar-year-nav {
-    background: transparent;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.calendar-year-nav:hover {
-    background: var(--input-bg);
-    color: var(--text-primary);
-}
-
-.calendar-months {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.75rem;
-}
-
-.calendar-month {
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 1rem;
-    text-align: center;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    transition: all 0.2s ease;
-}
-
-.calendar-month:hover {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(255, 82, 29, 0.3);
-}
-
-.calendar-month.current {
-    background: var(--primary);
-    color: white;
-    border-color: var(--primary);
-}
-
+/* DASHBOARD GRID */
 .dashboard-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -769,7 +596,6 @@ button {
     transition: all 0.3s ease;
 }
 
-/* EXCEÇÃO: Botão X não deve herdar estilos de button */
 button.close-modal {
     background: transparent !important;
     padding: 0 !important;
@@ -782,7 +608,6 @@ button:hover:not(:disabled) {
     transform: translateY(-1px);
 }
 
-/* EXCEÇÃO: Botão X não deve ter efeito hover de outros botões */
 button.close-modal:hover {
     opacity: 1 !important;
     transform: none !important;
@@ -818,7 +643,6 @@ button.secondary {
     background: #6B7280;
 }
 
-/* Botões de cancelar permanecem vermelhos, mas não o botão X */
 button[onclick*="closeFormModal"]:not(.close-modal), 
 button[onclick*="closeInfoModal"]:not(.close-modal) {
     background: var(--btn-delete);
@@ -960,7 +784,6 @@ button.small {
     margin: 0;
 }
 
-/* BOTÃO X SEM COR DE PREENCHIMENTO */
 .close-modal {
     background: transparent !important;
     border: none !important;
@@ -985,16 +808,7 @@ button.small {
     box-shadow: none !important;
 }
 
-.close-modal:active {
-    background: transparent !important;
-}
-
-.close-modal:focus {
-    background: transparent !important;
-    outline: none;
-}
-
-/* MODAL DELETE - IDÊNTICO À TABELA DE PREÇOS */
+/* MODAL DELETE */
 .modal-delete {
     position: relative;
     padding: 2.5rem 2rem 2rem 2rem;
@@ -1050,7 +864,6 @@ button.small {
     white-space: nowrap;
     margin: 0;
     border-radius: 0;
-    pointer-events: auto;
 }
 
 .tab-btn:hover {
@@ -1096,6 +909,18 @@ button.small {
 .modal-actions button {
     margin: 0;
     min-width: 120px;
+}
+
+/* Layout de dois campos lado a lado na aba Pedido */
+.double-field-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.double-field-row .form-group {
+    flex: 1;
+    margin-bottom: 0;
 }
 
 .info-section {
@@ -1189,6 +1014,11 @@ button.small {
     .month-navigation-inline {
         width: 100%;
         justify-content: space-between;
+    }
+    
+    .double-field-row {
+        flex-direction: column;
+        gap: 1rem;
     }
     
     .dashboard-grid {
