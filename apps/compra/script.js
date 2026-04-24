@@ -15,6 +15,7 @@ let currentFetchController = null;
 let currentUserName = null;
 let supabaseClient = null;
 let notificationsSubscription = null;
+let pollingInterval = null;
 const KNOWN_RESPONSAVEIS = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
 
 const tabs = ['tab-geral', 'tab-fornecedor', 'tab-pedido', 'tab-entrega', 'tab-pagamento'];
