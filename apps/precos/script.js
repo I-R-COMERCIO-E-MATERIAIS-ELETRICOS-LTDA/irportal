@@ -45,13 +45,13 @@ function verificarAutenticacao() {
 function mostrarTelaAcessoNegado(mensagem) {
     mensagem = mensagem || 'NÃO AUTORIZADO';
     var portalUrl = window.location.origin + '/portal';
-    document.body.innerHTML =
-        '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-        'height:100vh;background:var(--bg-primary);color:var(--text-primary);text-align:center;padding:2rem;">' +
-        '<h1 style="font-size:2.2rem;margin-bottom:1rem;">' + mensagem + '</h1>' +
-        '<p style="color:var(--text-secondary);margin-bottom:2rem;">Somente usuários autenticados podem acessar esta área.</p>' +
-        '<a href="' + portalUrl + '" style="display:inline-block;background:var(--btn-register);color:white;' +
-        'padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Ir para o Portal</a></div>';
+    document.body.innerHTML = `
+        <div class="access-denied">
+            <h1>${mensagem}</h1>
+            <p>Somente usuários autenticados podem acessar esta área.</p>
+            <a href="${portalUrl}">Ir para o Portal</a>
+        </div>
+    `;
 }
 
 function inicializarApp() {
@@ -335,7 +335,7 @@ async function handleSubmit(event) {
         if (!response.ok) { var err = await response.json().catch(function() { return {}; }); throw new Error(err.error || 'Erro ' + response.status); }
         closeFormModal(false);
         showToast(editId ? 'Item atualizado' : 'Item registrado', 'success');
-        await atualizarMarcasDisponiveis();   // 🔁 atualiza lista completa de marcas
+        await atualizarMarcasDisponiveis();
         loadPrecos(editId ? state.currentPage : 1);
     } catch (error) { showToast(error.name === 'AbortError' ? 'Timeout: Operação demorou muito' : 'Erro: ' + error.message, 'error'); }
 }
@@ -369,7 +369,7 @@ async function confirmDelete(id) {
         if (!response.ok) throw new Error('Erro ao deletar');
         showToast('Preço excluído com sucesso!', 'success');
         var pageToLoad = state.precos.length === 1 && state.currentPage > 1 ? state.currentPage - 1 : state.currentPage;
-        await atualizarMarcasDisponiveis();   // 🔁 atualiza lista completa de marcas
+        await atualizarMarcasDisponiveis();
         loadPrecos(pageToLoad);
     } catch (error) { showToast(error.name === 'AbortError' ? 'Timeout: Operação demorou muito' : 'Erro ao excluir preço', 'error'); }
 }
