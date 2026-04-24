@@ -229,7 +229,7 @@ async function syncData() {
         mesclarCacheFornecedores(data);
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
-        await loadUltimoNumero(); // atualiza o número global
+        await loadUltimoNumero();
         console.log(`✅ Sincronização concluída: ${ordens.length} ordens em ${mes + 1}/${ano}`);
         showToast('Dados sincronizados', 'success');
     } catch (error) {
@@ -619,7 +619,7 @@ async function handleSubmit(event) {
         }
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
-        await loadUltimoNumero(); // atualiza o contador universal
+        await loadUltimoNumero();
         closeFormModal();
     } catch (error) {
         console.error('Erro completo:', error);
@@ -725,8 +725,8 @@ async function confirmDelete(id) {
         ordens = ordens.filter(o => String(o.id) !== String(id));
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
-        await loadUltimoNumero(); // atualiza o contador universal
-        showToast(`Ordem excluída`, 'success');
+        await loadUltimoNumero();
+        showToast(`Ordem de Nº ${id} excluída`, 'error');  // vermelho
     } catch (error) { console.error('Erro ao deletar:', error); showToast('Erro ao excluir ordem', 'error'); }
 }
 async function toggleStatus(id) {
@@ -757,7 +757,7 @@ function viewOrdem(id) {
     document.getElementById('modalNumero').textContent = ordem.numero_ordem || ordem.numeroOrdem;
     document.getElementById('info-tab-geral').innerHTML = `<div class="info-section"><h4>Informações Gerais</h4><p><strong>Responsável:</strong> ${toUpperCase(ordem.responsavel)}</p><p><strong>Data:</strong> ${formatDate(ordem.data_ordem || ordem.dataOrdem)}</p><p><strong>Status:</strong> <span class="badge ${ordem.status}">${ordem.status.toUpperCase()}</span></p></div>`;
     document.getElementById('info-tab-fornecedor').innerHTML = `<div class="info-section"><h4>Dados do Fornecedor</h4><p><strong>Razão Social:</strong> ${toUpperCase(ordem.razao_social || ordem.razaoSocial)}</p>${ordem.nome_fantasia || ordem.nomeFantasia ? `<p><strong>Nome Fantasia:</strong> ${toUpperCase(ordem.nome_fantasia || ordem.nomeFantasia)}</p>` : ''}<p><strong>CNPJ:</strong> ${ordem.cnpj}</p>${ordem.endereco_fornecedor || ordem.enderecoFornecedor ? `<p><strong>Endereço:</strong> ${toUpperCase(ordem.endereco_fornecedor || ordem.enderecoFornecedor)}</p>` : ''}${ordem.site ? `<p><strong>Site:</strong> ${ordem.site}</p>` : ''}${ordem.contato ? `<p><strong>Contato:</strong> ${toUpperCase(ordem.contato)}</p>` : ''}${ordem.telefone ? `<p><strong>Telefone:</strong> ${ordem.telefone}</p>` : ''}${ordem.email ? `<p><strong>E-mail:</strong> ${ordem.email}</p>` : ''}</div>`;
-    document.getElementById('info-tab-pedido').innerHTML = `<div class="info-section"><h4>Itens do Pedido</h4><div style="overflow-x:auto;"><table style="width:100%;"><thead><tr><th>Item</th><th>Especificação</th><th>QTD</th><th>Unid</th><th>Valor UN</th><th>IPI</th><th>ST</th><th>Total</th></tr></thead><tbody>${(ordem.items || []).map(item => `<tr><td>${item.item}</td><td>${toUpperCase(item.especificacao)}</td><td>${item.quantidade}</td><td>${toUpperCase(item.unidade)}</td><td>${formatCurrency(item.valorUnitario || item.valor_unitario || 0)}</td><td>${item.ipi ? (isNaN(parseFloatLocale(item.ipi)) ? toUpperCase(item.ipi) : formatCurrency(parseFloatLocale(item.ipi))) : '-'}</td><td>${toUpperCase(item.st || '-')}</td><td>${item.valorTotal || item.valor_total}</td></tr>`).join('')}</tbody></table></div><p><strong>Valor Total:</strong> ${ordem.valor_total || ordem.valorTotal}</p>${ordem.frete ? `<p><strong>Frete:</strong> ${toUpperCase(ordem.frete)}</p>` : ''}</div>`;
+    document.getElementById('info-tab-pedido').innerHTML = `<div class="info-section"><h4>Itens do Pedido</h4><div style="overflow-x:auto;"><table style="width:100%;"><thead><tr><th>Item</th><th>Especificação</th><th>QTD</th><th>Unid</th><th>Valor UN</th><th>IPI</th><th>ST</th><th>Total</th></tr></thead><tbody>${(ordem.items || []).map(item => `<tr><td>${item.item}</td><td>${toUpperCase(item.especificacao)}</td><td>${item.quantidade}</td><td>${toUpperCase(item.unidade)}</td><td>${formatCurrency(item.valorUnitario || item.valor_unitario || 0)}</td><td>${item.ipi ? (isNaN(parseFloatLocale(item.ipi)) ? toUpperCase(item.ipi) : formatCurrency(parseFloatLocale(item.ipi))) : '-'}</td><td>${toUpperCase(item.st || '-')}</td><td>${item.valorTotal || item.valor_total}</td></tr>`).join('')}</tbody><tr></div><p><strong>Valor Total:</strong> ${ordem.valor_total || ordem.valorTotal}</p>${ordem.frete ? `<p><strong>Frete:</strong> ${toUpperCase(ordem.frete)}</p>` : ''}</div>`;
     document.getElementById('info-tab-entrega').innerHTML = `<div class="info-section"><h4>Informações de Entrega</h4>${ordem.local_entrega || ordem.localEntrega ? `<p><strong>Local de Entrega:</strong> ${toUpperCase(ordem.local_entrega || ordem.localEntrega)}</p>` : ''}${ordem.prazo_entrega || ordem.prazoEntrega ? `<p><strong>Prazo de Entrega:</strong> ${toUpperCase(ordem.prazo_entrega || ordem.prazoEntrega)}</p>` : ''}${ordem.transporte ? `<p><strong>Transporte:</strong> ${toUpperCase(ordem.transporte)}</p>` : ''}</div>`;
     document.getElementById('info-tab-pagamento').innerHTML = `<div class="info-section"><h4>Dados de Pagamento</h4><p><strong>Forma de Pagamento:</strong> ${toUpperCase(ordem.forma_pagamento || ordem.formaPagamento)}</p><p><strong>Prazo de Pagamento:</strong> ${toUpperCase(ordem.prazo_pagamento || ordem.prazoPagamento)}</p>${ordem.dados_bancarios || ordem.dadosBancarios ? `<p><strong>Dados Bancários:</strong> ${toUpperCase(ordem.dados_bancarios || ordem.dadosBancarios)}</p>` : ''}</div>`;
     document.querySelectorAll('#infoModal .tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -774,7 +774,6 @@ function updateDashboard() {
     const monthOrdens = getOrdensForCurrentMonth();
     const totalFechadas = monthOrdens.filter(o => o.status === 'fechada').length;
     const totalAbertas = monthOrdens.filter(o => o.status === 'aberta').length;
-    // Atualiza total de ordens com o último número global (última ordem cadastrada)
     document.getElementById('totalOrdens').textContent = ultimoNumeroGlobal;
     document.getElementById('totalFechadas').textContent = totalFechadas;
     document.getElementById('totalAbertas').textContent = totalAbertas;
