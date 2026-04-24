@@ -113,7 +113,6 @@ app.get('/health', async (req, res) => {
 
 // ─── CONFIGURAÇÃO DO SUPABASE PARA FRONTEND ──────────────────────────────────
 app.get('/api/supabase-config', (req, res) => {
-    // Apenas a URL e chave anônima são públicas
     res.json({
         url: process.env.SUPABASE_URL,
         anonKey: process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY
@@ -194,7 +193,7 @@ app.post('/api/notifications', async (req, res) => {
         }
 
         const { data, error } = await supabase
-            .from('app_notifications')
+            .from('compranotifications')
             .insert({ message })
             .select()
             .single();
@@ -214,7 +213,7 @@ app.post('/api/notifications', async (req, res) => {
 app.get('/api/notifications', async (req, res) => {
     try {
         const { data, error } = await supabase
-            .from('app_notifications')
+            .from('compranotifications')
             .select('*')
             .order('created_at', { ascending: false })
             .limit(50);
