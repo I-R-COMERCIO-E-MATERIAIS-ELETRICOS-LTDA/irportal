@@ -8,15 +8,11 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- App Content -->
     <div class="app-content">
         <div class="container">
             <div class="header">
                 <div class="header-left">
                     <h1>Transportadoras</h1>
-                    <div id="connectionStatus" class="connection-status offline">
-                        <span class="status-dot"></span>
-                    </div>
                 </div>
                 <button onclick="openFormModal()" class="btn-new-order-header">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -59,48 +55,58 @@
         </div>
     </div>
 
-    <!-- MODAL DE FORMULÁRIO -->
+    <!-- MODAL DE FORMULÁRIO (COM ABAS) -->
     <div class="modal-overlay" id="formModal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 1200px;">
             <div class="modal-header">
                 <h3 class="modal-title" id="formTitle">Nova Transportadora</h3>
-                <button class="close-modal" onclick="closeFormModal()">✕</button>
+                <button class="close-modal" onclick="closeFormModal(true)">✕</button>
             </div>
-
-            <div class="form-grid" style="padding: 1.5rem;">
-                <div class="form-group form-group-full">
-                    <label>Nome *</label>
-                    <input type="text" id="nome" placeholder="NOME DA TRANSPORTADORA">
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchTab('tab-geral')">Geral</button>
+                    <button class="tab-btn" onclick="switchTab('tab-atendimento')">Atendimento</button>
                 </div>
-                <div class="form-group">
-                    <label>Representante</label>
-                    <input type="text" id="representante" placeholder="Nome do representante">
+                <div class="tab-content active" id="tab-geral">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nome *</label>
+                            <input type="text" id="nome" placeholder="NOME DA TRANSPORTADORA">
+                        </div>
+                        <div class="form-group">
+                            <label>Representante</label>
+                            <input type="text" id="representante" placeholder="Nome do representante">
+                        </div>
+                        <div class="form-group">
+                            <label>E-mail *</label>
+                            <input type="email" id="email" placeholder="email@transportadora.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Telefones <small style="color:var(--text-secondary)">(separe por vírgula)</small></label>
+                            <input type="text" id="telefones" placeholder="(00) 0000-0000, (00) 0000-0000">
+                        </div>
+                        <div class="form-group">
+                            <label>Celulares <small style="color:var(--text-secondary)">(separe por vírgula)</small></label>
+                            <input type="text" id="celulares" placeholder="(00) 00000-0000">
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>E-mail *</label>
-                    <input type="email" id="email" placeholder="email@transportadora.com">
-                </div>
-                <div class="form-group">
-                    <label>Telefones <small style="color:var(--text-secondary)">(separe por vírgula)</small></label>
-                    <input type="text" id="telefones" placeholder="(00) 0000-0000, (00) 0000-0000">
-                </div>
-                <div class="form-group">
-                    <label>Celulares <small style="color:var(--text-secondary)">(separe por vírgula)</small></label>
-                    <input type="text" id="celulares" placeholder="(00) 00000-0000">
-                </div>
-                <div class="form-group">
-                    <label>Regiões <small style="color:var(--text-secondary)">(separe por vírgula)</small></label>
-                    <input type="text" id="regioes" placeholder="Sudeste, Sul, Centro-Oeste">
-                </div>
-                <div class="form-group">
-                    <label>Estados <small style="color:var(--text-secondary)">(separe por vírgula)</small></label>
-                    <input type="text" id="estados" placeholder="ES, RJ, SP, MG">
+                <div class="tab-content" id="tab-atendimento">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Regiões (selecione as que atende)</label>
+                            <div id="regioesContainer" class="chips-container"></div>
+                        </div>
+                        <div class="form-group">
+                            <label>Estados (selecione os que atende)</label>
+                            <div id="estadosContainer" class="chips-container"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
-
             <div class="modal-actions">
-                <button type="button" onclick="saveTransportadora()">Salvar</button>
-                <button type="button" onclick="closeFormModal()" class="cancel-close">Cancelar</button>
+                <button type="button" onclick="saveTransportadora()" class="btn-save-green">Salvar</button>
+                <button type="button" onclick="closeFormModal(true)" class="cancel-close">Cancelar</button>
             </div>
         </div>
     </div>
