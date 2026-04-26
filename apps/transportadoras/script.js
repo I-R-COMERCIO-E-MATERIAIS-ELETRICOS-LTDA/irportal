@@ -151,19 +151,29 @@ function renderTable() {
 
     container.innerHTML = filtered.map(t => `
         <tr>
-            <td><strong>${t.nome}</strong></td>
-            <td>${t.representante || '-'}</td>
-            <td>${(t.telefones || []).join(', ') || '-'}</td>
-            <td>${(t.celulares || []).join(', ') || '-'}</td>
-            <td>${t.email}</td>
+            <td><strong>${escapeHtml(t.nome)}</strong></td>
+            <td>${escapeHtml(t.representante || '-')}</td>
+            <td>${escapeHtml((t.telefones || []).join(', ') || '-')}</td>
+            <td>${escapeHtml((t.celulares || []).join(', ') || '-')}</td>
+            <td>${escapeHtml(t.email)}</td>
             <td class="actions-cell">
                 <div class="actions">
                     <button onclick="editTransportadora('${t.id}')" class="action-btn edit" style="background:#6B7280;">Editar</button>
-                    <button onclick="deleteTransportadora('${t.id}', '${t.nome.replace(/'/g, "\\'")}')" class="action-btn delete" style="background:#EF4444;">Excluir</button>
+                    <button onclick="deleteTransportadora('${t.id}', '${escapeHtml(t.nome).replace(/'/g, "\\'")}')" class="action-btn delete" style="background:#EF4444;">Excluir</button>
                 </div>
             </td>
         </tr>
     `).join('');
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
 }
 
 // ============================================
@@ -192,7 +202,11 @@ function openFormModal() {
 function closeFormModal(showCancelMessage = false) {
     const modal = document.getElementById('formModal');
     if (modal) {
-        if (showCancelMessage) showMessage('Registro cancelado', 'error');
+        if (showCancelMessage) {
+            const isEditing = editingId !== null;
+            const msg = isEditing ? 'Atualização cancelada' : 'Registro cancelado';
+            showMessage(msg, 'error');
+        }
         modal.classList.remove('show');
         resetForm();
     }
@@ -200,7 +214,6 @@ function closeFormModal(showCancelMessage = false) {
 
 function resetForm() {
     document.querySelectorAll('#formModal input:not([type="hidden"])').forEach(el => el.value = '');
-    // Resetar seletores
     renderRegioesSelectors([]);
     renderEstadosSelectors([]);
 }
