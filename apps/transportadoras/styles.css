@@ -418,7 +418,7 @@ button.close-modal:hover {
     margin: 0;
     min-width: 120px;
 }
-/* Chips (seletores de região/estado) */
+/* Chips (seletores de região/estado) - RETANGULARES */
 .chips-container {
     display: flex;
     flex-wrap: wrap;
@@ -428,7 +428,7 @@ button.close-modal:hover {
 .chip-selector {
     background: var(--input-bg);
     border: 1px solid var(--border-color);
-    border-radius: 32px;
+    border-radius: 6px;        /* retangular */
     padding: 8px 16px;
     font-size: 0.85rem;
     font-weight: 500;
