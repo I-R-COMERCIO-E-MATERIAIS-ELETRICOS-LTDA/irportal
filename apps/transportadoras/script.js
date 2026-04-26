@@ -5,10 +5,18 @@ const PORTAL_URL = window.location.origin;
 const API_URL = `${window.location.origin}/api`;
 
 let transportadoras = [];
-let isOnline = false;
 let editingId = null;
 let sessionToken = null;
 let currentUser = null;
+let currentTab = 0;
+const tabs = ['tab-geral', 'tab-atendimento'];
+
+// Listas fixas para seleção
+const REGIOES_LISTA = ['NORTE', 'NORDESTE', 'SUDESTE', 'SUL', 'CENTRO-OESTE'];
+const ESTADOS_LISTA = [
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+    'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+];
 
 // ============================================
 // INICIALIZAÇÃO
@@ -78,17 +86,7 @@ function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
 
 function inicializarApp() {
     loadTransportadoras();
-    setInterval(() => { if (isOnline) loadTransportadoras(); }, 30000);
-}
-
-// ============================================
-// CONEXÃO
-// ============================================
-function updateConnectionStatus() {
-    const status = document.getElementById('connectionStatus');
-    if (status) {
-        status.className = isOnline ? 'connection-status online' : 'connection-status offline';
-    }
+    setInterval(() => loadTransportadoras(), 30000);
 }
 
 function showMessage(message, type = 'success') {
@@ -97,7 +95,7 @@ function showMessage(message, type = 'success') {
     div.textContent = message;
     document.body.appendChild(div);
     setTimeout(() => {
-        div.style.animation = 'slideOut 0.3s ease forwards';
+        div.style.animation = 'slideOutBottom 0.3s ease forwards';
         setTimeout(() => div.remove(), 300);
     }, 2000);
 }
@@ -116,23 +114,16 @@ async function loadTransportadoras() {
             mostrarTelaAcessoNegado('SUA SESSÃO EXPIROU');
             return;
         }
-        if (!response.ok) {
-            isOnline = false;
-            updateConnectionStatus();
-            return;
-        }
+        if (!response.ok) return;
         transportadoras = await response.json();
-        isOnline = true;
-        updateConnectionStatus();
         renderTable();
     } catch (e) {
-        isOnline = false;
-        updateConnectionStatus();
+        // silencioso
     }
 }
 
 // ============================================
-// FILTRO
+// FILTRO E TABELA
 // ============================================
 function filterTransportadoras() {
     renderTable();
@@ -165,10 +156,10 @@ function renderTable() {
             <td>${(t.telefones || []).join(', ') || '-'}</td>
             <td>${(t.celulares || []).join(', ') || '-'}</td>
             <td>${t.email}</td>
-            <td>
+            <td class="actions-cell">
                 <div class="actions">
-                    <button onclick="editTransportadora('${t.id}')" class="action-btn" style="background:#6B7280;">Editar</button>
-                    <button onclick="deleteTransportadora('${t.id}', '${t.nome}')" class="action-btn" style="background:#EF4444;">Excluir</button>
+                    <button onclick="editTransportadora('${t.id}')" class="action-btn edit" style="background:#6B7280;">Editar</button>
+                    <button onclick="deleteTransportadora('${t.id}', '${t.nome.replace(/'/g, "\\'")}')" class="action-btn delete" style="background:#EF4444;">Excluir</button>
                 </div>
             </td>
         </tr>
@@ -176,22 +167,86 @@ function renderTable() {
 }
 
 // ============================================
-// MODAL DE FORMULÁRIO
+// MODAL DE FORMULÁRIO (ABAS E SELETORES)
 // ============================================
+function switchTab(tabId) {
+    const index = tabs.indexOf(tabId);
+    if (index !== -1) currentTab = index;
+    const tabButtons = document.querySelectorAll('#formModal .tab-btn');
+    const tabContents = document.querySelectorAll('#formModal .tab-content');
+    tabButtons.forEach(btn => btn.classList.remove('active'));
+    tabContents.forEach(content => content.classList.remove('active'));
+    if (tabButtons[currentTab]) tabButtons[currentTab].classList.add('active');
+    if (tabContents[currentTab]) tabContents[currentTab].classList.add('active');
+}
+
 function openFormModal() {
     editingId = null;
     document.getElementById('formTitle').textContent = 'Nova Transportadora';
     resetForm();
+    currentTab = 0;
+    switchTab('tab-geral');
     document.getElementById('formModal').classList.add('show');
 }
 
-function closeFormModal() {
-    document.getElementById('formModal').classList.remove('show');
-    resetForm();
+function closeFormModal(showCancelMessage = false) {
+    const modal = document.getElementById('formModal');
+    if (modal) {
+        if (showCancelMessage) showMessage('Registro cancelado', 'error');
+        modal.classList.remove('show');
+        resetForm();
+    }
 }
 
 function resetForm() {
-    document.querySelectorAll('#formModal input, #formModal textarea').forEach(el => el.value = '');
+    document.querySelectorAll('#formModal input:not([type="hidden"])').forEach(el => el.value = '');
+    // Resetar seletores
+    renderRegioesSelectors([]);
+    renderEstadosSelectors([]);
+}
+
+function renderRegioesSelectors(selected) {
+    const container = document.getElementById('regioesContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    REGIOES_LISTA.forEach(reg => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = reg;
+        btn.className = 'chip-selector';
+        if (selected.includes(reg)) btn.classList.add('selected');
+        btn.onclick = () => {
+            btn.classList.toggle('selected');
+        };
+        container.appendChild(btn);
+    });
+}
+
+function renderEstadosSelectors(selected) {
+    const container = document.getElementById('estadosContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    ESTADOS_LISTA.forEach(uf => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = uf;
+        btn.className = 'chip-selector';
+        if (selected.includes(uf)) btn.classList.add('selected');
+        btn.onclick = () => {
+            btn.classList.toggle('selected');
+        };
+        container.appendChild(btn);
+    });
+}
+
+function getSelectedRegioes() {
+    const btns = document.querySelectorAll('#regioesContainer .chip-selector.selected');
+    return Array.from(btns).map(btn => btn.textContent);
+}
+
+function getSelectedEstados() {
+    const btns = document.querySelectorAll('#estadosContainer .chip-selector.selected');
+    return Array.from(btns).map(btn => btn.textContent);
 }
 
 function editTransportadora(id) {
@@ -205,19 +260,22 @@ function editTransportadora(id) {
     document.getElementById('email').value = t.email || '';
     document.getElementById('telefones').value = (t.telefones || []).join(', ');
     document.getElementById('celulares').value = (t.celulares || []).join(', ');
-    document.getElementById('regioes').value = (t.regioes || []).join(', ');
-    document.getElementById('estados').value = (t.estados || []).join(', ');
 
+    renderRegioesSelectors(t.regioes || []);
+    renderEstadosSelectors(t.estados || []);
+
+    currentTab = 0;
+    switchTab('tab-geral');
     document.getElementById('formModal').classList.add('show');
 }
 
 function parseArray(str) {
     if (!str || !str.trim()) return [];
-    return str.split(',').map(s => s.trim()).filter(Boolean);
+    return str.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
 }
 
 async function saveTransportadora() {
-    const nome  = document.getElementById('nome').value.trim();
+    const nome = document.getElementById('nome').value.trim();
     const email = document.getElementById('email').value.trim();
 
     if (!nome || !email) {
@@ -226,17 +284,17 @@ async function saveTransportadora() {
     }
 
     const payload = {
-        nome,
-        representante: document.getElementById('representante').value.trim(),
-        email,
+        nome: nome.toUpperCase(),
+        representante: document.getElementById('representante').value.trim().toUpperCase(),
+        email: email.toLowerCase(),
         telefones: parseArray(document.getElementById('telefones').value),
         celulares: parseArray(document.getElementById('celulares').value),
-        regioes:   parseArray(document.getElementById('regioes').value),
-        estados:   parseArray(document.getElementById('estados').value)
+        regioes: getSelectedRegioes(),
+        estados: getSelectedEstados()
     };
 
     try {
-        const url    = editingId ? `${API_URL}/transportadoras/${editingId}` : `${API_URL}/transportadoras`;
+        const url = editingId ? `${API_URL}/transportadoras/${editingId}` : `${API_URL}/transportadoras`;
         const method = editingId ? 'PUT' : 'POST';
 
         const response = await fetch(url, {
@@ -248,8 +306,11 @@ async function saveTransportadora() {
         if (!response.ok) throw new Error('Erro ao salvar');
 
         await loadTransportadoras();
-        closeFormModal();
-        showMessage(editingId ? 'Transportadora atualizada!' : 'Transportadora cadastrada!', 'success');
+        closeFormModal(false);
+        const msg = editingId
+            ? `${payload.nome} atualizada`
+            : `${payload.nome} registrada`;
+        showMessage(msg, 'success');
     } catch (e) {
         showMessage('Erro ao salvar transportadora!', 'error');
     }
@@ -264,7 +325,7 @@ async function deleteTransportadora(id, nome) {
         });
         if (!response.ok) throw new Error('Erro ao excluir');
         await loadTransportadoras();
-        showMessage('Transportadora excluída!', 'success');
+        showMessage(`${nome} excluída`, 'error');
     } catch (e) {
         showMessage('Erro ao excluir transportadora!', 'error');
     }
