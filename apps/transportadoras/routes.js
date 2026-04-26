@@ -6,7 +6,7 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // GET /api/transportadoras — lista todas (com paginação opcional)
+    // GET /api/transportadoras — lista todas
     router.get('/', async (req, res) => {
         try {
             const page  = parseInt(req.query.page)  || 1;
@@ -31,7 +31,6 @@ module.exports = function (supabase) {
             const { data, error, count } = await query;
             if (error) throw error;
 
-            // Suporte à resposta simples (array) ou paginada ({ data, total, page, limit })
             if (req.query.page) {
                 return res.json({ data, total: count, page, limit });
             }
@@ -42,7 +41,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // GET /api/transportadoras/:id — busca uma transportadora
+    // GET /api/transportadoras/:id
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -60,7 +59,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // POST /api/transportadoras — cria nova transportadora
+    // POST /api/transportadoras
     router.post('/', async (req, res) => {
         try {
             const { nome, representante, email, telefones, celulares, regioes, estados } = req.body;
@@ -92,7 +91,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // PUT /api/transportadoras/:id — atualiza transportadora (substituição total)
+    // PUT /api/transportadoras/:id
     router.put('/:id', async (req, res) => {
         try {
             const { nome, representante, email, telefones, celulares, regioes, estados } = req.body;
@@ -125,7 +124,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // DELETE /api/transportadoras/:id — exclui transportadora
+    // DELETE /api/transportadoras/:id
     router.delete('/:id', async (req, res) => {
         try {
             const { error } = await supabase
