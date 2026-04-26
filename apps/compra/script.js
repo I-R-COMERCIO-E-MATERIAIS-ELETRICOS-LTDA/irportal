@@ -716,38 +716,60 @@ function closeDeleteModal() {
 }
 async function confirmDelete(id) {
     closeDeleteModal();
+    const ordem = ordens.find(o => String(o.id) === String(id));
+    if (!ordem) {
+        showToast('Ordem não encontrada', 'error');
+        return;
+    }
+    const numeroOrdem = ordem.numero_ordem || ordem.numeroOrdem;
     try {
         const headers = { 'Accept': 'application/json' };
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
         const response = await fetch(`${API_URL}/ordens/${id}`, { method: 'DELETE', headers, mode: 'cors' });
-        if (!DEVELOPMENT_MODE && response.status === 401) { sessionStorage.removeItem('ordemCompraSession'); mostrarTelaAcessoNegado('Sua sessão expirou'); return; }
+        if (!DEVELOPMENT_MODE && response.status === 401) {
+            sessionStorage.removeItem('ordemCompraSession');
+            mostrarTelaAcessoNegado('Sua sessão expirou');
+            return;
+        }
         if (!response.ok) throw new Error('Erro ao deletar');
         ordens = ordens.filter(o => String(o.id) !== String(id));
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
         await loadUltimoNumero();
-        showToast(`Ordem de Nº ${id} excluída`, 'error');  // vermelho
-    } catch (error) { console.error('Erro ao deletar:', error); showToast('Erro ao excluir ordem', 'error'); }
+        showToast(`Ordem de Nº ${numeroOrdem} excluída`, 'error');
+    } catch (error) {
+        console.error('Erro ao deletar:', error);
+        showToast('Erro ao excluir ordem', 'error');
+    }
 }
 async function toggleStatus(id) {
     const ordem = ordens.find(o => String(o.id) === String(id));
     if (!ordem) return;
+    const numeroOrdem = ordem.numero_ordem || ordem.numeroOrdem;
     const novoStatus = ordem.status === 'aberta' ? 'fechada' : 'aberta';
     const old = { status: ordem.status };
     ordem.status = novoStatus;
     updateDisplay();
-    showToast(`Ordem marcada como ${novoStatus}!`, novoStatus === 'fechada' ? 'success' : 'error');
+    showToast(`Ordem de Nº ${numeroOrdem} ${novoStatus === 'fechada' ? 'fechada' : 'aberta'}`, novoStatus === 'fechada' ? 'success' : 'error');
     if (!DEVELOPMENT_MODE && !navigator.onLine) return;
     try {
         const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
         if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
         const response = await fetch(`${API_URL}/ordens/${id}/status`, { method: 'PATCH', headers, body: JSON.stringify({ status: novoStatus }), mode: 'cors' });
-        if (!DEVELOPMENT_MODE && response.status === 401) { sessionStorage.removeItem('ordemCompraSession'); mostrarTelaAcessoNegado('Sua sessão expirou'); return; }
+        if (!DEVELOPMENT_MODE && response.status === 401) {
+            sessionStorage.removeItem('ordemCompraSession');
+            mostrarTelaAcessoNegado('Sua sessão expirou');
+            return;
+        }
         if (!response.ok) throw new Error('Erro ao atualizar');
         const data = await response.json();
         const index = ordens.findIndex(o => String(o.id) === String(id));
         if (index !== -1) ordens[index] = data;
-    } catch (error) { ordem.status = old.status; updateDisplay(); showToast('Erro ao atualizar status', 'error'); }
+    } catch (error) {
+        ordem.status = old.status;
+        updateDisplay();
+        showToast('Erro ao atualizar status', 'error');
+    }
 }
 function handleRowClick(event, id) { if (event.target.closest('button') || event.target.closest('input')) return; viewOrdem(id); }
 function viewOrdem(id) {
@@ -757,7 +779,7 @@ function viewOrdem(id) {
     document.getElementById('modalNumero').textContent = ordem.numero_ordem || ordem.numeroOrdem;
     document.getElementById('info-tab-geral').innerHTML = `<div class="info-section"><h4>Informações Gerais</h4><p><strong>Responsável:</strong> ${toUpperCase(ordem.responsavel)}</p><p><strong>Data:</strong> ${formatDate(ordem.data_ordem || ordem.dataOrdem)}</p><p><strong>Status:</strong> <span class="badge ${ordem.status}">${ordem.status.toUpperCase()}</span></p></div>`;
     document.getElementById('info-tab-fornecedor').innerHTML = `<div class="info-section"><h4>Dados do Fornecedor</h4><p><strong>Razão Social:</strong> ${toUpperCase(ordem.razao_social || ordem.razaoSocial)}</p>${ordem.nome_fantasia || ordem.nomeFantasia ? `<p><strong>Nome Fantasia:</strong> ${toUpperCase(ordem.nome_fantasia || ordem.nomeFantasia)}</p>` : ''}<p><strong>CNPJ:</strong> ${ordem.cnpj}</p>${ordem.endereco_fornecedor || ordem.enderecoFornecedor ? `<p><strong>Endereço:</strong> ${toUpperCase(ordem.endereco_fornecedor || ordem.enderecoFornecedor)}</p>` : ''}${ordem.site ? `<p><strong>Site:</strong> ${ordem.site}</p>` : ''}${ordem.contato ? `<p><strong>Contato:</strong> ${toUpperCase(ordem.contato)}</p>` : ''}${ordem.telefone ? `<p><strong>Telefone:</strong> ${ordem.telefone}</p>` : ''}${ordem.email ? `<p><strong>E-mail:</strong> ${ordem.email}</p>` : ''}</div>`;
-    document.getElementById('info-tab-pedido').innerHTML = `<div class="info-section"><h4>Itens do Pedido</h4><div style="overflow-x:auto;"><table style="width:100%;"><thead><tr><th>Item</th><th>Especificação</th><th>QTD</th><th>Unid</th><th>Valor UN</th><th>IPI</th><th>ST</th><th>Total</th></tr></thead><tbody>${(ordem.items || []).map(item => `<tr><td>${item.item}</td><td>${toUpperCase(item.especificacao)}</td><td>${item.quantidade}</td><td>${toUpperCase(item.unidade)}</td><td>${formatCurrency(item.valorUnitario || item.valor_unitario || 0)}</td><td>${item.ipi ? (isNaN(parseFloatLocale(item.ipi)) ? toUpperCase(item.ipi) : formatCurrency(parseFloatLocale(item.ipi))) : '-'}</td><td>${toUpperCase(item.st || '-')}</td><td>${item.valorTotal || item.valor_total}</td></tr>`).join('')}</tbody><tr></div><p><strong>Valor Total:</strong> ${ordem.valor_total || ordem.valorTotal}</p>${ordem.frete ? `<p><strong>Frete:</strong> ${toUpperCase(ordem.frete)}</p>` : ''}</div>`;
+    document.getElementById('info-tab-pedido').innerHTML = `<div class="info-section"><h4>Itens do Pedido</h4><div style="overflow-x:auto;"><table style="width:100%;"><thead><tr><th>Item</th><th>Especificação</th><th>QTD</th><th>Unid</th><th>Valor UN</th><th>IPI</th><th>ST</th><th>Total</th></tr></thead><tbody>${(ordem.items || []).map(item => `<tr><td>${item.item}</td><td>${toUpperCase(item.especificacao)}</td><td>${item.quantidade}</td><td>${toUpperCase(item.unidade)}</td><td>${formatCurrency(item.valorUnitario || item.valor_unitario || 0)}</td><td>${item.ipi ? (isNaN(parseFloatLocale(item.ipi)) ? toUpperCase(item.ipi) : formatCurrency(parseFloatLocale(item.ipi))) : '-'}</td><td>${toUpperCase(item.st || '-')}</td><td>${item.valorTotal || item.valor_total}</td></tr>`).join('')}</tbody></table></div><p><strong>Valor Total:</strong> ${ordem.valor_total || ordem.valorTotal}</p>${ordem.frete ? `<p><strong>Frete:</strong> ${toUpperCase(ordem.frete)}</p>` : ''}</div>`;
     document.getElementById('info-tab-entrega').innerHTML = `<div class="info-section"><h4>Informações de Entrega</h4>${ordem.local_entrega || ordem.localEntrega ? `<p><strong>Local de Entrega:</strong> ${toUpperCase(ordem.local_entrega || ordem.localEntrega)}</p>` : ''}${ordem.prazo_entrega || ordem.prazoEntrega ? `<p><strong>Prazo de Entrega:</strong> ${toUpperCase(ordem.prazo_entrega || ordem.prazoEntrega)}</p>` : ''}${ordem.transporte ? `<p><strong>Transporte:</strong> ${toUpperCase(ordem.transporte)}</p>` : ''}</div>`;
     document.getElementById('info-tab-pagamento').innerHTML = `<div class="info-section"><h4>Dados de Pagamento</h4><p><strong>Forma de Pagamento:</strong> ${toUpperCase(ordem.forma_pagamento || ordem.formaPagamento)}</p><p><strong>Prazo de Pagamento:</strong> ${toUpperCase(ordem.prazo_pagamento || ordem.prazoPagamento)}</p>${ordem.dados_bancarios || ordem.dadosBancarios ? `<p><strong>Dados Bancários:</strong> ${toUpperCase(ordem.dados_bancarios || ordem.dadosBancarios)}</p>` : ''}</div>`;
     document.querySelectorAll('#infoModal .tab-btn').forEach(btn => btn.classList.remove('active'));
