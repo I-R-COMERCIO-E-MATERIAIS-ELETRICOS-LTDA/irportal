@@ -358,7 +358,7 @@ function updateNavigationButtons() {
 
     btnPrevious.style.display = currentTab > 0 ? 'inline-flex' : 'none';
     btnNext.style.display = currentTab < tabs.length - 1 ? 'inline-flex' : 'none';
-    btnSave.style.display = 'inline-flex';
+    btnSave.style.display = 'inline-flex';  // sempre visível
 }
 function nextTab() { if (currentTab < tabs.length - 1) { currentTab++; showTab(currentTab); updateNavigationButtons(); } }
 function previousTab() { if (currentTab > 0) { currentTab--; showTab(currentTab); updateNavigationButtons(); } }
@@ -835,7 +835,89 @@ function showToast(message, type = 'success') {
     document.body.appendChild(messageDiv);
     setTimeout(() => { messageDiv.style.animation = 'slideOutBottom 0.3s ease forwards'; setTimeout(() => messageDiv.remove(), 300); }, 3000);
 }
-function generatePDF(id) { /* ... mantida a implementação original ... */ }
-function generatePDFForOrdem(ordem) { /* ... mantida ... */ }
-function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineHeight, maxWidth, addTextWithWrap) { /* ... mantida ... */ }
-function adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, addPageWithHeader) { /* ... mantida ... */ }
+
+// ============================================
+// GERAÇÃO DE PDF (COMPLETA)
+// ============================================
+function generatePDF(id) {
+    const ordem = ordens.find(o => String(o.id) === String(id));
+    if (!ordem) { showToast('Ordem não encontrada!', 'error'); return; }
+    if (typeof window.jspdf === 'undefined') {
+        let attempts = 0; const maxAttempts = 5; const checkInterval = setInterval(() => { attempts++; if (typeof window.jspdf !== 'undefined') { clearInterval(checkInterval); generatePDFForOrdem(ordem); } else if (attempts >= maxAttempts) { clearInterval(checkInterval); showToast('Erro: Biblioteca PDF não carregou. Recarregue a página (F5).', 'error'); } }, 500);
+        return;
+    }
+    generatePDFForOrdem(ordem);
+}
+function generatePDFForOrdem(ordem) {
+    const { jsPDF } = window.jspdf; const doc = new jsPDF();
+    let y = 3; const margin = 15; const pageWidth = doc.internal.pageSize.width; const pageHeight = doc.internal.pageSize.height; const lineHeight = 5; const maxWidth = pageWidth - (2 * margin);
+    function addTextWithWrap(text, x, yStart, maxW, lineH = 5) { const lines = doc.splitTextToSize(text, maxW); lines.forEach((line, index) => { if (yStart + (index * lineH) > pageHeight - 30) { doc.addPage(); yStart = 20; } doc.text(line, x, yStart + (index * lineH)); }); return yStart + (lines.length * lineH); }
+    const logoHeader = new Image(); logoHeader.crossOrigin = 'anonymous'; logoHeader.src = 'I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-LTDA-PDF.png';
+    logoHeader.onload = function() { try { const logoWidth = 40; const logoHeight = (logoHeader.height / logoHeader.width) * logoWidth; const logoX = 5; const logoY = y; doc.setGState(new doc.GState({ opacity: 0.3 })); doc.addImage(logoHeader, 'PNG', logoX, logoY, logoWidth, logoHeight); doc.setGState(new doc.GState({ opacity: 1.0 })); const fontSize = logoHeight * 0.5; doc.setFontSize(fontSize); doc.setFont(undefined, 'bold'); doc.setTextColor(150, 150, 150); const textX = logoX + logoWidth + 1.2; const lineSpacing = fontSize * 0.5; const textY1 = logoY + fontSize * 0.85; doc.text('I.R COMÉRCIO E', textX, textY1); const textY2 = textY1 + lineSpacing; doc.text('MATERIAIS ELÉTRICOS LTDA', textX, textY2); doc.setTextColor(0, 0, 0); y = logoY + logoHeight + 8; continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineHeight, maxWidth, addTextWithWrap); } catch(e) { y = 25; continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineHeight, maxWidth, addTextWithWrap); } };
+    logoHeader.onerror = function() { y = 25; continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineHeight, maxWidth, addTextWithWrap); };
+}
+function continuarGeracaoPDF(doc, ordem, y, margin, pageWidth, pageHeight, lineHeight, maxWidth, addTextWithWrap) {
+    const logoHeaderImg = new Image(); logoHeaderImg.crossOrigin = 'anonymous'; logoHeaderImg.src = 'I.R.-COMERCIO-E-MATERIAIS-ELETRICOS-LTDA-PDF.png';
+    logoHeaderImg.onload = function() { gerarPDFComCabecalho(); }; logoHeaderImg.onerror = function() { gerarPDFComCabecalho(); };
+    function gerarPDFComCabecalho() {
+        const logoCarregada = logoHeaderImg.complete && logoHeaderImg.naturalHeight !== 0;
+        function adicionarCabecalho() { if (!logoCarregada) return 20; const headerY = 3; const logoWidth = 40; const logoHeight = (logoHeaderImg.height / logoHeaderImg.width) * logoWidth; const logoX = 5; doc.setGState(new doc.GState({ opacity: 0.3 })); doc.addImage(logoHeaderImg, 'PNG', logoX, headerY, logoWidth, logoHeight); doc.setGState(new doc.GState({ opacity: 1.0 })); const fontSize = logoHeight * 0.5; doc.setFontSize(fontSize); doc.setFont(undefined, 'bold'); doc.setTextColor(150, 150, 150); const textX = logoX + logoWidth + 1.2; const lineSpacing = fontSize * 0.5; const textY1 = headerY + fontSize * 0.85; doc.text('I.R COMÉRCIO E', textX, textY1); const textY2 = textY1 + lineSpacing; doc.text('MATERIAIS ELÉTRICOS LTDA', textX, textY2); doc.setTextColor(0, 0, 0); doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.setDrawColor(0, 0, 0); doc.setLineWidth(0.2); return headerY + logoHeight + 8; }
+        function addPageWithHeader() { doc.addPage(); return adicionarCabecalho(); }
+        addTextWithWrap = function(text, x, yStart, maxW, lineH = 5) { const lines = doc.splitTextToSize(text, maxW); lines.forEach((line, index) => { if (yStart + (index * lineH) > pageHeight - 30) { yStart = addPageWithHeader(); } doc.text(line, x, yStart + (index * lineH)); }); return yStart + (lines.length * lineH); };
+        doc.setFontSize(18); doc.setFont(undefined, 'bold'); doc.setTextColor(0, 0, 0); doc.text('ORDEM DE COMPRA', pageWidth / 2, y, { align: 'center' }); y += 8; doc.setFontSize(14); doc.text(`Nº ${ordem.numero_ordem || ordem.numeroOrdem}`, pageWidth / 2, y, { align: 'center' }); y += 12;
+        doc.setFontSize(11); doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'bold'); doc.text('DADOS PARA FATURAMENTO', margin, y); y += lineHeight + 1; doc.setFont(undefined, 'bold'); doc.text('I.R. COMÉRCIO E MATERIAIS ELÉTRICOS LTDA', margin, y); y += lineHeight + 1; doc.setFont(undefined, 'normal'); doc.text('CNPJ: 33.149.502/0001-38  |  IE: 083.780.74-2', margin, y); y += lineHeight + 1; doc.text('RUA TADORNA Nº 472, SALA 2', margin, y); y += lineHeight + 1; doc.text('NOVO HORIZONTE - SERRA/ES  |  CEP: 29.163-318', margin, y); y += lineHeight + 1; doc.text('TELEFAX: (27) 3209-4291  |  E-MAIL: COMERCIAL.IRCOMERCIO@GMAIL.COM', margin, y); y += 10;
+        doc.setFont(undefined, 'bold'); doc.text('DADOS DO FORNECEDOR', margin, y); y += lineHeight + 1; doc.setFont(undefined, 'normal'); doc.text('RAZÃO SOCIAL: ', margin, y); const razaoSocialWidth = doc.getTextWidth('RAZÃO SOCIAL: '); doc.setFont(undefined, 'bold'); const razaoSocialTexto = toUpperCase(ordem.razao_social || ordem.razaoSocial); const razaoLines = doc.splitTextToSize(razaoSocialTexto, maxWidth - razaoSocialWidth); doc.text(razaoLines[0], margin + razaoSocialWidth, y); y += lineHeight; if (razaoLines.length > 1) { for (let i = 1; i < razaoLines.length; i++) { doc.text(razaoLines[i], margin, y); y += lineHeight; } }
+        if (ordem.nome_fantasia || ordem.nomeFantasia) { y += 1; doc.setFont(undefined, 'normal'); doc.text('NOME FANTASIA: ', margin, y); const nomeW = doc.getTextWidth('NOME FANTASIA: '); doc.setFont(undefined, 'normal'); const nomeLines = doc.splitTextToSize(toUpperCase(ordem.nome_fantasia || ordem.nomeFantasia), maxWidth - nomeW); doc.text(nomeLines[0], margin + nomeW, y); y += lineHeight; if (nomeLines.length > 1) { for (let i = 1; i < nomeLines.length; i++) { doc.text(nomeLines[i], margin, y); y += lineHeight; } } }
+        y += 1; doc.setFont(undefined, 'normal'); doc.text('CNPJ: ', margin, y); doc.setFont(undefined, 'bold'); doc.text(`${ordem.cnpj}`, margin + doc.getTextWidth('CNPJ: '), y); y += lineHeight;
+        if (ordem.endereco_fornecedor || ordem.enderecoFornecedor) { y += 1; doc.setFont(undefined, 'normal'); doc.text('ENDEREÇO: ', margin, y); const endW = doc.getTextWidth('ENDEREÇO: '); const endLines = doc.splitTextToSize(toUpperCase(ordem.endereco_fornecedor || ordem.enderecoFornecedor), maxWidth - endW); doc.text(endLines[0], margin + endW, y); y += lineHeight; if (endLines.length > 1) { for (let i = 1; i < endLines.length; i++) { doc.text(endLines[i], margin, y); y += lineHeight; } } }
+        if (ordem.site) { y += 1; doc.setFont(undefined, 'normal'); doc.text('SITE: ', margin, y); doc.text(ordem.site, margin + doc.getTextWidth('SITE: '), y); y += lineHeight; }
+        if (ordem.contato) { y += 1; doc.setFont(undefined, 'normal'); doc.text('CONTATO: ', margin, y); const contW = doc.getTextWidth('CONTATO: '); const contLines = doc.splitTextToSize(toUpperCase(ordem.contato), maxWidth - contW); doc.text(contLines[0], margin + contW, y); y += lineHeight; if (contLines.length > 1) { for (let i = 1; i < contLines.length; i++) { doc.text(contLines[i], margin, y); y += lineHeight; } } }
+        if (ordem.telefone) { y += 1; doc.setFont(undefined, 'normal'); doc.text('TELEFONE: ', margin, y); doc.text(`${ordem.telefone}`, margin + doc.getTextWidth('TELEFONE: '), y); y += lineHeight; }
+        if (ordem.email) { y += 1; doc.setFont(undefined, 'normal'); doc.text('E-MAIL: ', margin, y); doc.text(ordem.email, margin + doc.getTextWidth('E-MAIL: '), y); y += lineHeight; }
+        y += 8; if (y > pageHeight - 50) y = addPageWithHeader();
+        doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text('ITENS DO PEDIDO', margin, y); y += 6;
+        const tableWidth = pageWidth - (2 * margin); const colWidths = { item: tableWidth * 0.05, especificacao: tableWidth * 0.35, qtd: tableWidth * 0.08, unid: tableWidth * 0.08, valorUn: tableWidth * 0.12, ipi: tableWidth * 0.10, st: tableWidth * 0.10, total: tableWidth * 0.12 }; const itemRowHeight = 10;
+        doc.setFillColor(108, 117, 125); doc.setDrawColor(180, 180, 180); doc.rect(margin, y, tableWidth, itemRowHeight, 'FD'); doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont(undefined, 'bold');
+        let xPos = margin; const headers = ['ITEM', 'ESPECIFICAÇÃO', 'QTD', 'UNID', 'VALOR UN', 'IPI', 'ST', 'TOTAL']; const colKeys = ['item', 'especificacao', 'qtd', 'unid', 'valorUn', 'ipi', 'st', 'total']; colKeys.forEach((key, i) => { doc.line(xPos, y, xPos, y + itemRowHeight); doc.text(headers[i], xPos + (colWidths[key] / 2), y + 6.5, { align: 'center' }); xPos += colWidths[key]; }); doc.line(xPos, y, xPos, y + itemRowHeight); y += itemRowHeight;
+        doc.setTextColor(0, 0, 0); doc.setFontSize(8); doc.setFont(undefined, 'normal');
+        (ordem.items || []).forEach((item, index) => {
+            const especificacaoUpper = toUpperCase(item.especificacao); const maxWidthEspec = colWidths.especificacao - 6; const especLines = doc.splitTextToSize(especificacaoUpper, maxWidthEspec); const lineCount = especLines.length; const necessaryHeight = Math.max(itemRowHeight, lineCount * 4 + 4);
+            if (y + necessaryHeight > pageHeight - 30) y = addPageWithHeader(); if (index % 2 !== 0) { doc.setFillColor(240, 240, 240); doc.rect(margin, y, tableWidth, necessaryHeight, 'F'); }
+            xPos = margin; doc.setDrawColor(180, 180, 180); doc.setLineWidth(0.3);
+            doc.line(xPos, y, xPos, y + necessaryHeight); doc.text(item.item.toString(), xPos + (colWidths.item / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' }); xPos += colWidths.item; doc.line(xPos, y, xPos, y + necessaryHeight);
+            doc.text(especLines, xPos + 3, y + 4); xPos += colWidths.especificacao; doc.line(xPos, y, xPos, y + necessaryHeight);
+            doc.text(item.quantidade.toString(), xPos + (colWidths.qtd / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' }); xPos += colWidths.qtd; doc.line(xPos, y, xPos, y + necessaryHeight);
+            doc.text(toUpperCase(item.unidade), xPos + (colWidths.unid / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' }); xPos += colWidths.unid; doc.line(xPos, y, xPos, y + necessaryHeight);
+            const valorUn = item.valorUnitario || item.valor_unitario || 0; doc.text(parseFloat(valorUn).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), xPos + (colWidths.valorUn / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' }); xPos += colWidths.valorUn; doc.line(xPos, y, xPos, y + necessaryHeight);
+            const ipiValor = item.ipi; let ipiDisplay = '-'; if (ipiValor && ipiValor.trim() !== '') { const ipiNum = parseFloatLocale(ipiValor); ipiDisplay = !isNaN(ipiNum) ? ipiNum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : toUpperCase(ipiValor); } doc.text(ipiDisplay, xPos + (colWidths.ipi / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' }); xPos += colWidths.ipi; doc.line(xPos, y, xPos, y + necessaryHeight);
+            doc.text(toUpperCase(item.st || '-'), xPos + (colWidths.st / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' }); xPos += colWidths.st; doc.line(xPos, y, xPos, y + necessaryHeight);
+            doc.text(item.valorTotal || item.valor_total, xPos + (colWidths.total / 2), y + (necessaryHeight / 2) + 1.5, { align: 'center' }); xPos += colWidths.total; doc.line(xPos, y, xPos, y + necessaryHeight);
+            doc.line(margin, y + necessaryHeight, margin + tableWidth, y + necessaryHeight); y += necessaryHeight;
+        });
+        y += 8; if (y > pageHeight - 40) y = addPageWithHeader();
+        doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text(`VALOR TOTAL: ${ordem.valor_total || ordem.valorTotal}`, margin, y); y += 10;
+        if (y > pageHeight - 60) y = addPageWithHeader();
+        doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text('LOCAL DE ENTREGA:', margin, y); y += 5; doc.setFontSize(10); doc.setFont(undefined, 'normal'); const localPadrao = 'RUA TADORNA Nº 472, SALA 2, NOVO HORIZONTE - SERRA/ES  |  CEP: 29.163-318'; const localEntregaPDF = (ordem.local_entrega || ordem.localEntrega || '').trim() !== '' ? toUpperCase(ordem.local_entrega || ordem.localEntrega) : localPadrao; y = addTextWithWrap(localEntregaPDF, margin, y, maxWidth); y += 10;
+        if (y > pageHeight - 50) y = addPageWithHeader();
+        doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('PRAZO DE ENTREGA:', margin, y); doc.setFont(undefined, 'normal'); doc.text(toUpperCase(ordem.prazo_entrega || ordem.prazoEntrega || '-'), margin + 42, y); doc.setFont(undefined, 'bold'); doc.text('FRETE:', pageWidth - margin - 35, y); doc.setFont(undefined, 'normal'); doc.text(toUpperCase(ordem.frete || '-'), pageWidth - margin - 20, y); y += 6; doc.setFont(undefined, 'bold'); doc.text('TRANSPORTE:', margin, y); doc.setFont(undefined, 'normal'); doc.text(toUpperCase(ordem.transporte || '-'), margin + 30, y); y += 10;
+        if (y > pageHeight - 60) y = addPageWithHeader();
+        doc.setFontSize(11); doc.setFont(undefined, 'bold'); doc.text('CONDIÇÕES DE PAGAMENTO:', margin, y); y += 5; doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.text(`FORMA: ${toUpperCase(ordem.forma_pagamento || ordem.formaPagamento)}`, margin, y); y += 5; doc.text(`PRAZO: ${toUpperCase(ordem.prazo_pagamento || ordem.prazoPagamento)}`, margin, y); if (ordem.dados_bancarios || ordem.dadosBancarios) { y += 5; doc.setFont(undefined, 'bold'); doc.text('DADOS BANCÁRIOS:', margin, y); y += 5; doc.setFont(undefined, 'normal'); y = addTextWithWrap(toUpperCase(ordem.dados_bancarios || ordem.dadosBancarios), margin, y, maxWidth); }
+        y += 15; if (y > pageHeight - 80) y = addPageWithHeader();
+        const dataAtual = new Date(); const dia = dataAtual.getDate(); const meses = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO']; const mes = meses[dataAtual.getMonth()]; const ano = dataAtual.getFullYear();
+        doc.setFontSize(10); doc.setFont(undefined, 'normal'); doc.text(`SERRA/ES, ${dia} DE ${mes} DE ${ano}`, pageWidth / 2, y, { align: 'center' }); y += 5;
+        const assinatura = new Image(); assinatura.crossOrigin = 'anonymous'; assinatura.src = 'assinatura.png';
+        assinatura.onload = function() { try { const imgWidth = 50; const imgHeight = (assinatura.height / assinatura.width) * imgWidth; doc.addImage(assinatura, 'PNG', (pageWidth / 2) - (imgWidth / 2), y + 2, imgWidth, imgHeight); let yFinal = y + imgHeight + 10; doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('ROSEMEIRE BICALHO DE LIMA GRAVINO', pageWidth / 2, yFinal, { align: 'center' }); yFinal += 5; doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.text('MG-10.078.568 / CPF: 045.160.616-78', pageWidth / 2, yFinal, { align: 'center' }); yFinal += 5; doc.text('DIRETORA', pageWidth / 2, yFinal, { align: 'center' }); yFinal += 12; adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, addPageWithHeader); } catch(e) { gerarPDFSemAssinatura(); } };
+        assinatura.onerror = function() { gerarPDFSemAssinatura(); };
+        function gerarPDFSemAssinatura() { let yFinal = y + 10; doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.text('ROSEMEIRE BICALHO DE LIMA GRAVINO', pageWidth / 2, yFinal, { align: 'center' }); yFinal += 5; doc.setFontSize(9); doc.setFont(undefined, 'normal'); doc.text('MG-10.078.568 / CPF: 045.160.616-78', pageWidth / 2, yFinal, { align: 'center' }); yFinal += 5; doc.text('DIRETORA', pageWidth / 2, yFinal, { align: 'center' }); yFinal += 12; adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, addPageWithHeader); }
+    }
+}
+function adicionarRodapePDF(doc, ordem, yFinal, margin, pageWidth, pageHeight, addPageWithHeader) {
+    if (yFinal > pageHeight - 30) yFinal = addPageWithHeader();
+    doc.setFillColor(240, 240, 240); doc.rect(margin, yFinal, pageWidth - (2 * margin), 22, 'F'); doc.setDrawColor(200, 200, 200); doc.rect(margin, yFinal, pageWidth - (2 * margin), 22, 'S'); yFinal += 6;
+    doc.setFontSize(10); doc.setFont(undefined, 'bold'); doc.setTextColor(255, 82, 29); doc.text('ATENÇÃO SR. FORNECEDOR:', margin + 5, yFinal); yFinal += 5;
+    doc.setTextColor(0, 0, 0); doc.setFont(undefined, 'normal'); doc.setFontSize(9);
+    doc.text(`1) GENTILEZA MENCIONAR NA NOTA FISCAL O Nº ${ordem.numero_ordem || ordem.numeroOrdem}`, margin + 5, yFinal); yFinal += 5;
+    doc.text('2) FAVOR ENVIAR A NOTA FISCAL ELETRÔNICA (ARQUIVO .XML) PARA: FINANCEIRO.IRCOMERCIO@GMAIL.COM', margin + 5, yFinal);
+    doc.save(`${toUpperCase(ordem.razao_social || ordem.razaoSocial)}-${ordem.numero_ordem || ordem.numeroOrdem}.pdf`);
+    showToast(`Ordem de Nº ${ordem.numero_ordem || ordem.numeroOrdem} emitida`, 'success');
+}
