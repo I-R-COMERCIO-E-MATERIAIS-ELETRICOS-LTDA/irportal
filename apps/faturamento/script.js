@@ -23,34 +23,22 @@ let pendingDeleteId = null;
 let pendingDeleteCodigo = null;
 const tabs = ['tab-geral', 'tab-faturamento', 'tab-itens', 'tab-entrega', 'tab-transporte'];
 
-// ── Controle de permissões ──────────────────────────────────────────────────
-const ROLES_CHECKBOX = ['administrador', 'financeiro'];
-const NAMES_CHECKBOX = ['roberto', 'rosemeire', 'pollyanna'];
+// ── Controle de permissões (somente Roberto, Rosemeire, Pollyanna e cargos admin/financeiro) ──
+const AUTHORIZED_NAMES = ['roberto', 'rosemeire', 'pollyanna'];
+const ROLES_AUTHORIZED = ['administrador', 'financeiro'];
 
-function detectResponsavelFromUser() {
-    if (!currentUser) return '';
-    const fullName = (currentUser.name || currentUser.nome || currentUser.username || '').trim();
-    if (!fullName) return '';
-    const firstName = fullName.split(' ')[0];
-    const map = {
-        'roberto': 'Roberto',
-        'rosemeire': 'Rosemeire',
-        'pollyanna': 'Pollyanna',
-        'isaque': 'Isaque',
-        'gustavo': 'Gustavo',
-        'miguel': 'Miguel',
-        'luiz': 'Luiz'
-    };
-    return map[firstName.toLowerCase()] || firstName;
-}
-
-function userCanToggleEmissao() {
+function userCanManage() {
     if (!currentUser) return false;
     const role = (currentUser.role || currentUser.cargo || currentUser.setor || '').toLowerCase();
-    if (ROLES_CHECKBOX.some(r => role.includes(r))) return true;
+    if (ROLES_AUTHORIZED.some(r => role.includes(r))) return true;
     const name = (currentUser.name || currentUser.nome || currentUser.username || '').toLowerCase();
-    if (NAMES_CHECKBOX.some(n => name.includes(n))) return true;
+    if (AUTHORIZED_NAMES.some(n => name.includes(n))) return true;
     return false;
+}
+
+// Mantida a função original para compatibilidade (usada para checkboxes)
+function userCanToggleEmissao() {
+    return userCanManage();
 }
 
 // ============================================
@@ -124,6 +112,23 @@ function getDataAtual() {
     return `${dia}/${mes}/${ano}`;
 }
 
+function detectResponsavelFromUser() {
+    if (!currentUser) return '';
+    const fullName = (currentUser.name || currentUser.nome || currentUser.username || '').trim();
+    if (!fullName) return '';
+    const firstName = fullName.split(' ')[0];
+    const map = {
+        'roberto': 'Roberto',
+        'rosemeire': 'Rosemeire',
+        'pollyanna': 'Pollyanna',
+        'isaque': 'Isaque',
+        'gustavo': 'Gustavo',
+        'miguel': 'Miguel',
+        'luiz': 'Luiz'
+    };
+    return map[firstName.toLowerCase()] || firstName;
+}
+
 // ============================================
 // INICIALIZAÇÃO E AUTENTICAÇÃO
 // ============================================
@@ -175,33 +180,10 @@ async function verificarAutenticacao() {
 
 function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
     document.body.innerHTML = `
-        <div style="
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            text-align: center;
-            padding: 2rem;
-        ">
-            <h1 style="font-size: 2.2rem; margin-bottom: 1rem;">
-                ${mensagem}
-            </h1>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem;">
-                Somente usuários autenticados podem acessar esta área.
-            </p>
-            <a href="${PORTAL_URL}" style="
-                display: inline-block;
-                background: var(--btn-register);
-                color: white;
-                padding: 14px 32px;
-                border-radius: 8px;
-                text-decoration: none;
-                font-weight: 600;
-                text-transform: uppercase;
-            ">IR PARA O PORTAL</a>
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: var(--bg-primary); color: var(--text-primary); text-align: center; padding: 2rem;">
+            <h1 style="font-size: 2.2rem; margin-bottom: 1rem;">${mensagem}</h1>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem;">Somente usuários autenticados podem acessar esta área.</p>
+            <a href="${PORTAL_URL}" style="display: inline-block; background: var(--btn-register); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; text-transform: uppercase;">IR PARA O PORTAL</a>
         </div>
     `;
 }
@@ -243,7 +225,7 @@ function inicializarApp() {
 }
 
 // ============================================
-// CONEXÃO COM A API (sem indicador visual)
+// CONEXÃO COM A API
 // ============================================
 async function syncData() {
     const btnSync = document.getElementById('btnSync');
@@ -482,15 +464,12 @@ function preencherDadosClienteCompleto(cnpj) {
             const tr = document.createElement('tr');
             tr.id = `item-${itemCounter}`;
             tr.innerHTML = `
-                <tr><input type="text" value="${index + 1}" readonly style="text-align: center; width: 50px;"></td>
-                <td>
-                    <input type="text" id="codigoEstoque-${itemCounter}" value="${item.codigoEstoque || ''}" class="codigo-estoque" onblur="verificarEstoque(${itemCounter})" onchange="buscarDadosEstoque(${itemCounter})">
-                </td>
+                <td><input type="text" value="${index + 1}" readonly style="text-align: center; width: 50px;"></td>
+                <td><input type="text" id="codigoEstoque-${itemCounter}" value="${item.codigoEstoque || ''}" class="codigo-estoque" onblur="verificarEstoque(${itemCounter})" onchange="buscarDadosEstoque(${itemCounter})"></td>
                 <td><textarea id="especificacao-${itemCounter}" rows="2">${item.especificacao || ''}</textarea></td>
                 <td>
                     <select id="unidade-${itemCounter}">
-                        <option value="">-</option>
-                        <option value="UN" ${item.unidade === 'UN' ? 'selected' : ''}>UN</option>
+                        <option value="">-</option><option value="UN" ${item.unidade === 'UN' ? 'selected' : ''}>UN</option>
                         <option value="MT" ${item.unidade === 'MT' ? 'selected' : ''}>MT</option>
                         <option value="KG" ${item.unidade === 'KG' ? 'selected' : ''}>KG</option>
                         <option value="PC" ${item.unidade === 'PC' ? 'selected' : ''}>PC</option>
@@ -498,17 +477,11 @@ function preencherDadosClienteCompleto(cnpj) {
                         <option value="LT" ${item.unidade === 'LT' ? 'selected' : ''}>LT</option>
                     </select>
                 </td>
-                <td>
-                    <input type="number" id="quantidade-${itemCounter}" value="${item.quantidade || ''}" min="0" step="1" onchange="calcularValorItem(${itemCounter}); verificarEstoque(${itemCounter})">
-                </td>
-                <td>
-                    <input type="number" id="valorUnitario-${itemCounter}" value="${item.valorUnitario || ''}" min="0" step="0.01" placeholder="0.00" onchange="calcularValorItem(${itemCounter})">
-                </td>
-                <td><input type="text" id="valorTotal-${itemCounter}" value="${item.valorTotal || ''}" readonly></td>
+                <td><input type="number" id="quantidade-${itemCounter}" value="${item.quantidade || ''}" min="0" step="1" onchange="calcularValorItem(${itemCounter}); verificarEstoque(${itemCounter})"></td>
+                <td><input type="number" id="valorUnitario-${itemCounter}" value="${item.valorUnitario || ''}" min="0" step="0.01" placeholder="0.00" onchange="calcularValorItem(${itemCounter})"></td>
+                <tr><input type="text" id="valorTotal-${itemCounter}" value="${item.valorTotal || ''}" readonly></td>
                 <td><input type="text" id="ncm-${itemCounter}" value="${item.ncm || ''}"></td>
-                <td>
-                    <button type="button" onclick="removeItem(${itemCounter})" class="danger small" style="padding: 6px 10px;">✕</button>
-                </td>
+                <td><button type="button" onclick="removeItem(${itemCounter})" class="danger small" style="padding: 6px 10px;">✕</button></td>
             `;
             container.appendChild(tr);
         });
@@ -527,7 +500,7 @@ function changeMonth(direction) {
     pedidos = [];
     lastDataHash = '';
     updateMonthDisplay();
-    updateTable();     // antes de recarregar, para limpar
+    updateTable();
     loadPedidosDirectly();
 }
 
@@ -537,9 +510,7 @@ function updateMonthDisplay() {
     const monthName = months[currentMonth.getMonth()];
     const year = currentMonth.getFullYear();
     const element = document.getElementById('currentMonth');
-    if (element) {
-        element.textContent = `${monthName} ${year}`;
-    }
+    if (element) element.textContent = `${monthName} ${year}`;
 }
 
 function getPedidosForCurrentMonth() {
@@ -570,7 +541,6 @@ function updateDashboard() {
     const valorTotalMes = monthPedidos
         .filter(p => p.status === 'emitida')
         .reduce((acc, p) => acc + parseMoeda(p.valor_total), 0);
-    
     const elTotal = document.getElementById('totalPedidos');
     if (elTotal) elTotal.textContent = ultimoCodigo;
     const elEmitidos = document.getElementById('totalEmitidos');
@@ -601,16 +571,12 @@ function filterPedidos() {
 }
 
 // ============================================
-// ATUALIZAR TABELA (com botão Excluir e verificação de elementos)
+// ATUALIZAR TABELA (com controle de permissões para checkbox e botão excluir)
 // ============================================
 function updateTable() {
     const container = document.getElementById('pedidosContainer');
     const thead = document.querySelector('thead');
-    // Verificação crítica: se o elemento não existir, aborta
-    if (!container || !thead) {
-        console.error('Elementos da tabela não encontrados no DOM');
-        return;
-    }
+    if (!container || !thead) return;
 
     let filtered = getPedidosForCurrentMonth();
     const search = document.getElementById('search')?.value?.toLowerCase() || '';
@@ -633,10 +599,10 @@ function updateTable() {
         filtered = filtered.filter(p => p.status === filterStatus);
     }
     
-    const canToggle = userCanToggleEmissao();
+    const canManage = userCanManage(); // Define se mostra checkbox e botão excluir
 
     let headerHtml;
-    if (canToggle) {
+    if (canManage) {
         headerHtml = `
             <tr>
                 <th style="width: 40px; text-align: center;"><span style="font-size: 1.1rem;">✓</span></th>
@@ -663,7 +629,7 @@ function updateTable() {
     thead.innerHTML = headerHtml;
 
     if (filtered.length === 0) {
-        const colspan = canToggle ? 7 : 6;
+        const colspan = canManage ? 7 : 6;
         container.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;padding:2rem;">Nenhum registro encontrado</td></tr>`;
         return;
     }
@@ -676,7 +642,7 @@ function updateTable() {
             ? new Date(pedido.data_emissao).toLocaleDateString('pt-BR')
             : '-';
         let firstCell = '';
-        if (canToggle) {
+        if (canManage) {
             firstCell = `
                 <td style="text-align: center;">
                     <div class="checkbox-wrapper">
@@ -688,16 +654,17 @@ function updateTable() {
                 </td>
             `;
         }
-        const actions = `
-            <td>
-                <div class="actions">
-                    <button onclick="editPedido('${pedido.id}')" class="action-btn" style="background: #6B7280;">Editar</button>
-                    <button onclick="gerarEtiqueta('${pedido.id}')" class="action-btn" style="background: #1E3A8A;">Etiqueta</button>
-                    <button onclick="showDeleteModal('${pedido.id}', ${pedido.codigo})" class="action-btn" style="background: #EF4444;">Excluir</button>
-                </div>
-            </td>
+        // Botões: Editar e Etiqueta sempre visíveis. Excluir só para canManage.
+        let actions = `
+            <button onclick="editPedido('${pedido.id}')" class="action-btn" style="background: #6B7280;">Editar</button>
+            <button onclick="gerarEtiqueta('${pedido.id}')" class="action-btn" style="background: #1E3A8A;">Etiqueta</button>
         `;
-        if (canToggle) {
+        if (canManage) {
+            actions += `<button onclick="showDeleteModal('${pedido.id}', ${pedido.codigo})" class="action-btn" style="background: #EF4444;">Excluir</button>`;
+        }
+        const actionCell = `<td><div class="actions">${actions}</div></td>`;
+
+        if (canManage) {
             return `
             <tr class="${emitida ? 'row-fechada' : ''}" data-id="${pedido.id}" style="cursor:pointer;">
                 ${firstCell}
@@ -706,7 +673,7 @@ function updateTable() {
                 <td>${dataEmissao}</td>
                 <td><strong>${pedido.valor_total || 'R$ 0,00'}</strong></td>
                 <td><span class="badge ${emitida ? 'fechada' : 'aberta'}">${emitida ? 'EMITIDO' : 'PENDENTE'}</span></td>
-                ${actions}
+                ${actionCell}
             </tr>`;
         } else {
             return `
@@ -716,12 +683,11 @@ function updateTable() {
                 <td>${dataEmissao}</td>
                 <td><strong>${pedido.valor_total || 'R$ 0,00'}</strong></td>
                 <td><span class="badge ${emitida ? 'fechada' : 'aberta'}">${emitida ? 'EMITIDO' : 'PENDENTE'}</span></td>
-                ${actions}
+                ${actionCell}
             </tr>`;
         }
     }).join('');
 
-    // Adicionar evento de clique nas linhas
     document.querySelectorAll('#pedidosContainer tr').forEach(tr => {
         tr.addEventListener('click', function(e) {
             if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button') || e.target.closest('input')) return;
@@ -732,7 +698,7 @@ function updateTable() {
 }
 
 // ============================================
-// MODAL DE FORMULÁRIO (sem alterações)
+// MODAL DE FORMULÁRIO (restante do código igual, sem alterações nas permissões)
 // ============================================
 async function openFormModal() {
     editingId = null;
@@ -753,9 +719,7 @@ function closeFormModal(silent = false) {
     const isEditing = editingId !== null;
     document.getElementById('formModal').classList.remove('show');
     resetForm();
-    if (!silent) {
-        showMessage(isEditing ? 'Atualização cancelada' : 'Pedido cancelado', 'error');
-    }
+    if (!silent) showMessage(isEditing ? 'Atualização cancelada' : 'Pedido cancelado', 'error');
 }
 
 function resetForm() {
@@ -777,13 +741,8 @@ function switchTab(tabId) {
     updateNavigationButtons();
 }
 
-function nextTab() {
-    if (currentTabIndex < tabs.length - 1) { currentTabIndex++; activateTab(currentTabIndex); }
-}
-
-function previousTab() {
-    if (currentTabIndex > 0) { currentTabIndex--; activateTab(currentTabIndex); }
-}
+function nextTab() { if (currentTabIndex < tabs.length - 1) { currentTabIndex++; activateTab(currentTabIndex); } }
+function previousTab() { if (currentTabIndex > 0) { currentTabIndex--; activateTab(currentTabIndex); } }
 
 function activateTab(index) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
@@ -804,7 +763,7 @@ function updateNavigationButtons() {
 }
 
 // ============================================
-// ITENS (sem alterações)
+// ITENS
 // ============================================
 function addItem() {
     itemCounter++;
@@ -867,9 +826,7 @@ function verificarEstoque(itemId) {
     const qtd = parseFloat(document.getElementById(`quantidade-${itemId}`).value) || 0;
     if (!codigo || qtd === 0) return;
     const item = estoqueCache[codigo];
-    if (item && qtd > (parseFloat(item.quantidade) || 0)) {
-        showMessage(`Estoque insuficiente para o item ${codigo}`, 'error');
-    }
+    if (item && qtd > (parseFloat(item.quantidade) || 0)) showMessage(`Estoque insuficiente para o item ${codigo}`, 'error');
 }
 
 function getItems() {
@@ -884,15 +841,13 @@ function getItems() {
         const valorTotal = document.getElementById(`valorTotal-${id}`).value;
         const ncm = document.getElementById(`ncm-${id}`).value.trim();
         const temDados = codigoEstoque || especificacao || (unidade && unidade !== '') || quantidade > 0 || valorUnitario > 0 || ncm;
-        if (temDados) {
-            items.push({ item: items.length + 1, codigoEstoque, especificacao, unidade, quantidade, valorUnitario, valorTotal, ncm });
-        }
+        if (temDados) items.push({ item: items.length + 1, codigoEstoque, especificacao, unidade, quantidade, valorUnitario, valorTotal, ncm });
     });
     return items;
 }
 
 // ============================================
-// SALVAR PEDIDO (com mensagens "Pedido X registrado" / "Pedido X atualizado")
+// SALVAR PEDIDO
 // ============================================
 async function savePedido() {
     const responsavel = document.getElementById('responsavel').value.trim();
@@ -943,7 +898,7 @@ async function savePedido() {
 }
 
 // ============================================
-// EDITAR PEDIDO (sem alterações)
+// EDITAR PEDIDO
 // ============================================
 async function editPedido(id) {
     const pedido = pedidos.find(p => p.id === id);
@@ -1011,7 +966,7 @@ async function editPedido(id) {
 }
 
 // ============================================
-// VISUALIZAR (sem alterações)
+// VISUALIZAR PEDIDO
 // ============================================
 function viewPedido(id) {
     const pedido = pedidos.find(p => p.id === id);
@@ -1041,7 +996,7 @@ function switchInfoTab(tabId, btn) {
 }
 
 // ============================================
-// EMISSÃO (com mensagem "Pedido X emitido")
+// EMISSÃO (toggle)
 // ============================================
 async function toggleEmissao(id, checked) {
     const pedido = pedidos.find(p => p.id === id);
@@ -1096,7 +1051,7 @@ async function executarReverterEmissao(id) {
         await fetch(`${API_URL}/pedidos/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken }, body: JSON.stringify({ status: 'pendente', data_emissao: null }) });
         await Promise.all([loadPedidos(), loadEstoque()]);
         if (cb) { cb.style.opacity = '1'; cb.style.pointerEvents = 'auto'; }
-        showMessage(`Pedido ${pedido.codigo} emitido`, 'success'); // revertido, mas mensagem pedida é apenas para marcação; aqui mantemos "emitido"?
+        showMessage(`Pedido ${pedido.codigo} emitido`, 'success');
     } catch (error) { showMessage('Erro ao reverter emissão!', 'error'); const cb2 = document.getElementById(`check-${id}`); if (cb2) cb2.checked = true; }
 }
 
@@ -1137,7 +1092,7 @@ async function executarEmissao(id) {
 }
 
 // ============================================
-// ETIQUETAS (sem alterações)
+// ETIQUETAS
 // ============================================
 function gerarEtiqueta(id) {
     const pedido = pedidos.find(p => p.id === id);
@@ -1176,7 +1131,7 @@ function imprimirEtiquetasAutomatico(nf, totalVolumes, destinatario, municipio, 
 }
 
 // ============================================
-// EXCLUSÃO (modal personalizado)
+// EXCLUSÃO (com permissão – só exibido para usuários autorizados, mas função permanece)
 // ============================================
 function showDeleteModal(id, codigo) {
     pendingDeleteId = id;
