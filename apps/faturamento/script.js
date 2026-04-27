@@ -327,9 +327,9 @@ async function loadPedidos() {
 // ============================================
 async function loadTransportadorasCache() {
     try {
-        const TRANSP_API = 'https://transportadoras.onrender.com/api';
-        const headers = { 'Accept': 'application/json', 'X-Session-Token': sessionToken };
-        const response = await fetch(`${TRANSP_API}/transportadoras?page=1&limit=200`, { headers, mode: 'cors' });
+        const response = await fetch(`${API_URL}/transportadoras?page=1&limit=200`, {
+            headers: { 'Accept': 'application/json', 'X-Session-Token': sessionToken }
+        });
         if (!response.ok) return;
         const result = await response.json();
         const lista = Array.isArray(result) ? result : (result.data || []);
