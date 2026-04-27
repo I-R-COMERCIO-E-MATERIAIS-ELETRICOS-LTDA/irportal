@@ -20,9 +20,6 @@
             <div class="header">
                 <div class="header-left">
                     <h1>Contas a Receber</h1>
-                    <div id="connectionStatus" class="connection-status offline">
-                        <span class="status-dot"></span>
-                    </div>
                 </div>
                 <button onclick="toggleForm()" class="btn-new-order-header">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -190,7 +187,7 @@
 
     <!-- MODAL DE ALERTA VENCIDOS -->
     <div class="modal-overlay" id="vencidosModal" style="display: none;">
-        <div class="modal-content alert-modal">
+        <div class="modal-content alert-modal" style="max-height: 80vh; overflow: hidden;">
             <div class="modal-header-alert">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
@@ -199,9 +196,7 @@
                 </svg>
                 <button class="close-modal" onclick="closeVencidosModal()">✕</button>
             </div>
-            
-            <div class="modal-body" id="vencidosModalBody"></div>
-
+            <div class="modal-body" id="vencidosModalBody" style="overflow: hidden;"></div>
             <div class="modal-actions-alert">
                 <button type="button" onclick="closeVencidosModal()" class="btn-close">Fechar</button>
             </div>
