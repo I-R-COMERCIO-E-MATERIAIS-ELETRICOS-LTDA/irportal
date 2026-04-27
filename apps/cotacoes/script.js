@@ -13,6 +13,7 @@ let currentMonth = new Date();
 let transportadorasCache = [];
 let currentFetchController = null;
 let pendingDeleteId = null;
+
 const infoTabs = ['info-tab-geral', 'info-tab-transportadora', 'info-tab-detalhes'];
 let currentInfoTabIndex = 0;
 
@@ -57,7 +58,7 @@ async function verificarAutenticacao() {
 }
 
 function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
-    document.body.innerHTML = `<div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: var(--bg-primary); color: var(--text-primary); text-align: center; padding: 2rem;"><h1 style="font-size: 2.2rem; margin-bottom: 1rem;">${mensagem}</h1><p style="color: var(--text-secondary); margin-bottom: 2rem;">Somente usuários autenticados podem acessar esta área.</p><a href="${PORTAL_URL}" style="display: inline-block; background: var(--btn-register); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">Ir para o Portal</a></div>`;
+    document.body.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:var(--bg-primary);color:var(--text-primary);text-align:center;padding:2rem;"><h1 style="font-size:2.2rem;margin-bottom:1rem;">${mensagem}</h1><p style="color:var(--text-secondary);margin-bottom:2rem;">Somente usuários autenticados podem acessar esta área.</p><a href="${PORTAL_URL}" style="display:inline-block;background:var(--btn-register);color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Ir para o Portal</a></div>`;
 }
 
 function inicializarApp() {
@@ -238,7 +239,7 @@ function editCotacao(id) {
     if (!c) return;
     editingId = id;
     document.getElementById('formTitle').textContent = `Editar Cotação`;
-    const saveBtn = document.getElementById('btnFormSave'); if (saveBtn) saveBtn.textContent = 'Atualizar';
+    const saveBtn = document.getElementById('btnFormSave'); if (saveBtn) saveBtn.textContent = 'Atualizar';  // <--- Atualizar
     resetForm();
     updateTransportadoraSelects();
     document.getElementById('dataCotacao').value = c.dataCotacao || '';
