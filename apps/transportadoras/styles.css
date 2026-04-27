@@ -497,3 +497,28 @@ button.close-modal:hover {
     .chips-container { gap: 6px; }
     .chip-selector { padding: 6px 12px; font-size: 0.75rem; }
 }
+
+/* Copie do styles - Ordem de compra.css */
+.modal-delete {
+    position: relative;
+    padding: 2.5rem 2rem 2rem 2rem;
+    max-width: 500px !important;
+}
+.modal-delete .close-modal {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+}
+.modal-message-delete {
+    margin: 2rem 0 2.5rem 0;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    line-height: 1.6;
+    text-align: center;
+    font-weight: 500;
+}
+.modal-actions-no-border {
+    border-top: none !important;
+    padding-top: 0 !important;
+    justify-content: center !important;
+}
