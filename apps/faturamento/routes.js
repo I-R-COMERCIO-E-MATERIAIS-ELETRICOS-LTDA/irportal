@@ -20,6 +20,12 @@ module.exports = function (supabase) {
         };
     }
 
+    // GET /api/pedidos/me — retorna dados do usuário autenticado
+    router.get('/me', (req, res) => {
+        if (!req.user) return res.status(401).json({ error: 'Não autenticado' });
+        res.json(req.user);
+    });
+
     // GET /api/pedidos — lista pedidos (filtro por mês/ano via data_registro)
     router.get('/', async (req, res) => {
         try {
