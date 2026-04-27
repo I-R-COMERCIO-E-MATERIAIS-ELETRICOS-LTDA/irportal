@@ -33,9 +33,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// ============================================
-// AUTENTICAÇÃO
-// ============================================
 function verificarAutenticacao() {
     const urlParams = new URLSearchParams(window.location.search);
     const tokenFromUrl = urlParams.get('sessionToken');
@@ -625,7 +622,7 @@ window.handleDeleteClick = async function(id) {
 };
 
 // ============================================
-// MODAL DE VISUALIZAÇÃO (por abas)
+// MODAL DE VISUALIZAÇÃO (por abas com navegação)
 // ============================================
 function showViewModal(c) {
     const hoje = new Date().toISOString().split('T')[0];
@@ -640,7 +637,6 @@ function showViewModal(c) {
 
     const statusBadge = getStatusBadge(c, hoje);
 
-    // Aba Geral
     const tabGeral = `
         <div class="info-section">
             <h4>Dados da Conta</h4>
@@ -652,7 +648,6 @@ function showViewModal(c) {
             <div class="info-row"><span class="info-label">Status:</span><span class="info-value">${statusBadge}</span></div>
         </div>`;
 
-    // Aba Valores e Datas
     const tabValores = `
         <div class="info-section">
             <h4>Valores e Datas</h4>
@@ -663,7 +658,6 @@ function showViewModal(c) {
             <div class="info-row"><span class="info-label">Data Pagamento:</span><span class="info-value">${d(c.data_pagamento)}</span></div>
         </div>`;
 
-    // Aba Pagamento Parcelado
     let tabParcelas = `<div class="info-section"><h4>Pagamento Parcelado</h4>`;
     if (parcelas.length === 0) {
         tabParcelas += `<p style="color:var(--text-secondary);font-style:italic;">Nenhuma parcela registrada.</p>`;
@@ -676,7 +670,6 @@ function showViewModal(c) {
     }
     tabParcelas += `</div>`;
 
-    // Aba Observações
     let tabObs = `<div class="info-section"><h4>Observações</h4>`;
     if (notas.length === 0) {
         tabObs += `<p style="color:var(--text-secondary);font-style:italic;">Nenhuma observação registrada.</p>`;
@@ -715,13 +708,16 @@ function showViewModal(c) {
                     <div id="vtab-obs"      class="tab-content">${tabObs}</div>
                 </div>
                 <div class="modal-actions">
-                    <button class="btn-cancel" onclick="document.getElementById('viewModal').remove()">Fechar</button>
+                    <button type="button" id="viewPrev" class="secondary" onclick="navigateViewTab(-1)" style="display:none;">← Anterior</button>
+                    <button type="button" id="viewNext" class="secondary" onclick="navigateViewTab(1)">Próximo →</button>
+                    <button type="button" class="secondary" onclick="document.getElementById('viewModal').remove()">Fechar</button>
                 </div>
             </div>
         </div>`;
 
     document.getElementById('viewModal')?.remove();
     document.body.insertAdjacentHTML('beforeend', html);
+    updateViewNavButtons();
 }
 
 window.switchViewTab = function(tabId, btn) {
@@ -730,10 +726,36 @@ window.switchViewTab = function(tabId, btn) {
     modal.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.getElementById(tabId).classList.add('active');
     btn.classList.add('active');
+    updateViewNavButtons();
+};
+
+function getCurrentViewTabIndex() {
+    const active = document.querySelector('#viewModal .tab-content.active');
+    if (!active) return 0;
+    const tabs = ['vtab-geral', 'vtab-valores', 'vtab-parcelas', 'vtab-obs'];
+    return tabs.indexOf(active.id);
+}
+
+function updateViewNavButtons() {
+    const idx = getCurrentViewTabIndex();
+    const prev = document.getElementById('viewPrev');
+    const next = document.getElementById('viewNext');
+    if (prev) prev.style.display = idx === 0 ? 'none' : 'inline-flex';
+    if (next) next.style.display = idx === 3 ? 'none' : 'inline-flex';
+}
+
+window.navigateViewTab = function(direction) {
+    const tabs = ['vtab-geral', 'vtab-valores', 'vtab-parcelas', 'vtab-obs'];
+    const currentIdx = getCurrentViewTabIndex();
+    const newIdx = currentIdx + direction;
+    if (newIdx < 0 || newIdx >= tabs.length) return;
+    const newTabId = tabs[newIdx];
+    const btn = document.querySelector(`#viewModal .tab-btn:nth-child(${newIdx+1})`);
+    switchViewTab(newTabId, btn);
 };
 
 // ============================================
-// MODAL DE FORMULÁRIO (por abas)
+// MODAL DE FORMULÁRIO (por abas, botões alinhados)
 // ============================================
 window.toggleForm    = function() { showFormModal(null); };
 window.showFormModal = function(editingId = null, focusPagamento = false, focusValores = false) {
@@ -879,16 +901,13 @@ window.showFormModal = function(editingId = null, focusPagamento = false, focusV
                     </div>
                 </div>
 
-                <!-- AÇÕES DO MODAL -->
                 <div class="modal-actions">
-                    <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
-                        <button type="button" id="btnFormPrev" class="btn-tab-nav btn-prev" onclick="navFormTab(-1)">← Anterior</button>
-                        <button type="button" id="btnFormNext" class="btn-tab-nav btn-next" onclick="navFormTab(1)">Próximo →</button>
-                        <button type="button" id="btnFormSave" class="btn-save-form" onclick="handleSubmitForm('${editingId || ''}')">
-                            ${isEditing ? 'Atualizar' : 'Salvar'}
-                        </button>
-                    </div>
-                    <button type="button" class="btn-cancel" onclick="closeFormModal()">Cancelar</button>
+                    <button type="button" id="btnFormPrev" class="secondary" onclick="navFormTab(-1)" style="display:none;">← Anterior</button>
+                    <button type="button" id="btnFormNext" class="secondary" onclick="navFormTab(1)">Próximo →</button>
+                    <button type="button" id="btnFormSave" class="save" onclick="handleSubmitForm('${editingId || ''}')">
+                        ${isEditing ? 'Atualizar' : 'Salvar'}
+                    </button>
+                    <button type="button" class="secondary" onclick="closeFormModal()">Cancelar</button>
                 </div>
             </div>
         </div>`;
@@ -910,7 +929,6 @@ window.showFormModal = function(editingId = null, focusPagamento = false, focusV
     updateFormNavState();
 };
 
-// Abas do formulário
 const FORM_TABS = ['ftab-geral', 'ftab-valores', 'ftab-parcelas', 'ftab-obs'];
 
 window.switchFormTab = function(tabId, btn) {
