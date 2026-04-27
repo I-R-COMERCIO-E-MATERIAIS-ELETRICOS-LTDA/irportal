@@ -12,17 +12,11 @@ let currentUser = null;
 let currentMonth = new Date();
 let transportadorasCache = [];
 let currentFetchController = null;
-
-// Variável para guardar o ID da cotação a ser excluída
 let pendingDeleteId = null;
 
-// ── Info modal tab state ──────────────────────────────────────────────────────
 const infoTabs = ['info-tab-geral', 'info-tab-transportadora', 'info-tab-detalhes'];
 let currentInfoTabIndex = 0;
 
-// ============================================
-// INICIALIZAÇÃO
-// ============================================
 document.addEventListener('DOMContentLoaded', () => {
     verificarAutenticacao();
 });
@@ -30,7 +24,6 @@ document.addEventListener('DOMContentLoaded', () => {
 async function verificarAutenticacao() {
     const urlParams = new URLSearchParams(window.location.search);
     const tokenFromUrl = urlParams.get('sessionToken');
-
     if (tokenFromUrl) {
         sessionToken = tokenFromUrl;
         sessionStorage.setItem('cotacoesSession', tokenFromUrl);
@@ -38,12 +31,10 @@ async function verificarAutenticacao() {
     } else {
         sessionToken = sessionStorage.getItem('cotacoesSession');
     }
-
     if (!sessionToken) {
         mostrarTelaAcessoNegado();
         return;
     }
-
     try {
         const verifyRes = await fetch(`${PORTAL_URL}/api/verify-session`, {
             method: 'POST',
@@ -71,18 +62,10 @@ async function verificarAutenticacao() {
 
 function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
     document.body.innerHTML = `
-        <div style="
-            display: flex; flex-direction: column; align-items: center;
-            justify-content: center; height: 100vh; background: var(--bg-primary);
-            color: var(--text-primary); text-align: center; padding: 2rem;">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: var(--bg-primary); color: var(--text-primary); text-align: center; padding: 2rem;">
             <h1 style="font-size: 2.2rem; margin-bottom: 1rem;">${mensagem}</h1>
-            <p style="color: var(--text-secondary); margin-bottom: 2rem;">
-                Somente usuários autenticados podem acessar esta área.
-            </p>
-            <a href="${PORTAL_URL}" style="
-                display: inline-block; background: var(--btn-register); color: white;
-                padding: 14px 32px; border-radius: 8px; text-decoration: none;
-                font-weight: 600; text-transform: uppercase;">IR PARA O PORTAL</a>
+            <p style="color: var(--text-secondary); margin-bottom: 2rem;">Somente usuários autenticados podem acessar esta área.</p>
+            <a href="${PORTAL_URL}" style="display: inline-block; background: var(--btn-register); color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">Ir para o Portal</a>
         </div>`;
 }
 
@@ -93,16 +76,13 @@ function inicializarApp() {
     setInterval(() => { if (isOnline) loadCotacoes(); }, 30000);
 }
 
-// ============================================
-// UTILITÁRIOS
-// ============================================
 function showMessage(message, type = 'success') {
     const div = document.createElement('div');
     div.className = `floating-message ${type}`;
     div.textContent = message;
     document.body.appendChild(div);
     setTimeout(() => {
-        div.style.animation = 'slideOut 0.3s ease forwards';
+        div.style.animation = 'slideOutBottom 0.3s ease forwards';
         setTimeout(() => div.remove(), 300);
     }, 2000);
 }
@@ -125,14 +105,7 @@ function getDataAtual() {
     return `${String(hoje.getDate()).padStart(2,'0')}/${String(hoje.getMonth()+1).padStart(2,'0')}/${hoje.getFullYear()}`;
 }
 
-// ============================================
-// CONEXÃO
-// ============================================
-function updateConnectionStatus() {
-    const el = document.getElementById('connectionStatus');
-    if (el) el.className = isOnline ? 'connection-status online' : 'connection-status offline';
-}
-
+// Removida função updateConnectionStatus
 async function syncData() {
     const btn = document.getElementById('syncBtn');
     if (btn) { btn.classList.add('syncing'); btn.disabled = true; }
@@ -147,9 +120,6 @@ async function syncData() {
     }
 }
 
-// ============================================
-// MÊS / CALENDÁRIO
-// ============================================
 function changeMonth(direction) {
     currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1);
     updateDisplay();
@@ -169,9 +139,6 @@ function updateMonthDisplay() {
     if (el) el.textContent = `${months[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
 }
 
-// ============================================
-// CARREGAR DADOS
-// ============================================
 async function loadTransportadorasCache() {
     try {
         const response = await fetch(`${API_URL}/transportadoras?limit=200`, {
@@ -208,10 +175,8 @@ async function loadCotacoes() {
     if (currentFetchController) currentFetchController.abort();
     currentFetchController = new AbortController();
     const signal = currentFetchController.signal;
-
     const mes = currentMonth.getMonth();
     const ano = currentMonth.getFullYear();
-
     try {
         const response = await fetch(`${API_URL}/cotacoes?mes=${mes}&ano=${ano}`, {
             headers: { 'X-Session-Token': sessionToken },
@@ -225,49 +190,35 @@ async function loadCotacoes() {
         }
         if (!response.ok) {
             isOnline = false;
-            updateConnectionStatus();
             setTimeout(() => loadCotacoes(), 5000);
             return;
         }
         cotacoes = await response.json();
         isOnline = true;
-        updateConnectionStatus();
         currentFetchController = null;
         updateDisplay();
         updateResponsavelSelect();
     } catch (e) {
         if (e.name === 'AbortError') return;
         isOnline = false;
-        updateConnectionStatus();
         setTimeout(() => loadCotacoes(), 5000);
     }
 }
 
-// ============================================
-// DASHBOARD
-// ============================================
 function updateDashboard() {
-    const total     = cotacoes.length;
+    const total = cotacoes.length;
     const aprovadas = cotacoes.filter(c => c.negocioFechado === true).length;
     const reprovadas = cotacoes.filter(c => c.negocioFechado === false).length;
-
-    const el = (id) => document.getElementById(id);
-    if (el('totalCotacoes'))  el('totalCotacoes').textContent  = total;
-    if (el('totalAprovadas')) el('totalAprovadas').textContent = aprovadas;
-    if (el('totalReprovadas')) el('totalReprovadas').textContent = reprovadas;
+    if (document.getElementById('totalCotacoes')) document.getElementById('totalCotacoes').textContent = total;
+    if (document.getElementById('totalAprovadas')) document.getElementById('totalAprovadas').textContent = aprovadas;
+    if (document.getElementById('totalReprovadas')) document.getElementById('totalReprovadas').textContent = reprovadas;
 }
 
-// ============================================
-// FILTROS
-// ============================================
-function filterCotacoes() {
-    renderTable();
-}
+function filterCotacoes() { renderTable(); }
 
 function updateResponsavelSelect() {
     const responsaveis = new Set();
     cotacoes.forEach(c => { if (c.responsavel?.trim()) responsaveis.add(c.responsavel.trim()); });
-
     const sel = document.getElementById('filterResponsavel');
     if (!sel) return;
     const current = sel.value;
@@ -276,20 +227,14 @@ function updateResponsavelSelect() {
     sel.value = current;
 }
 
-// ============================================
-// TABELA
-// ============================================
 function renderTable() {
     const container = document.getElementById('cotacoesContainer');
     if (!container) return;
-
-    const search         = (document.getElementById('search')?.value || '').toLowerCase();
-    const filterTransp   = document.getElementById('filterTransportadora')?.value || '';
-    const filterResp     = document.getElementById('filterResponsavel')?.value || '';
-    const filterStatus   = document.getElementById('filterStatus')?.value || '';
-
+    const search = (document.getElementById('search')?.value || '').toLowerCase();
+    const filterTransp = document.getElementById('filterTransportadora')?.value || '';
+    const filterResp = document.getElementById('filterResponsavel')?.value || '';
+    const filterStatus = document.getElementById('filterStatus')?.value || '';
     let filtered = [...cotacoes];
-
     if (search) {
         filtered = filtered.filter(c =>
             (c.transportadora || '').toLowerCase().includes(search) ||
@@ -299,23 +244,20 @@ function renderTable() {
             (c.responsavel || '').toLowerCase().includes(search)
         );
     }
-    if (filterTransp)  filtered = filtered.filter(c => c.transportadora === filterTransp);
-    if (filterResp)    filtered = filtered.filter(c => c.responsavel === filterResp);
-    if (filterStatus === 'aprovada')  filtered = filtered.filter(c => c.negocioFechado === true);
+    if (filterTransp) filtered = filtered.filter(c => c.transportadora === filterTransp);
+    if (filterResp) filtered = filtered.filter(c => c.responsavel === filterResp);
+    if (filterStatus === 'aprovada') filtered = filtered.filter(c => c.negocioFechado === true);
     if (filterStatus === 'reprovada') filtered = filtered.filter(c => c.negocioFechado === false);
-
     if (filtered.length === 0) {
         if (currentFetchController) return;
         container.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`;
         return;
     }
-
     container.innerHTML = filtered.map(c => {
         const aprovada = c.negocioFechado === true;
         const reprovada = c.negocioFechado === false;
         const statusClass = aprovada ? 'fechada' : (reprovada ? 'aberta' : '');
         const statusText  = aprovada ? 'APROVADA' : (reprovada ? 'REPROVADA' : 'PENDENTE');
-
         return `
         <tr data-id="${c.id}" class="${aprovada ? 'row-fechada' : ''}" style="cursor:pointer;" onclick="viewCotacao(${c.id})">
             <td style="text-align:center;">
@@ -343,14 +285,10 @@ function renderTable() {
     }).join('');
 }
 
-// ============================================
-// TOGGLE STATUS (checkbox)
-// ============================================
 async function toggleStatus(id, checked) {
     const cotacao = cotacoes.find(c => c.id === id);
     if (!cotacao) return;
     const nomeTransportadora = cotacao.transportadora || 'Cotação';
-
     try {
         const response = await fetch(`${API_URL}/cotacoes/${id}`, {
             method: 'PATCH',
@@ -359,9 +297,7 @@ async function toggleStatus(id, checked) {
         });
         if (!response.ok) throw new Error('Erro');
         await loadCotacoes();
-        const msg = checked
-            ? `${nomeTransportadora} aprovada`
-            : `${nomeTransportadora} reprovada`;
+        const msg = checked ? `${nomeTransportadora} aprovada` : `${nomeTransportadora} reprovada`;
         const tipo = checked ? 'success' : 'error';
         showMessage(msg, tipo);
     } catch (e) {
@@ -371,26 +307,17 @@ async function toggleStatus(id, checked) {
     }
 }
 
-// ============================================
-// MODAL DE EXCLUSÃO PERSONALIZADO
-// ============================================
 function showDeleteModal(id) {
     pendingDeleteId = id;
-    const modal = document.getElementById('deleteModal');
-    if (modal) {
-        modal.classList.add('show');
-        // Adiciona evento único ao botão de confirmação
-        const confirmBtn = document.getElementById('confirmDeleteBtn');
-        // Remove eventos anteriores para evitar duplicação
-        const newConfirmBtn = confirmBtn.cloneNode(true);
-        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-        newConfirmBtn.onclick = () => confirmDelete();
-    }
+    document.getElementById('deleteModal').classList.add('show');
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    newConfirmBtn.onclick = () => confirmDelete();
 }
 
 function closeDeleteModal() {
-    const modal = document.getElementById('deleteModal');
-    if (modal) modal.classList.remove('show');
+    document.getElementById('deleteModal').classList.remove('show');
     pendingDeleteId = null;
 }
 
@@ -411,9 +338,6 @@ async function confirmDelete() {
     }
 }
 
-// ============================================
-// FORMULÁRIO (sem checkbox negócio fechado)
-// ============================================
 function openFormModal() {
     editingId = null;
     document.getElementById('formTitle').textContent = 'Nova Cotação';
@@ -448,7 +372,6 @@ function editCotacao(id) {
     if (saveBtn) saveBtn.textContent = 'Atualizar';
     resetForm();
     updateTransportadoraSelects();
-
     document.getElementById('dataCotacao').value = c.dataCotacao || '';
     document.getElementById('transportadora').value = c.transportadora || '';
     document.getElementById('destino').value = c.destino || '';
@@ -462,48 +385,41 @@ function editCotacao(id) {
     document.getElementById('canalComunicacao').value = c.canalComunicacao || '';
     document.getElementById('codigoColeta').value = c.codigoColeta || '';
     document.getElementById('observacoes').value = c.observacoes || '';
-
     document.getElementById('formModal').classList.add('show');
     switchFormTab('form-tab-geral');
 }
 
 async function saveCotacao() {
     const transportadora = document.getElementById('transportadora').value.trim();
-    const destino        = document.getElementById('destino').value.trim();
-
+    const destino = document.getElementById('destino').value.trim();
     if (!transportadora) {
         showMessage('Selecione uma transportadora!', 'error');
         return;
     }
-
     const payload = {
-        dataCotacao:             document.getElementById('dataCotacao').value,
+        dataCotacao: document.getElementById('dataCotacao').value,
         transportadora,
         destino,
-        documento:               document.getElementById('documento').value.trim(),
-        numeroCotacao:           document.getElementById('numeroCotacao').value.trim(),
-        valorFrete:              parseFloat(document.getElementById('valorFrete').value) || null,
-        previsaoEntrega:         document.getElementById('previsaoEntrega').value,
-        responsavel:             document.getElementById('responsavel').value.trim(),
-        vendedor:                document.getElementById('vendedor').value.trim(),
+        documento: document.getElementById('documento').value.trim(),
+        numeroCotacao: document.getElementById('numeroCotacao').value.trim(),
+        valorFrete: parseFloat(document.getElementById('valorFrete').value) || null,
+        previsaoEntrega: document.getElementById('previsaoEntrega').value,
+        responsavel: document.getElementById('responsavel').value.trim(),
+        vendedor: document.getElementById('vendedor').value.trim(),
         responsavelTransportadora: document.getElementById('responsavelTransportadora').value.trim(),
-        canalComunicacao:        document.getElementById('canalComunicacao').value.trim(),
-        codigoColeta:            document.getElementById('codigoColeta').value.trim(),
-        observacoes:             document.getElementById('observacoes').value.trim()
-        // negocioFechado NÃO é enviado a partir do modal
+        canalComunicacao: document.getElementById('canalComunicacao').value.trim(),
+        codigoColeta: document.getElementById('codigoColeta').value.trim(),
+        observacoes: document.getElementById('observacoes').value.trim()
     };
-
     try {
-        const url    = editingId ? `${API_URL}/cotacoes/${editingId}` : `${API_URL}/cotacoes`;
+        const url = editingId ? `${API_URL}/cotacoes/${editingId}` : `${API_URL}/cotacoes`;
         const method = editingId ? 'PUT' : 'POST';
-
         const response = await fetch(url, {
             method,
             headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
             body: JSON.stringify(payload)
         });
         if (!response.ok) throw new Error('Erro ao salvar');
-
         await loadCotacoes();
         closeFormModal();
         const msg = editingId ? 'Cotação atualizada' : 'Cotação registrada';
@@ -513,9 +429,7 @@ async function saveCotacao() {
     }
 }
 
-// ============================================
-// NAVEGAÇÃO DE ABAS — FORMULÁRIO
-// ============================================
+// Navegação de abas do formulário (ajustada para manter Salvar visível)
 const formTabs = ['form-tab-geral', 'form-tab-transportadora', 'form-tab-detalhes'];
 let currentFormTabIndex = 0;
 
@@ -548,26 +462,20 @@ function updateFormNavButtons() {
     const btnSave = document.getElementById('btnFormSave');
     if (btnPrev) btnPrev.style.display = currentFormTabIndex === 0 ? 'none' : 'inline-block';
     if (btnNext) btnNext.style.display = currentFormTabIndex === formTabs.length - 1 ? 'none' : 'inline-block';
-    if (btnSave) btnSave.style.display = currentFormTabIndex === formTabs.length - 1 ? 'inline-block' : 'none';
+    if (btnSave) btnSave.style.display = 'inline-block'; // sempre visível
 }
 
-// ============================================
-// MODAL DE VISUALIZAÇÃO
-// ============================================
+// Modal de visualização (info)
 function viewCotacao(id) {
     const c = cotacoes.find(x => x.id === id);
     if (!c) return;
-
     document.getElementById('modalDocumento').textContent = c.documento || c.numeroCotacao || `#${id}`;
-
     const aprovada  = c.negocioFechado === true;
     const reprovada = c.negocioFechado === false;
     const statusClass = aprovada ? 'fechada' : (reprovada ? 'aberta' : '');
     const statusText  = aprovada ? 'APROVADA' : (reprovada ? 'REPROVADA' : 'PENDENTE');
-
     document.getElementById('info-tab-geral').innerHTML = `
-        <div class="info-section">
-            <h4>Informações Gerais</h4>
+        <div class="info-section"><h4>Informações Gerais</h4>
             <div class="info-row"><span class="info-label">Data:</span><span class="info-value">${formatarData(c.dataCotacao)}</span></div>
             <div class="info-row"><span class="info-label">Documento:</span><span class="info-value">${c.documento || '-'}</span></div>
             <div class="info-row"><span class="info-label">Nº Cotação:</span><span class="info-value">${c.numeroCotacao || '-'}</span></div>
@@ -576,24 +484,19 @@ function viewCotacao(id) {
             <div class="info-row"><span class="info-label">Vendedor:</span><span class="info-value">${c.vendedor || '-'}</span></div>
             <div class="info-row"><span class="info-label">Status:</span><span class="badge ${statusClass}">${statusText}</span></div>
         </div>`;
-
     document.getElementById('info-tab-transportadora').innerHTML = `
-        <div class="info-section">
-            <h4>Transportadora</h4>
+        <div class="info-section"><h4>Transportadora</h4>
             <div class="info-row"><span class="info-label">Transportadora:</span><span class="info-value">${c.transportadora || '-'}</span></div>
             <div class="info-row"><span class="info-label">Responsável (Transp.):</span><span class="info-value">${c.responsavelTransportadora || '-'}</span></div>
             <div class="info-row"><span class="info-label">Canal de Comunicação:</span><span class="info-value">${c.canalComunicacao || '-'}</span></div>
             <div class="info-row"><span class="info-label">Código de Coleta:</span><span class="info-value">${c.codigoColeta || '-'}</span></div>
         </div>`;
-
     document.getElementById('info-tab-detalhes').innerHTML = `
-        <div class="info-section">
-            <h4>Detalhes da Cotação</h4>
+        <div class="info-section"><h4>Detalhes da Cotação</h4>
             <div class="info-row"><span class="info-label">Valor do Frete:</span><span class="info-value">${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</span></div>
             <div class="info-row"><span class="info-label">Previsão de Entrega:</span><span class="info-value">${c.previsaoEntrega ? formatarData(c.previsaoEntrega) : '-'}</span></div>
             <div class="info-row"><span class="info-label">Observações:</span><span class="info-value">${c.observacoes || '-'}</span></div>
         </div>`;
-
     currentInfoTabIndex = 0;
     switchInfoTab('info-tab-geral');
     document.getElementById('infoModal').classList.add('show');
