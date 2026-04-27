@@ -11,57 +11,31 @@
     <div class="app-content">
         <div class="container">
             <div class="header">
-                <div class="header-left">
-                    <h1>Transportadoras</h1>
-                </div>
+                <div class="header-left"><h1>Transportadoras</h1></div>
                 <button onclick="openFormModal()" class="btn-new-order-header">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                     Nova Transportadora
                 </button>
             </div>
-
-            <!-- Search Bar -->
             <div class="search-bar-wrapper">
                 <div class="search-bar">
-                    <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8"></circle>
-                        <path d="m21 21-4.35-4.35"></path>
-                    </svg>
+                    <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
                     <input type="text" id="search" placeholder="Buscar por nome, representante, e-mail, região ou estado..." oninput="filterTransportadoras()">
                 </div>
             </div>
-
-            <!-- Table Card -->
             <div class="card table-card">
                 <div style="overflow-x: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Nome</th>
-                                <th>Representante</th>
-                                <th>Telefone</th>
-                                <th>Celular</th>
-                                <th>E-mail</th>
-                                <th style="text-align: center;">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="transportadorasContainer"></tbody>
-                    </table>
+                    <table><thead><tr><th>Nome</th><th>Representante</th><th>Telefone</th><th>Celular</th><th>E-mail</th><th style="text-align: center;">Ações</th></tr></thead>
+                    <tbody id="transportadorasContainer"></tbody></table>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- MODAL DE FORMULÁRIO (COM ABAS E NAVEGAÇÃO) -->
+    <!-- MODAL DE FORMULÁRIO -->
     <div class="modal-overlay" id="formModal">
         <div class="modal-content" style="max-width: 1200px;">
-            <div class="modal-header">
-                <h3 class="modal-title" id="formTitle">Nova Transportadora</h3>
-                <button class="close-modal" onclick="closeFormModal(true)">✕</button>
-            </div>
+            <div class="modal-header"><h3 class="modal-title" id="formTitle">Nova Transportadora</h3><button class="close-modal" onclick="closeFormModal(true)">✕</button></div>
             <div class="tabs-container">
                 <div class="tabs-nav">
                     <button class="tab-btn active" onclick="switchTab('tab-geral')">Geral</button>
@@ -69,58 +43,37 @@
                 </div>
                 <div class="tab-content active" id="tab-geral">
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label>Nome *</label>
-                            <input type="text" id="nome" placeholder="NOME DA TRANSPORTADORA">
-                        </div>
-                        <div class="form-group">
-                            <label>Representante</label>
-                            <input type="text" id="representante" placeholder="Nome do representante">
-                        </div>
-                        <div class="form-group">
-                            <label>E-mail *</label>
-                            <input type="email" id="email" placeholder="email@transportadora.com">
-                        </div>
-                        <div class="form-group">
-                            <label>Telefones <small style="color:var(--text-secondary)">(separe por vírgula)</small></label>
-                            <input type="text" id="telefones" placeholder="(00) 0000-0000, (00) 0000-0000">
-                        </div>
-                        <div class="form-group">
-                            <label>Celulares <small style="color:var(--text-secondary)">(separe por vírgula)</small></label>
-                            <input type="text" id="celulares" placeholder="(00) 00000-0000">
-                        </div>
+                        <div class="form-group"><label>Nome *</label><input type="text" id="nome" placeholder="NOME DA TRANSPORTADORA"></div>
+                        <div class="form-group"><label>Representante</label><input type="text" id="representante" placeholder="Nome do representante"></div>
+                        <div class="form-group"><label>E-mail *</label><input type="email" id="email" placeholder="email@transportadora.com"></div>
+                        <div class="form-group"><label>Telefones <small>(vírgula)</small></label><input type="text" id="telefones" placeholder="(00) 0000-0000, ..."></div>
+                        <div class="form-group"><label>Celulares <small>(vírgula)</small></label><input type="text" id="celulares" placeholder="(00) 00000-0000, ..."></div>
                     </div>
                 </div>
                 <div class="tab-content" id="tab-atendimento">
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label>Regiões (selecione as que atende)</label>
-                            <div id="regioesContainer" class="chips-container"></div>
-                        </div>
-                        <div class="form-group">
-                            <label>Estados (selecione os que atende)</label>
-                            <div id="estadosContainer" class="chips-container"></div>
-                        </div>
+                        <div class="form-group"><label>Regiões</label><div id="regioesContainer" class="chips-container"></div></div>
+                        <div class="form-group"><label>Estados</label><div id="estadosContainer" class="chips-container"></div></div>
                     </div>
                 </div>
             </div>
             <div class="modal-actions">
-                <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display: none;">← Anterior</button>
-                <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo →</button>
+                <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display:none;">Anterior</button>
+                <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo</button>
                 <button type="button" id="btnSave" onclick="saveTransportadora()" class="btn-save-green">Salvar</button>
                 <button type="button" onclick="closeFormModal(true)" class="cancel-close">Cancelar</button>
             </div>
         </div>
     </div>
 
-    <!-- MODAL DE EXCLUSÃO (IDÊNTICO AO DE ORDEM DE COMPRA) -->
+    <!-- MODAL DE EXCLUSÃO -->
     <div class="modal-overlay" id="deleteModal">
         <div class="modal-content modal-delete" style="max-width: 500px;">
             <button class="close-modal" onclick="closeDeleteModal()">✕</button>
             <div class="modal-message-delete" id="deleteModalMessage">Tem certeza que deseja excluir esta transportadora?</div>
             <div class="modal-actions modal-actions-no-border">
-                <button type="button" id="confirmDeleteBtn" class="danger">Excluir</button>
-                <button type="button" onclick="closeDeleteModal()" class="secondary">Cancelar</button>
+                <button type="button" id="confirmDeleteBtn" class="danger">Sim</button>
+                <button type="button" onclick="closeDeleteModal()" class="success">Cancelar</button>
             </div>
         </div>
     </div>
