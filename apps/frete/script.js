@@ -934,14 +934,8 @@ window.showFormModal = function(editingId = null) {
                         </div>
 
                         <div class="modal-actions form-tab-actions">
-                            <button type="button" class="tab-nav-btn prev-btn secondary" id="formBtnAnterior" onclick="navigateFormTab(-1)" style="display: none; background: #9CA3AF;">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
-                                Anterior
-                            </button>
-                            <button type="button" class="tab-nav-btn next-btn" id="formBtnProximo" onclick="navigateFormTab(1)" style="background: #9CA3AF;">
-                                Próximo
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
-                            </button>
+                            <button type="button" class="tab-nav-btn" id="formBtnAnterior" onclick="navigateFormTab(-1)" style="display: none;">Anterior</button>
+                            <button type="button" class="tab-nav-btn" id="formBtnProximo" onclick="navigateFormTab(1)">Próximo</button>
                             <button type="submit" class="save">${editingId ? 'Atualizar' : 'Salvar'}</button>
                             <button type="button" class="secondary" onclick="closeFormModal(true)">Cancelar</button>
                         </div>
@@ -1491,7 +1485,7 @@ function getStatusBadgeForRender(frete) {
     const tiposDevolucao = ['DEVOLUCAO', 'DEVOLVIDA'];
     if (tiposDevolucao.includes(frete.tipo_nf)) {
         const tipoLabel = getTipoNfLabel(frete.tipo_nf);
-        return `<span class="badge devolvido">${tipoLabel.toUpperCase()}</span>`;
+        return `<span class="badge badge-especial">${tipoLabel.toUpperCase()}</span>`;
     }
     
     const hoje = new Date();
