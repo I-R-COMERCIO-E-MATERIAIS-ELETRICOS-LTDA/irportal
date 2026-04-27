@@ -303,7 +303,7 @@ function renderTable() {
 
     if (filtered.length === 0) {
         if (currentFetchController) return;
-        container.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`;
+        container.innerHTML = `<td><td colspan="9" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`;
         return;
     }
 
@@ -344,6 +344,11 @@ function renderTable() {
 // TOGGLE STATUS (checkbox)
 // ============================================
 async function toggleStatus(id, checked) {
+    // Buscar a cotação para obter o nome da transportadora
+    const cotacao = cotacoes.find(c => c.id === id);
+    if (!cotacao) return;
+    const nomeTransportadora = cotacao.transportadora || 'Cotação';
+
     try {
         const response = await fetch(`${API_URL}/cotacoes/${id}`, {
             method: 'PATCH',
@@ -352,7 +357,10 @@ async function toggleStatus(id, checked) {
         });
         if (!response.ok) throw new Error('Erro');
         await loadCotacoes();
-        showMessage(checked ? 'Cotação aprovada!' : 'Cotação reprovada!', 'success');
+        const msg = checked
+            ? `${nomeTransportadora} aprovada`
+            : `${nomeTransportadora} reprovada`;
+        showMessage(msg, 'success');
     } catch (e) {
         showMessage('Erro ao atualizar status!', 'error');
         const cb = document.getElementById(`check-${id}`);
@@ -361,7 +369,7 @@ async function toggleStatus(id, checked) {
 }
 
 // ============================================
-// FORMULÁRIO
+// FORMULÁRIO (checkbox "negocioFechado" removido)
 // ============================================
 function openFormModal() {
     editingId = null;
@@ -407,9 +415,6 @@ function editCotacao(id) {
     document.getElementById('canalComunicacao').value = c.canalComunicacao || '';
     document.getElementById('codigoColeta').value = c.codigoColeta || '';
     document.getElementById('observacoes').value = c.observacoes || '';
-    if (c.negocioFechado !== null && c.negocioFechado !== undefined) {
-        document.getElementById('negocioFechado').checked = c.negocioFechado;
-    }
 
     document.getElementById('formModal').classList.add('show');
     switchFormTab('form-tab-geral');
@@ -437,8 +442,8 @@ async function saveCotacao() {
         responsavelTransportadora: document.getElementById('responsavelTransportadora').value.trim(),
         canalComunicacao:        document.getElementById('canalComunicacao').value.trim(),
         codigoColeta:            document.getElementById('codigoColeta').value.trim(),
-        observacoes:             document.getElementById('observacoes').value.trim(),
-        negocioFechado:          document.getElementById('negocioFechado').checked
+        observacoes:             document.getElementById('observacoes').value.trim()
+        // negocioFechado NÃO é enviado a partir do modal
     };
 
     try {
@@ -454,7 +459,7 @@ async function saveCotacao() {
 
         await loadCotacoes();
         closeFormModal();
-        showMessage(editingId ? 'Cotação atualizada!' : 'Cotação registrada!', 'success');
+        showMessage(editingId ? 'Cotação atualizada' : 'Cotação registrada', 'success');
     } catch (e) {
         showMessage('Erro ao salvar cotação!', 'error');
     }
@@ -469,7 +474,7 @@ async function deleteCotacao(id) {
         });
         if (!response.ok) throw new Error('Erro');
         await loadCotacoes();
-        showMessage('Cotação excluída!', 'success');
+        showMessage('Cotação excluída', 'success');
     } catch (e) {
         showMessage('Erro ao excluir cotação!', 'error');
     }
