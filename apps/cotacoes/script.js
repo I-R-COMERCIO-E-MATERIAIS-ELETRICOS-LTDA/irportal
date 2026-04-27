@@ -13,6 +13,9 @@ let currentMonth = new Date();
 let transportadorasCache = [];
 let currentFetchController = null;
 
+// Variável para guardar o ID da cotação a ser excluída
+let pendingDeleteId = null;
+
 // ── Info modal tab state ──────────────────────────────────────────────────────
 const infoTabs = ['info-tab-geral', 'info-tab-transportadora', 'info-tab-detalhes'];
 let currentInfoTabIndex = 0;
@@ -333,7 +336,7 @@ function renderTable() {
             <td onclick="event.stopPropagation()">
                 <div class="actions" style="display:flex;gap:6px;justify-content:center;">
                     <button onclick="editCotacao(${c.id})" class="action-btn" style="background:#6B7280;margin:0;">Editar</button>
-                    <button onclick="deleteCotacao(${c.id})" class="action-btn" style="background:#EF4444;margin:0;">Excluir</button>
+                    <button onclick="showDeleteModal(${c.id})" class="action-btn" style="background:#EF4444;margin:0;">Excluir</button>
                 </div>
             </td>
         </tr>`;
@@ -369,12 +372,51 @@ async function toggleStatus(id, checked) {
 }
 
 // ============================================
+// MODAL DE EXCLUSÃO PERSONALIZADO
+// ============================================
+function showDeleteModal(id) {
+    pendingDeleteId = id;
+    const modal = document.getElementById('deleteModal');
+    if (modal) {
+        modal.classList.add('show');
+        // Adiciona evento único ao botão de confirmação
+        const confirmBtn = document.getElementById('confirmDeleteBtn');
+        // Remove eventos anteriores para evitar duplicação
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        newConfirmBtn.onclick = () => confirmDelete();
+    }
+}
+
+function closeDeleteModal() {
+    const modal = document.getElementById('deleteModal');
+    if (modal) modal.classList.remove('show');
+    pendingDeleteId = null;
+}
+
+async function confirmDelete() {
+    if (!pendingDeleteId) return;
+    try {
+        const response = await fetch(`${API_URL}/cotacoes/${pendingDeleteId}`, {
+            method: 'DELETE',
+            headers: { 'X-Session-Token': sessionToken }
+        });
+        if (!response.ok) throw new Error('Erro');
+        await loadCotacoes();
+        showMessage('Cotação excluída', 'success');
+        closeDeleteModal();
+    } catch (e) {
+        showMessage('Erro ao excluir cotação!', 'error');
+        closeDeleteModal();
+    }
+}
+
+// ============================================
 // FORMULÁRIO (sem checkbox negócio fechado)
 // ============================================
 function openFormModal() {
     editingId = null;
     document.getElementById('formTitle').textContent = 'Nova Cotação';
-    // Altera texto do botão para "Salvar"
     const saveBtn = document.getElementById('btnFormSave');
     if (saveBtn) saveBtn.textContent = 'Salvar';
     resetForm();
@@ -402,7 +444,6 @@ function editCotacao(id) {
     if (!c) return;
     editingId = id;
     document.getElementById('formTitle').textContent = `Editar Cotação`;
-    // Altera texto do botão para "Atualizar"
     const saveBtn = document.getElementById('btnFormSave');
     if (saveBtn) saveBtn.textContent = 'Atualizar';
     resetForm();
@@ -469,21 +510,6 @@ async function saveCotacao() {
         showMessage(msg, 'success');
     } catch (e) {
         showMessage('Erro ao salvar cotação!', 'error');
-    }
-}
-
-async function deleteCotacao(id) {
-    if (!confirm('Excluir esta cotação?')) return;
-    try {
-        const response = await fetch(`${API_URL}/cotacoes/${id}`, {
-            method: 'DELETE',
-            headers: { 'X-Session-Token': sessionToken }
-        });
-        if (!response.ok) throw new Error('Erro');
-        await loadCotacoes();
-        showMessage('Cotação excluída', 'success');
-    } catch (e) {
-        showMessage('Erro ao excluir cotação!', 'error');
     }
 }
 
