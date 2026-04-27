@@ -45,9 +45,12 @@ function detectResponsavelFromUser() {
 
 function userCanToggleEmissao() {
     if (!currentUser) return false;
-    const role = (currentUser.role || currentUser.cargo || currentUser.setor || '').toLowerCase();
+    // Verifica todos os campos possíveis de role/cargo/setor
+    const allFields = Object.values(currentUser).map(v => String(v || '').toLowerCase()).join(' ');
+    const role = (currentUser.role || currentUser.cargo || currentUser.setor || currentUser.perfil || currentUser.tipo || '').toLowerCase();
+    const name = (currentUser.name || currentUser.nome || currentUser.username || currentUser.email || '').toLowerCase();
     if (ROLES_CHECKBOX.some(r => role.includes(r))) return true;
-    const name = (currentUser.name || currentUser.nome || currentUser.username || '').toLowerCase();
+    if (ROLES_CHECKBOX.some(r => allFields.includes(r))) return true;
     if (NAMES_CHECKBOX.some(n => name.includes(n))) return true;
     console.log('🔒 Usuário sem permissão para emissão:', JSON.stringify(currentUser));
     return false;
@@ -158,6 +161,13 @@ async function verificarAutenticacao() {
             if (sessionData.valid && sessionData.session) {
                 currentUser = sessionData.session;
                 sessionStorage.setItem('pedidosUserData', JSON.stringify(currentUser));
+            } else if (sessionData.valid && sessionData.user) {
+                currentUser = sessionData.user;
+                sessionStorage.setItem('pedidosUserData', JSON.stringify(currentUser));
+            } else if (sessionData.valid) {
+                // Tenta usar o próprio sessionData como currentUser
+                currentUser = sessionData;
+                sessionStorage.setItem('pedidosUserData', JSON.stringify(currentUser));
             } else {
                 mostrarTelaAcessoNegado('Sua sessão expirou');
                 return;
@@ -206,6 +216,8 @@ function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
 }
 
 function inicializarApp() {
+    console.log('👤 currentUser:', JSON.stringify(currentUser));
+    console.log('🔑 canToggle:', userCanToggleEmissao());
     updateMonthDisplay();
     loadPedidosDirectly();
     loadEstoque();
