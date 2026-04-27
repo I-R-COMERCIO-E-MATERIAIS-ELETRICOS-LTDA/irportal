@@ -303,7 +303,7 @@ function renderTable() {
 
     if (filtered.length === 0) {
         if (currentFetchController) return;
-        container.innerHTML = `<td><td colspan="9" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`;
+        container.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`;
         return;
     }
 
@@ -344,7 +344,6 @@ function renderTable() {
 // TOGGLE STATUS (checkbox)
 // ============================================
 async function toggleStatus(id, checked) {
-    // Buscar a cotação para obter o nome da transportadora
     const cotacao = cotacoes.find(c => c.id === id);
     if (!cotacao) return;
     const nomeTransportadora = cotacao.transportadora || 'Cotação';
@@ -360,7 +359,8 @@ async function toggleStatus(id, checked) {
         const msg = checked
             ? `${nomeTransportadora} aprovada`
             : `${nomeTransportadora} reprovada`;
-        showMessage(msg, 'success');
+        const tipo = checked ? 'success' : 'error';
+        showMessage(msg, tipo);
     } catch (e) {
         showMessage('Erro ao atualizar status!', 'error');
         const cb = document.getElementById(`check-${id}`);
@@ -369,11 +369,14 @@ async function toggleStatus(id, checked) {
 }
 
 // ============================================
-// FORMULÁRIO (checkbox "negocioFechado" removido)
+// FORMULÁRIO (sem checkbox negócio fechado)
 // ============================================
 function openFormModal() {
     editingId = null;
     document.getElementById('formTitle').textContent = 'Nova Cotação';
+    // Altera texto do botão para "Salvar"
+    const saveBtn = document.getElementById('btnFormSave');
+    if (saveBtn) saveBtn.textContent = 'Salvar';
     resetForm();
     document.getElementById('dataCotacao').value = getDataAtual();
     updateTransportadoraSelects();
@@ -399,6 +402,9 @@ function editCotacao(id) {
     if (!c) return;
     editingId = id;
     document.getElementById('formTitle').textContent = `Editar Cotação`;
+    // Altera texto do botão para "Atualizar"
+    const saveBtn = document.getElementById('btnFormSave');
+    if (saveBtn) saveBtn.textContent = 'Atualizar';
     resetForm();
     updateTransportadoraSelects();
 
@@ -459,7 +465,8 @@ async function saveCotacao() {
 
         await loadCotacoes();
         closeFormModal();
-        showMessage(editingId ? 'Cotação atualizada' : 'Cotação registrada', 'success');
+        const msg = editingId ? 'Cotação atualizada' : 'Cotação registrada';
+        showMessage(msg, 'success');
     } catch (e) {
         showMessage('Erro ao salvar cotação!', 'error');
     }
