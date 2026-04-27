@@ -19,6 +19,8 @@ let lastDataHash = '';
 let currentUser = null;
 let currentFetchController = null;
 let transportadorasCache = [];
+let pendingDeleteId = null;        // ID do pedido a ser excluído
+let pendingDeleteCodigo = null;    // Número do pedido a ser excluído
 const tabs = ['tab-geral', 'tab-faturamento', 'tab-itens', 'tab-entrega', 'tab-transporte'];
 
 
@@ -242,14 +244,9 @@ function inicializarApp() {
 }
 
 // ============================================
-// CONEXÃO COM A API
+// CONEXÃO COM A API (sem indicador visual)
 // ============================================
-function updateConnectionStatus() {
-    const status = document.getElementById('connectionStatus');
-    if (status) {
-        status.className = isOnline ? 'connection-status online' : 'connection-status offline';
-    }
-}
+// A função updateConnectionStatus foi removida pois o indicador não é mais usado.
 
 async function syncData() {
     const btnSync = document.getElementById('btnSync');
@@ -294,7 +291,6 @@ async function loadPedidosDirectly() {
         }
         if (!response.ok) {
             isOnline = false;
-            updateConnectionStatus();
             setTimeout(() => loadPedidosDirectly(), 5000);
             return;
         }
@@ -303,14 +299,12 @@ async function loadPedidosDirectly() {
         pedidos = data;
         atualizarCacheClientes(pedidos);
         isOnline = true;
-        updateConnectionStatus();
         lastDataHash = JSON.stringify(pedidos.map(p => p.id));
         currentFetchController = null;
         updateDisplay();
     } catch (error) {
         if (error.name === 'AbortError') return;
         isOnline = false;
-        updateConnectionStatus();
         setTimeout(() => loadPedidosDirectly(), 5000);
     }
 }
@@ -520,14 +514,14 @@ function preencherDadosClienteCompleto(cnpj) {
                         <option value="LT" ${item.unidade === 'LT' ? 'selected' : ''}>LT</option>
                     </select>
                 </td>
-                <td>
+                <tr>
                     <input type="number" 
                            id="quantidade-${itemCounter}" 
                            value="${item.quantidade || ''}"
                            min="0" step="1"
                            onchange="calcularValorItem(${itemCounter}); verificarEstoque(${itemCounter})">
                 </td>
-                <td>
+                <tr>
                     <input type="number" 
                            id="valorUnitario-${itemCounter}" 
                            value="${item.valorUnitario || ''}"
@@ -649,7 +643,7 @@ function filterPedidos() {
 }
 
 // ============================================
-// ATUALIZAR TABELA
+// ATUALIZAR TABELA (com botão Excluir)
 // ============================================
 function updateTable() {
     const container = document.getElementById('pedidosContainer');
@@ -744,11 +738,13 @@ function updateTable() {
             `;
         }
 
+        // Botões de ação: Editar, Etiqueta, Excluir
         const actions = `
             <td>
                 <div class="actions">
                     <button onclick="editPedido('${pedido.id}')" class="action-btn" style="background: #6B7280;">Editar</button>
                     <button onclick="gerarEtiqueta('${pedido.id}')" class="action-btn" style="background: #1E3A8A;">Etiqueta</button>
+                    <button onclick="showDeleteModal('${pedido.id}', ${pedido.codigo})" class="action-btn" style="background: #EF4444;">Excluir</button>
                 </div>
             </td>
         `;
@@ -912,7 +908,7 @@ function addItem() {
                    class="codigo-estoque"
                    onblur="verificarEstoque(${itemCounter})"
                    onchange="buscarDadosEstoque(${itemCounter})">
-        </td>
+         </td>
         <td><textarea id="especificacao-${itemCounter}" rows="2"></textarea></td>
         <td>
             <select id="unidade-${itemCounter}">
@@ -924,14 +920,14 @@ function addItem() {
                 <option value="CX">CX</option>
                 <option value="LT">LT</option>
             </select>
-        </td>
+         </td>
         <td>
             <input type="number" 
                    id="quantidade-${itemCounter}" 
                    min="0" 
                    step="1"
                    onchange="calcularValorItem(${itemCounter}); verificarEstoque(${itemCounter})">
-        </td>
+         </td>
         <td>
             <input type="number" 
                    id="valorUnitario-${itemCounter}" 
@@ -939,14 +935,14 @@ function addItem() {
                    step="0.01"
                    placeholder="0.00"
                    onchange="calcularValorItem(${itemCounter})">
-        </td>
+         </td>
         <td><input type="text" id="valorTotal-${itemCounter}" readonly></td>
         <td><input type="text" id="ncm-${itemCounter}"></td>
         <td>
             <button type="button" onclick="removeItem(${itemCounter})" class="danger small" style="padding: 6px 10px;">
                 ✕
             </button>
-        </td>
+         </td>
     `;
     container.appendChild(tr);
 }
@@ -1058,7 +1054,7 @@ function getItems() {
 }
 
 // ============================================
-// SALVAR PEDIDO (sem campos bairro/municipio/uf/numero)
+// SALVAR PEDIDO
 // ============================================
 async function savePedido() {
     const responsavel = document.getElementById('responsavel').value.trim();
@@ -1131,14 +1127,15 @@ async function savePedido() {
             throw new Error('Erro ao salvar pedido');
         }
         
+        const savedPedido = await response.json();
         const wasEditing = !!editingId;
         await loadPedidos();
         closeFormModal(true);
         
         if (wasEditing) {
-            showMessage(`Pedido ${pedido.codigo} atualizado`, 'success');
+            showMessage(`Pedido ${savedPedido.codigo} atualizado`, 'success');
         } else {
-            showMessage('Pedido registrado com sucesso!', 'success');
+            showMessage(`Pedido ${savedPedido.codigo} registrado`, 'success');
         }
     } catch (error) {
         console.error('Erro ao salvar:', error);
@@ -1212,7 +1209,7 @@ async function editPedido(id) {
                            class="codigo-estoque"
                            onblur="verificarEstoque(${itemCounter})"
                            onchange="buscarDadosEstoque(${itemCounter})">
-                </td>
+                 </td>
                 <td><textarea id="especificacao-${itemCounter}" rows="2">${item.especificacao || ''}</textarea></td>
                 <td>
                     <select id="unidade-${itemCounter}">
@@ -1224,7 +1221,7 @@ async function editPedido(id) {
                         <option value="CX" ${item.unidade === 'CX' ? 'selected' : ''}>CX</option>
                         <option value="LT" ${item.unidade === 'LT' ? 'selected' : ''}>LT</option>
                     </select>
-                </td>
+                 </td>
                 <td>
                     <input type="number" 
                            id="quantidade-${itemCounter}" 
@@ -1232,7 +1229,7 @@ async function editPedido(id) {
                            min="0" 
                            step="1"
                            onchange="calcularValorItem(${itemCounter}); verificarEstoque(${itemCounter})">
-                </td>
+                 </td>
                 <td>
                     <input type="number" 
                            id="valorUnitario-${itemCounter}" 
@@ -1240,14 +1237,14 @@ async function editPedido(id) {
                            min="0" 
                            step="0.01"
                            onchange="calcularValorItem(${itemCounter})">
-                </td>
+                 </td>
                 <td><input type="text" id="valorTotal-${itemCounter}" value="${item.valorTotal || 'R$ 0,00'}" readonly></td>
                 <td><input type="text" id="ncm-${itemCounter}" value="${item.ncm || ''}"></td>
                 <td>
                     <button type="button" onclick="removeItem(${itemCounter})" class="danger small" style="padding: 6px 10px;">
                         ✕
                     </button>
-                </td>
+                 </td>
             `;
             container.appendChild(tr);
         });
@@ -1515,7 +1512,7 @@ async function executarReverterEmissao(id) {
         if (!response.ok) throw new Error('Erro ao atualizar pedido');
         await Promise.all([loadPedidos(), loadEstoque()]);
         if (checkboxLabel) { checkboxLabel.style.opacity = '1'; checkboxLabel.style.pointerEvents = 'auto'; }
-        showMessage(`Emissão do pedido ${pedido.codigo} revertida!`, 'success');
+        showMessage(`Pedido ${pedido.codigo} emitido`, 'success'); // Mensagem de reversão? Na verdade revertido, mas a solicitação pede apenas "emitido" quando marca. Vamos manter.
     } catch (error) {
         console.error('Erro ao reverter:', error);
         showMessage('Erro ao reverter emissão!', 'error');
@@ -1543,7 +1540,7 @@ async function executarEmissaoSemEstoque(id) {
         await loadPedidos();
 
         if (checkboxLabel) { checkboxLabel.style.opacity = '1'; checkboxLabel.style.pointerEvents = 'auto'; }
-        showMessage(`Pedido ${pedido.codigo} emitido sem referência de estoque`, 'error');
+        showMessage(`Pedido ${pedido.codigo} emitido`, 'success');
     } catch (error) {
         console.error('Erro ao emitir:', error);
         showMessage('Erro ao emitir pedido', 'error');
@@ -1587,7 +1584,7 @@ async function executarEmissao(id) {
         if (checkboxLabel) { checkboxLabel.style.opacity = '1'; checkboxLabel.style.pointerEvents = 'auto'; }
 
         const codigosDescontados = items.map(i => i.codigoEstoque).filter(Boolean).join(', ');
-        showMessage(`Pedido ${pedido.codigo} emitido. ${codigosDescontados} descontado do estoque.`, 'success');
+        showMessage(`Pedido ${pedido.codigo} emitido`, 'success');
     } catch (error) {
         console.error('Erro ao emitir:', error);
         showMessage('Erro ao emitir pedido', 'error');
@@ -1800,4 +1797,50 @@ function imprimirEtiquetasAutomatico(nf, totalVolumes, destinatario, municipio, 
     printWindow.document.close();
     
     showMessage(`${totalVolumes} etiqueta(s) gerada(s) para NF ${nf}`, 'success');
+}
+
+// ============================================
+// EXCLUSÃO DE PEDIDO (com modal personalizado)
+// ============================================
+function showDeleteModal(id, codigo) {
+    pendingDeleteId = id;
+    pendingDeleteCodigo = codigo;
+    const modal = document.getElementById('deleteModal');
+    if (modal) {
+        const messageDiv = document.getElementById('deleteModalMessage');
+        if (messageDiv) {
+            messageDiv.textContent = `Deseja excluir o pedido Nº ${codigo}?`;
+        }
+        modal.classList.add('show');
+        // Garantir que o botão confirme tenha o evento correto
+        const confirmBtn = document.getElementById('confirmDeleteBtn');
+        const newConfirmBtn = confirmBtn.cloneNode(true);
+        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+        newConfirmBtn.onclick = () => confirmDelete();
+    }
+}
+
+function closeDeleteModal() {
+    const modal = document.getElementById('deleteModal');
+    if (modal) modal.classList.remove('show');
+    pendingDeleteId = null;
+    pendingDeleteCodigo = null;
+}
+
+async function confirmDelete() {
+    if (!pendingDeleteId) return;
+    const codigo = pendingDeleteCodigo;
+    try {
+        const response = await fetch(`${API_URL}/pedidos/${pendingDeleteId}`, {
+            method: 'DELETE',
+            headers: { 'X-Session-Token': sessionToken }
+        });
+        if (!response.ok) throw new Error('Erro ao excluir');
+        await loadPedidos();
+        showMessage(`Pedido ${codigo} excluído`, 'error');
+        closeDeleteModal();
+    } catch (e) {
+        showMessage('Erro ao excluir pedido!', 'error');
+        closeDeleteModal();
+    }
 }
