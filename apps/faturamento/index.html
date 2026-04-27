@@ -13,9 +13,7 @@
             <div class="header">
                 <div class="header-left">
                     <h1>Pedido de Faturamento</h1>
-                    <div id="connectionStatus" class="connection-status offline">
-                        <span class="status-dot"></span>
-                    </div>
+                    <!-- Indicador de conexão removido conforme solicitado -->
                 </div>
                 <button onclick="openFormModal()" class="btn-new-order-header">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -165,7 +163,7 @@
             <!-- Table Card -->
             <div class="card table-card">
                 <div style="overflow-x: auto;">
-                    <table>
+                    </table>
                         <thead>
                             <tr>
                                 <!-- O cabeçalho será preenchido dinamicamente pelo JavaScript -->
@@ -348,6 +346,18 @@
                 <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo</button>
                 <button type="button" onclick="closeFormModal()" class="cancel-close">Cancelar</button>
                 <button type="button" id="btnSave" onclick="savePedido()" class="btn-save-green" style="display: none;">Salvar Pedido</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE CONFIRMAÇÃO DE EXCLUSÃO -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal-content modal-delete" style="max-width: 500px;">
+            <button class="close-modal" onclick="closeDeleteModal()">✕</button>
+            <div class="modal-message-delete" id="deleteModalMessage">Tem certeza que deseja excluir este pedido?</div>
+            <div class="modal-actions modal-actions-no-border">
+                <button type="button" id="confirmDeleteBtn" class="danger">Excluir</button>
+                <button type="button" onclick="closeDeleteModal()" class="secondary">Cancelar</button>
             </div>
         </div>
     </div>
