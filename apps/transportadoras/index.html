@@ -55,7 +55,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE FORMULÁRIO (COM ABAS) -->
+    <!-- MODAL DE FORMULÁRIO (COM ABAS E NAVEGAÇÃO) -->
     <div class="modal-overlay" id="formModal">
         <div class="modal-content" style="max-width: 1200px;">
             <div class="modal-header">
@@ -105,8 +105,22 @@
                 </div>
             </div>
             <div class="modal-actions">
-                <button type="button" onclick="saveTransportadora()" class="btn-save-green">Salvar</button>
+                <button type="button" id="btnPrevious" onclick="previousTab()" class="secondary" style="display: none;">← Anterior</button>
+                <button type="button" id="btnNext" onclick="nextTab()" class="secondary">Próximo →</button>
+                <button type="button" id="btnSave" onclick="saveTransportadora()" class="btn-save-green">Salvar</button>
                 <button type="button" onclick="closeFormModal(true)" class="cancel-close">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE EXCLUSÃO (IDÊNTICO AO DE ORDEM DE COMPRA) -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal-content modal-delete" style="max-width: 500px;">
+            <button class="close-modal" onclick="closeDeleteModal()">✕</button>
+            <div class="modal-message-delete" id="deleteModalMessage">Tem certeza que deseja excluir esta transportadora?</div>
+            <div class="modal-actions modal-actions-no-border">
+                <button type="button" id="confirmDeleteBtn" class="danger">Excluir</button>
+                <button type="button" onclick="closeDeleteModal()" class="secondary">Cancelar</button>
             </div>
         </div>
     </div>
