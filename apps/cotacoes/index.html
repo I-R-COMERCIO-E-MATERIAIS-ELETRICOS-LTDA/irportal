@@ -185,7 +185,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE FORMULÁRIO (checkbox "Negócio Fechado" removido) -->
+    <!-- MODAL DE FORMULÁRIO (sem checkbox "Negócio Fechado") -->
     <div class="modal-overlay" id="formModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -200,7 +200,7 @@
                     <button class="tab-btn" onclick="switchFormTab('form-tab-detalhes')">Detalhes</button>
                 </div>
 
-                <!-- Tab Geral (sem checkbox de negócio fechado) -->
+                <!-- Tab Geral -->
                 <div class="tab-content active" id="form-tab-geral">
                     <div class="form-grid" style="padding: 1rem 0;">
                         <div class="form-group">
@@ -276,7 +276,7 @@
             <div class="modal-actions">
                 <button type="button" id="btnFormPrevious" onclick="previousFormTab()" class="secondary" style="display:none;">Anterior</button>
                 <button type="button" id="btnFormNext" onclick="nextFormTab()" class="secondary">Próximo</button>
-                <button type="button" id="btnFormSave" onclick="saveCotacao()" style="display:none;">Salvar Cotação</button>
+                <button type="button" id="btnFormSave" onclick="saveCotacao()" class="btn-save-green">Salvar</button>
                 <button type="button" onclick="closeFormModal()" class="cancel-close">Cancelar</button>
             </div>
         </div>
