@@ -6,9 +6,7 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
     function buildDateRange(mes, ano) {
-        // mes é 0-indexed (igual ao JS Date.getMonth())
         const m = parseInt(mes);
         const y = parseInt(ano);
         if (isNaN(m) || isNaN(y)) return null;
@@ -17,17 +15,14 @@ module.exports = function (supabase) {
         return { start, end };
     }
 
-    // GET /api/cotacoes — lista cotações (com filtro de mês/ano)
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, transportadora, responsavel, status } = req.query;
-
             let query = supabase
                 .from('cotacoes')
                 .select('*')
                 .order('timestamp', { ascending: false });
 
-            // Filtro por mês/ano via campo dataCotacao (texto "DD/MM/YYYY") ou timestamp
             if (mes !== undefined && ano !== undefined) {
                 const range = buildDateRange(mes, ano);
                 if (range) {
@@ -36,7 +31,6 @@ module.exports = function (supabase) {
                         .lte('createdat', range.end);
                 }
             }
-
             if (transportadora) query = query.eq('transportadora', transportadora);
             if (responsavel)    query = query.eq('responsavel', responsavel);
             if (status === 'aprovada')   query = query.eq('"negocioFechado"', true);
@@ -51,7 +45,6 @@ module.exports = function (supabase) {
         }
     });
 
-    // GET /api/cotacoes/:id
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -59,7 +52,6 @@ module.exports = function (supabase) {
                 .select('*')
                 .eq('id', req.params.id)
                 .single();
-
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Cotação não encontrada' });
             res.json(data);
@@ -69,12 +61,9 @@ module.exports = function (supabase) {
         }
     });
 
-    // POST /api/cotacoes — cria nova cotação
     router.post('/', async (req, res) => {
         try {
             const payload = { ...req.body };
-
-            // Garante campos de auditoria
             payload.createdat  = payload.createdat  || new Date().toISOString();
             payload.timestamp  = payload.timestamp  || new Date().toISOString();
             payload.updatedat  = new Date().toISOString();
@@ -84,7 +73,6 @@ module.exports = function (supabase) {
                 .insert([payload])
                 .select()
                 .single();
-
             if (error) throw error;
             res.status(201).json(data);
         } catch (err) {
@@ -93,7 +81,6 @@ module.exports = function (supabase) {
         }
     });
 
-    // PUT /api/cotacoes/:id — atualiza cotação
     router.put('/:id', async (req, res) => {
         try {
             const payload = { ...req.body };
@@ -107,7 +94,6 @@ module.exports = function (supabase) {
                 .eq('id', req.params.id)
                 .select()
                 .single();
-
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Cotação não encontrada' });
             res.json(data);
@@ -117,7 +103,6 @@ module.exports = function (supabase) {
         }
     });
 
-    // PATCH /api/cotacoes/:id — atualização parcial
     router.patch('/:id', async (req, res) => {
         try {
             const payload = { ...req.body };
@@ -130,7 +115,6 @@ module.exports = function (supabase) {
                 .eq('id', req.params.id)
                 .select()
                 .single();
-
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Cotação não encontrada' });
             res.json(data);
@@ -140,19 +124,60 @@ module.exports = function (supabase) {
         }
     });
 
-    // DELETE /api/cotacoes/:id
     router.delete('/:id', async (req, res) => {
         try {
             const { error } = await supabase
                 .from('cotacoes')
                 .delete()
                 .eq('id', req.params.id);
-
             if (error) throw error;
             res.json({ success: true });
         } catch (err) {
             console.error('Erro ao excluir cotação:', err.message);
             res.status(500).json({ error: 'Erro ao excluir cotação' });
+        }
+    });
+
+    // Rota de importação em lote
+    router.post('/import', async (req, res) => {
+        try {
+            const cotacoes = req.body;
+            if (!Array.isArray(cotacoes) || cotacoes.length === 0) {
+                return res.status(400).json({ error: 'Envie um array de cotações.' });
+            }
+            const inseridas = [];
+            for (const cotacao of cotacoes) {
+                const payload = {
+                    dataCotacao: cotacao.dataCotacao || cotacao.data_cotacao || '',
+                    transportadora: cotacao.transportadora || '',
+                    destino: cotacao.destino || '',
+                    documento: cotacao.documento || '',
+                    numeroCotacao: cotacao.numeroCotacao || cotacao.numero_cotacao || '',
+                    valorFrete: cotacao.valorFrete || cotacao.valor_frete || null,
+                    previsaoEntrega: cotacao.previsaoEntrega || cotacao.previsao_entrega || null,
+                    responsavel: cotacao.responsavel || '',
+                    vendedor: cotacao.vendedor || '',
+                    responsavelTransportadora: cotacao.responsavelTransportadora || cotacao.responsavel_transportadora || '',
+                    canalComunicacao: cotacao.canalComunicacao || cotacao.canal_comunicacao || '',
+                    codigoColeta: cotacao.codigoColeta || cotacao.codigo_coleta || '',
+                    observacoes: cotacao.observacoes || '',
+                    negocioFechado: cotacao.negocioFechado ?? null,
+                    createdat: cotacao.createdat || new Date().toISOString(),
+                    timestamp: cotacao.timestamp || new Date().toISOString(),
+                    updatedat: new Date().toISOString()
+                };
+                const { data, error } = await supabase
+                    .from('cotacoes')
+                    .insert([payload])
+                    .select()
+                    .single();
+                if (error) throw error;
+                inseridas.push(data);
+            }
+            res.status(201).json({ message: `${inseridas.length} cotações importadas`, data: inseridas });
+        } catch (err) {
+            console.error('Erro na importação:', err.message);
+            res.status(500).json({ error: 'Erro ao importar cotações', details: err.message });
         }
     });
 
