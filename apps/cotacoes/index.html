@@ -282,6 +282,18 @@
         </div>
     </div>
 
+    <!-- MODAL DE CONFIRMAÇÃO DE EXCLUSÃO (personalizado) -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal-content modal-delete" style="max-width: 500px;">
+            <button class="close-modal" onclick="closeDeleteModal()">✕</button>
+            <div class="modal-message-delete" id="deleteModalMessage">Tem certeza que deseja excluir esta cotação?</div>
+            <div class="modal-actions modal-actions-no-border">
+                <button type="button" id="confirmDeleteBtn" class="danger">Excluir</button>
+                <button type="button" onclick="closeDeleteModal()" class="secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL DE VISUALIZAÇÃO -->
     <div class="modal-overlay" id="infoModal">
         <div class="modal-content">
