@@ -20,9 +20,6 @@
             <div class="header">
                 <div class="header-left">
                     <h1>Controle de Frete</h1>
-                    <div id="connectionStatus" class="connection-status offline">
-                        <span class="status-dot"></span>
-                    </div>
                 </div>
                 <button onclick="toggleForm()" class="btn-new-order-header">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -157,13 +154,6 @@
                             <line x1="3" y1="10" x2="21" y2="10"></line>
                         </svg>
                     </button>
-                    <button class="calendar-btn" onclick="showGraficoModal()" title="Visualizar Gráfico">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                            <line x1="12" y1="20" x2="12" y2="10"></line>
-                            <line x1="18" y1="20" x2="18" y2="4"></line>
-                            <line x1="6" y1="20" x2="6" y2="16"></line>
-                        </svg>
-                    </button>
                     <button class="calendar-btn" onclick="sincronizarDados()" title="Sincronizar">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="23 4 23 10 17 10"></polyline>
@@ -220,37 +210,6 @@
             </div>
         </div>
     </div>
-
-    <!-- MODAL DASHBOARDS MENSAIS -->
-    <div class="modal-overlay" id="graficoModal" style="display: none;">
-        <div class="modal-content grafico-modal">
-            <div class="modal-header">
-                <h3 class="modal-title">Análise Anual</h3>
-                <button class="close-modal" onclick="closeGraficoModal()">✕</button>
-            </div>
-            
-            <div class="grafico-year-nav-simple">
-                <button onclick="changeGraficoYear(-1)" class="year-nav-btn-simple">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="15 18 9 12 15 6"></polyline>
-                    </svg>
-                </button>
-                <h3 id="graficoYear">2026</h3>
-                <button onclick="changeGraficoYear(1)" class="year-nav-btn-simple">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                    </svg>
-                </button>
-            </div>
-
-            <div class="dashboards-container" id="dashboardsContainer"></div>
-
-            <div class="modal-actions">
-                <button type="button" onclick="closeGraficoModal()" class="secondary">Fechar</button>
-            </div>
-        </div>
-    </div>
-
     <script>
         setTimeout(() => {
             const splash = document.getElementById('splashScreen');
