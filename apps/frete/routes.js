@@ -56,7 +56,7 @@ module.exports = function (supabase) {
             }
 
             // Calcular status automaticamente
-            const tiposSemStatus = ['CANCELADA', 'DEVOLUCAO'];
+            const tiposSemStatus = ['CANCELADA', 'DEVOLUCAO', 'DEVOLVIDA'];
             let status;
             if (tiposSemStatus.includes(tipo_nf)) {
                 status = null;
@@ -124,7 +124,7 @@ module.exports = function (supabase) {
             } = req.body;
 
             // Calcular status automaticamente
-            const tiposSemStatus = ['CANCELADA', 'DEVOLUCAO'];
+            const tiposSemStatus = ['CANCELADA', 'DEVOLUCAO', 'DEVOLVIDA'];
             let status;
             if (tiposSemStatus.includes(tipo_nf)) {
                 status = null;
@@ -266,7 +266,8 @@ async function sincronizarVendas(supabase, frete, origem) {
         'CANCELADA': 'CANCELADA',
         'REMESSA_AMOSTRA': 'REMESSA DE AMOSTRA',
         'SIMPLES_REMESSA': 'SIMPLES REMESSA',
-        'DEVOLUCAO': 'DEVOLUÇÃO'
+        'DEVOLUCAO': 'DEVOLUÇÃO',
+        'DEVOLVIDA': 'DEVOLVIDA'
     };
     const tipoNf = tipoNfMap[frete.tipo_nf] || frete.tipo_nf || null;
 
