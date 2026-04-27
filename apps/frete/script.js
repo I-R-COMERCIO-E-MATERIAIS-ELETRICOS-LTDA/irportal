@@ -6,13 +6,11 @@ const PORTAL_URL = window.location.origin;
 const API_URL = window.location.origin + '/api';
 
 let fretes = [];
+let transportadorasList = [];
 let isOnline = false;
 let lastDataHash = '';
 let sessionToken = null;
 let currentMonth = new Date();
-let graficoYear = new Date().getFullYear();
-let graficoChart = null;
-
 const meses = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
@@ -136,7 +134,7 @@ window.handleDeleteClick = async function(id) {
         updateAllFilters();
         updateDashboard();
         filterFretes();
-        showToast(`NF ${numeroNF} Excluído`, 'success');
+        showToast(`NF ${numeroNF} Excluído`, 'error');
         
         // Deletar no servidor
         if (isOnline || DEVELOPMENT_MODE) {
@@ -168,6 +166,18 @@ window.handleDeleteClick = async function(id) {
         console.error('💥 Erro em handleDeleteClick:', error);
         showToast('Erro ao processar exclusão', 'error');
     }
+};
+
+
+window.handleRowClick = function(event, id) {
+    // Don't open view if clicking checkbox, label, or action buttons
+    if (event.target.closest('.checkbox-wrapper') || 
+        event.target.closest('.action-btn') ||
+        event.target.tagName === 'INPUT' ||
+        event.target.tagName === 'LABEL') {
+        return;
+    }
+    window.handleViewClick(id);
 };
 
 window.handleCheckboxChange = async function(id) {
@@ -406,6 +416,7 @@ function inicializarApp() {
     checkServerStatus();
     setInterval(checkServerStatus, 15000);
     startPolling();
+    loadTransportadoras();
 }
 
 // ============================================
@@ -452,10 +463,7 @@ async function checkServerStatus() {
 }
 
 function updateConnectionStatus() {
-    const statusElement = document.getElementById('connectionStatus');
-    if (statusElement) {
-        statusElement.className = isOnline ? 'connection-status online' : 'connection-status offline';
-    }
+    // Status indicator removed
 }
 
 // ============================================
@@ -513,6 +521,29 @@ async function loadFretes(showMessage = false) {
         if (showMessage) {
             showToast('Erro ao sincronizar dados', 'error');
         }
+    }
+}
+
+
+// ============================================
+// CARREGAR TRANSPORTADORAS DA API
+// ============================================
+async function loadTransportadoras() {
+    try {
+        const response = await fetch(`${API_URL}/transportadoras`, {
+            method: 'GET',
+            headers: {
+                'X-Session-Token': sessionToken,
+                'Accept': 'application/json'
+            },
+            mode: 'cors'
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        transportadorasList = data.map(t => t.nome || t.transportadora || t).filter(Boolean).sort();
+        updateTransportadoraFilter();
+    } catch (err) {
+        console.error('Erro ao carregar transportadoras:', err);
     }
 }
 
@@ -646,151 +677,6 @@ function updateDashboard() {
     }
 }
 
-// ============================================
-// MODAL DASHBOARDS MENSAIS
-// ============================================
-let graficoPagina = 1;
-
-window.showGraficoModal = function() {
-    graficoYear = currentMonth.getFullYear();
-    graficoPagina = 1;
-    
-    const graficoModal = document.getElementById('graficoModal');
-    if (graficoModal) {
-        graficoModal.style.display = 'flex';
-        renderizarGrafico();
-    }
-};
-
-window.closeGraficoModal = function() {
-    const graficoModal = document.getElementById('graficoModal');
-    if (graficoModal) {
-        graficoModal.style.display = 'none';
-    }
-    
-    if (graficoChart) {
-        graficoChart.destroy();
-        graficoChart = null;
-    }
-};
-
-window.changeGraficoYear = function(direction) {
-    graficoYear += direction;
-    graficoPagina = 1;
-    renderizarGrafico();
-};
-
-window.changeGraficoPagina = function(direction) {
-    graficoPagina += direction;
-    renderizarGrafico();
-};
-
-function renderizarGrafico() {
-    document.getElementById('graficoYear').textContent = graficoYear;
-    
-    const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
-                    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    
-    // Calcular dados por mês
-    const dadosPorMes = months.map((nome, index) => {
-        const fretesDoMes = fretes.filter(f => {
-            const dataEmissao = new Date(f.data_emissao + 'T00:00:00');
-            const isTipoEnvio = !f.tipo_nf || f.tipo_nf === 'ENVIO';
-            return dataEmissao.getMonth() === index && 
-                   dataEmissao.getFullYear() === graficoYear &&
-                   isTipoEnvio;
-        });
-        
-        const valorFrete = fretesDoMes.reduce((sum, f) => sum + parseFloat(f.valor_frete || 0), 0);
-        const valorTotal = fretesDoMes.reduce((sum, f) => sum + parseFloat(f.valor_nf || 0), 0);
-        
-        return { nome, valorFrete, valorTotal };
-    });
-    
-    // Paginação - 3 meses por página
-    const mesesPorPagina = 3;
-    const totalPaginas = Math.ceil(dadosPorMes.length / mesesPorPagina);
-    const inicio = (graficoPagina - 1) * mesesPorPagina;
-    const fim = inicio + mesesPorPagina;
-    const mesesPagina = dadosPorMes.slice(inicio, fim);
-    
-    // Calcular totais gerais do ano inteiro
-    const totalFrete = dadosPorMes.reduce((sum, m) => sum + m.valorFrete, 0);
-    const totalValor = dadosPorMes.reduce((sum, m) => sum + m.valorTotal, 0);
-    
-    const container = document.getElementById('dashboardsContainer');
-    if (!container) return;
-    
-    container.innerHTML = `
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
-            ${mesesPagina.map((mes, indexPagina) => {
-                const mesIndex = inicio + indexPagina;
-                const mesAnterior = mesIndex > 0 ? dadosPorMes[mesIndex - 1] : null;
-                
-                // Calcular tendências
-                let freteTendencia = '';
-                let totalTendencia = '';
-                
-                if (mesAnterior) {
-                    // Tendência Frete
-                    if (mes.valorFrete > mesAnterior.valorFrete) {
-                        freteTendencia = '<span style="color: #22C55E; font-size: 1.2rem; margin-left: 0.25rem;">▲</span>';
-                    } else if (mes.valorFrete < mesAnterior.valorFrete) {
-                        freteTendencia = '<span style="color: #EF4444; font-size: 1.2rem; margin-left: 0.25rem;">▼</span>';
-                    }
-                    
-                    // Tendência Valor Total
-                    if (mes.valorTotal > mesAnterior.valorTotal) {
-                        totalTendencia = '<span style="color: #22C55E; font-size: 1.2rem; margin-left: 0.25rem;">▲</span>';
-                    } else if (mes.valorTotal < mesAnterior.valorTotal) {
-                        totalTendencia = '<span style="color: #EF4444; font-size: 1.2rem; margin-left: 0.25rem;">▼</span>';
-                    }
-                }
-                
-                return `
-                <div style="padding: 0.75rem; background: var(--bg-card); border: 1px solid rgba(107, 114, 128, 0.2); border-radius: 8px;">
-                    <h4 style="margin: 0 0 0.5rem 0; font-size: 0.9rem; color: var(--text-primary);">${mes.nome}</h4>
-                    <div style="margin-bottom: 0.4rem;">
-                        <div style="font-size: 0.8rem; color: var(--text-secondary);">Valor Total</div>
-                        <div style="font-size: 0.95rem; font-weight: 700; color: #22C55E; display: flex; align-items: center;">
-                            R$ ${mes.valorTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}${totalTendencia}
-                        </div>
-                    </div>
-                    <div>
-                        <div style="font-size: 0.8rem; color: var(--text-secondary);">Frete</div>
-                        <div style="font-size: 0.95rem; font-weight: 700; color: #3B82F6; display: flex; align-items: center;">
-                            R$ ${mes.valorFrete.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}${freteTendencia}
-                        </div>
-                    </div>
-                </div>
-            `;
-            }).join('')}
-        </div>
-        
-        <div style="display: flex; justify-content: center; align-items: center; gap: 1rem; margin-bottom: 1rem; padding: 0.5rem;">
-            <button onclick="changeGraficoPagina(-1)" ${graficoPagina === 1 ? 'disabled' : ''} 
-                    style="padding: 6px 14px; border: 1px solid rgba(107, 114, 128, 0.2); background: var(--bg-card); cursor: pointer; border-radius: 4px; font-weight: 600; color: var(--text-primary);">‹</button>
-            <span style="font-weight: 600;">${graficoPagina}</span>
-            <button onclick="changeGraficoPagina(1)" ${graficoPagina === totalPaginas ? 'disabled' : ''}
-                    style="padding: 6px 14px; border: 1px solid rgba(107, 114, 128, 0.2); background: var(--bg-card); cursor: pointer; border-radius: 4px; font-weight: 600; color: var(--text-primary);">›</button>
-        </div>
-        
-        <div style="display: flex; gap: 1rem; justify-content: center; max-width: 800px; margin: 0 auto;">
-            <div style="flex: 0 1 auto; min-width: 250px; text-align: center; padding: 0.75rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px;">
-                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.4rem;">Total Valor</div>
-                <div style="font-size: 1.4rem; font-weight: 700; color: #22C55E;">R$ ${totalValor.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-            </div>
-            <div style="flex: 0 1 auto; min-width: 250px; text-align: center; padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-radius: 8px; border: 1px solid rgba(59, 130, 246, 0.3);">
-                <div style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.4rem;">Total Frete</div>
-                <div style="font-size: 1.4rem; font-weight: 700; color: #3B82F6;">R$ ${totalFrete.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-            </div>
-        </div>
-    `;
-}
-
-function renderizarDashboards(dadosMensais) {
-    // Função removida - agora integrada em renderizarGrafico
-}
 
 // ============================================
 // MODAL DE CONFIRMAÇÃO
@@ -967,6 +853,7 @@ window.showFormModal = function(editingId = null) {
                                         <option value="REMESSA_AMOSTRA" ${frete?.tipo_nf === 'REMESSA_AMOSTRA' ? 'selected' : ''}>Remessa de Amostra</option>
                                         <option value="SIMPLES_REMESSA" ${frete?.tipo_nf === 'SIMPLES_REMESSA' ? 'selected' : ''}>Simples Remessa</option>
                                         <option value="DEVOLUCAO" ${frete?.tipo_nf === 'DEVOLUCAO' ? 'selected' : ''}>Devolução</option>
+                                        <option value="DEVOLVIDA" ${frete?.tipo_nf === 'DEVOLVIDA' ? 'selected' : ''}>Devolvida</option>
                                     </select>
                                 </div>
                             </div>
@@ -1000,23 +887,7 @@ window.showFormModal = function(editingId = null) {
                                     <label for="transportadora">Transportadora</label>
                                     <select id="transportadora">
                                         <option value="">Selecione...</option>
-                                        <option value="TNT MERCÚRIO" ${frete?.transportadora === 'TNT MERCÚRIO' ? 'selected' : ''}>TNT MERCÚRIO</option>
-                                        <option value="BRASPRESS" ${frete?.transportadora === 'BRASPRESS' ? 'selected' : ''}>BRASPRESS</option>
-                                        <option value="CORREIOS" ${frete?.transportadora === 'CORREIOS' ? 'selected' : ''}>CORREIOS</option>
-                                        <option value="JAMEF" ${frete?.transportadora === 'JAMEF' ? 'selected' : ''}>JAMEF</option>
-                                        <option value="GENEROSO" ${frete?.transportadora === 'GENEROSO' ? 'selected' : ''}>GENEROSO</option>
-                                        <option value="MOVVI" ${frete?.transportadora === 'MOVVI' ? 'selected' : ''}>MOVVI</option>
-                                        <option value="TG TRANSPORTES" ${frete?.transportadora === 'TG TRANSPORTES' ? 'selected' : ''}>TG TRANSPORTES</option>
-                                        <option value="BROSLOG" ${frete?.transportadora === 'BROSLOG' ? 'selected' : ''}>BROSLOG</option>
-                                        <option value="FAVORITA TRANSPORTES" ${frete?.transportadora === 'FAVORITA TRANSPORTES' ? 'selected' : ''}>FAVORITA TRANSPORTES</option>
-                                        <option value="SNT LOG LTDA" ${frete?.transportadora === 'SNT LOG LTDA' ? 'selected' : ''}>SNT LOG LTDA</option>
-                                        <option value="TRANSLOVATO" ${frete?.transportadora === 'TRANSLOVATO' ? 'selected' : ''}>TRANSLOVATO</option>
-                                        <option value="TODO BRASIL" ${frete?.transportadora === 'TODO BRASIL' ? 'selected' : ''}>TODO BRASIL</option>
-                                        <option value="AZURE" ${frete?.transportadora === 'AZURE' ? 'selected' : ''}>AZURE</option>
-                                        <option value="RODONAVES" ${frete?.transportadora === 'RODONAVES' ? 'selected' : ''}>RODONAVES</option>
-                                        <option value="TOTAL EXPRESS" ${frete?.transportadora === 'TOTAL EXPRESS' ? 'selected' : ''}>TOTAL EXPRESS</option>
-                                        <option value="ENTREGA PRÓPRIA" ${frete?.transportadora === 'ENTREGA PRÓPRIA' ? 'selected' : ''}>ENTREGA PRÓPRIA</option>
-                                        <option value="DIRETO PELO FORNECEDOR" ${frete?.transportadora === 'DIRETO PELO FORNECEDOR' ? 'selected' : ''}>DIRETO PELO FORNECEDOR</option>
+                                        ${(transportadorasList.length > 0 ? transportadorasList : []).map(t => `<option value="${t}" ${frete?.transportadora === t ? 'selected' : ''}>${t}</option>`).join('')}
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -1062,7 +933,15 @@ window.showFormModal = function(editingId = null) {
                             </div>
                         </div>
 
-                        <div class="modal-actions">
+                        <div class="modal-actions form-tab-actions">
+                            <button type="button" class="tab-nav-btn prev-btn secondary" id="formBtnAnterior" onclick="navigateFormTab(-1)" style="display: none; background: #9CA3AF;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                                Anterior
+                            </button>
+                            <button type="button" class="tab-nav-btn next-btn" id="formBtnProximo" onclick="navigateFormTab(1)" style="background: #9CA3AF;">
+                                Próximo
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                            </button>
                             <button type="submit" class="save">${editingId ? 'Atualizar' : 'Salvar'}</button>
                             <button type="button" class="secondary" onclick="closeFormModal(true)">Cancelar</button>
                         </div>
@@ -1187,6 +1066,24 @@ window.closeFormModal = function(showCancelMessage = false) {
 // ============================================
 // SISTEMA DE ABAS
 // ============================================
+
+window.navigateFormTab = function(direction) {
+    const tabButtons = document.querySelectorAll('#formModal .tab-btn');
+    const currentActive = Array.from(tabButtons).findIndex(btn => btn.classList.contains('active'));
+    const newIndex = Math.max(0, Math.min(tabButtons.length - 1, currentActive + direction));
+    if (newIndex !== currentActive) {
+        switchFormTab(newIndex);
+    }
+    updateFormTabNavButtons(newIndex, tabButtons.length);
+};
+
+function updateFormTabNavButtons(currentIndex, totalTabs) {
+    const btnAnterior = document.getElementById('formBtnAnterior');
+    const btnProximo = document.getElementById('formBtnProximo');
+    if (btnAnterior) btnAnterior.style.display = currentIndex === 0 ? 'none' : 'inline-flex';
+    if (btnProximo) btnProximo.style.display = currentIndex === totalTabs - 1 ? 'none' : 'inline-flex';
+}
+
 window.switchFormTab = function(index) {
     const tabButtons = document.querySelectorAll('#formModal .tab-btn');
     const tabContents = document.querySelectorAll('#formModal .tab-content');
@@ -1198,6 +1095,8 @@ window.switchFormTab = function(index) {
     tabContents.forEach((content, i) => {
         content.classList.toggle('active', i === index);
     });
+    
+    updateFormTabNavButtons(index, tabButtons.length);
 };
 
 // ============================================
@@ -1308,12 +1207,24 @@ function updateAllFilters() {
 }
 
 function updateTransportadoraFilter() {
-    const transportadoras = new Set();
-    fretes.forEach(f => {
-        if (f.transportadora?.trim()) {
-            transportadoras.add(f.transportadora.trim());
-        }
-    });
+    // Use API transportadoras if loaded, else fall back to fretes data
+    let transportadoras;
+    if (transportadorasList.length > 0) {
+        transportadoras = new Set(transportadorasList);
+        // Also add any from fretes not in the list
+        fretes.forEach(f => {
+            if (f.transportadora?.trim() && f.transportadora !== 'NÃO INFORMADO') {
+                transportadoras.add(f.transportadora.trim());
+            }
+        });
+    } else {
+        transportadoras = new Set();
+        fretes.forEach(f => {
+            if (f.transportadora?.trim()) {
+                transportadoras.add(f.transportadora.trim());
+            }
+        });
+    }
 
     const select = document.getElementById('filterTransportadora');
     if (select) {
@@ -1515,7 +1426,7 @@ function renderFretes(fretesToRender) {
                         };
                         
                         return `
-                        <tr class="${isEntregue ? 'row-entregue' : ''}" data-id="${f.id}">
+                        <tr class="${isEntregue ? 'row-entregue' : ''}" data-id="${f.id}" style="cursor: pointer;" onclick="handleRowClick(event, '${f.id}')">
                             <td style="text-align: center; padding: 8px;">
                                 ${showCheckbox ? `
                                 <div class="checkbox-wrapper">
@@ -1537,7 +1448,6 @@ function renderFretes(fretesToRender) {
                             <td><strong>R$ ${f.valor_nf ? parseFloat(f.valor_nf).toFixed(2) : '0,00'}</strong></td>
                             <td>${getStatusBadgeForRender(f)}</td>
                             <td class="actions-cell" style="text-align: center; white-space: nowrap;">
-                                <button class="action-btn view" onclick="handleViewClick('${f.id}')" title="Ver detalhes">Ver</button>
                                 <button class="action-btn edit" onclick="handleEditClick('${f.id}')" title="Editar">Editar</button>
                                 <button class="action-btn delete" onclick="handleDeleteClick('${f.id}')" title="Excluir">Excluir</button>
                             </td>
@@ -1560,7 +1470,8 @@ function getTipoNfLabel(tipo) {
         'CANCELADA': 'Cancelada',
         'REMESSA_AMOSTRA': 'Remessa de Amostra',
         'SIMPLES_REMESSA': 'Simples Remessa',
-        'DEVOLUCAO': 'Devolução'
+        'DEVOLUCAO': 'Devolução',
+        'DEVOLVIDA': 'Devolvida'
     };
     return labels[tipo] || tipo || 'Envio';
 }
@@ -1572,10 +1483,15 @@ function getStatusBadgeForRender(frete) {
         return `<span class="badge badge-especial">${tipoLabel.toUpperCase()}</span>`;
     }
     
-    const tiposEspeciais = ['CANCELADA', 'DEVOLUCAO'];
+    const tiposEspeciais = ['CANCELADA'];
     if (tiposEspeciais.includes(frete.tipo_nf)) {
         const tipoLabel = getTipoNfLabel(frete.tipo_nf);
         return `<span class="badge badge-especial">${tipoLabel.toUpperCase()}</span>`;
+    }
+    const tiposDevolucao = ['DEVOLUCAO', 'DEVOLVIDA'];
+    if (tiposDevolucao.includes(frete.tipo_nf)) {
+        const tipoLabel = getTipoNfLabel(frete.tipo_nf);
+        return `<span class="badge devolvido">${tipoLabel.toUpperCase()}</span>`;
     }
     
     const hoje = new Date();
@@ -1666,12 +1582,16 @@ function verificarNotasAtrasadas() {
 // ============================================
 // MODAL DE ALERTA FORA DO PRAZO
 // ============================================
+let alertModalPage = 1;
+const ALERT_PAGE_SIZE = 4;
+let alertModalData = [];
+
 window.showAlertModal = function() {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     
     const tiposComStatus = ['ENVIO', 'SIMPLES_REMESSA', 'REMESSA_AMOSTRA'];
-    const foraDoPrazo = fretes.filter(f => {
+    alertModalData = fretes.filter(f => {
         const tipo = f.tipo_nf || 'ENVIO';
         if (!tiposComStatus.includes(tipo)) return false;
         if (f.status === 'ENTREGUE') return false;
@@ -1682,58 +1602,85 @@ window.showAlertModal = function() {
         return previsao < hoje;
     });
     
-    foraDoPrazo.sort((a, b) => {
+    alertModalData.sort((a, b) => {
         const dataA = new Date(a.previsao_entrega);
         const dataB = new Date(b.previsao_entrega);
         return dataA - dataB;
     });
     
-    const modalBody = document.getElementById('alertModalBody');
-    if (!modalBody) return;
-    
-    if (foraDoPrazo.length === 0) {
-        modalBody.innerHTML = `
-            <div style="text-align: center; padding: 3rem; color: var(--text-secondary);">
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.3; margin-bottom: 1rem;">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="M12 8l0 4"></path>
-                    <path d="M12 16l.01 0"></path>
-                </svg>
-                <p style="font-size: 1.1rem; font-weight: 600; margin: 0;">Nenhuma entrega fora do prazo</p>
-                <p style="font-size: 0.9rem; margin-top: 0.5rem;">Todas as entregas estão dentro do prazo previsto</p>
-            </div>
-        `;
-    } else {
-        modalBody.innerHTML = `
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Nº NF</th>
-                            <th>Data Emissão</th>
-                            <th>Órgão</th>
-                            <th>Previsão</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${foraDoPrazo.map(f => `
-                            <tr>
-                                <td><strong>${f.numero_nf || '-'}</strong></td>
-                                <td style="white-space: nowrap;">${formatDate(f.data_emissao)}</td>
-                                <td>${f.nome_orgao || '-'}</td>
-                                <td style="white-space: nowrap; color: #EF4444; font-weight: 600;">${formatDate(f.previsao_entrega)}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-    }
+    alertModalPage = 1;
+    renderAlertModalPage();
     
     const alertModal = document.getElementById('alertModal');
     if (alertModal) {
         alertModal.style.display = 'flex';
     }
+};
+
+function renderAlertModalPage() {
+    const modalBody = document.getElementById('alertModalBody');
+    if (!modalBody) return;
+    
+    const foraDoPrazo = alertModalData;
+    
+    if (foraDoPrazo.length === 0) {
+        modalBody.innerHTML = `
+            <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.3; margin-bottom: 1rem;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 8l0 4"></path>
+                    <path d="M12 16l.01 0"></path>
+                </svg>
+                <p style="font-size: 1rem; font-weight: 600; margin: 0;">Nenhuma entrega fora do prazo</p>
+                <p style="font-size: 0.85rem; margin-top: 0.4rem;">Todas as entregas estão dentro do prazo previsto</p>
+            </div>
+        `;
+        return;
+    }
+    
+    const totalPages = Math.ceil(foraDoPrazo.length / ALERT_PAGE_SIZE);
+    const start = (alertModalPage - 1) * ALERT_PAGE_SIZE;
+    const pageData = foraDoPrazo.slice(start, start + ALERT_PAGE_SIZE);
+    
+    modalBody.innerHTML = `
+        <div style="overflow-x: auto;">
+            <table style="font-size: 0.85rem;">
+                <thead>
+                    <tr>
+                        <th style="padding: 8px 10px;">Nº NF</th>
+                        <th style="padding: 8px 10px;">Emissão</th>
+                        <th style="padding: 8px 10px;">Órgão</th>
+                        <th style="padding: 8px 10px;">Vendedor</th>
+                        <th style="padding: 8px 10px;">Previsão</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${pageData.map(f => `
+                        <tr>
+                            <td style="padding: 8px 10px;"><strong>${f.numero_nf || '-'}</strong></td>
+                            <td style="padding: 8px 10px; white-space: nowrap;">${formatDate(f.data_emissao)}</td>
+                            <td style="padding: 8px 10px; max-width: 160px; word-break: break-word; white-space: normal;">${f.nome_orgao || '-'}</td>
+                            <td style="padding: 8px 10px; white-space: nowrap;">${f.vendedor && f.vendedor !== 'NÃO INFORMADO' ? f.vendedor : '-'}</td>
+                            <td style="padding: 8px 10px; white-space: nowrap; color: #EF4444; font-weight: 600;">${formatDate(f.previsao_entrega)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        ${totalPages > 1 ? `
+        <div class="alert-pagination">
+            <button class="alert-page-btn" onclick="changeAlertPage(-1)" ${alertModalPage === 1 ? 'disabled' : ''}>‹</button>
+            <span class="alert-page-info">${alertModalPage} / ${totalPages}</span>
+            <button class="alert-page-btn" onclick="changeAlertPage(1)" ${alertModalPage === totalPages ? 'disabled' : ''}>›</button>
+        </div>
+        ` : ''}
+    `;
+}
+
+window.changeAlertPage = function(direction) {
+    const totalPages = Math.ceil(alertModalData.length / ALERT_PAGE_SIZE);
+    alertModalPage = Math.max(1, Math.min(totalPages, alertModalPage + direction));
+    renderAlertModalPage();
 };
 
 window.closeAlertModal = function() {
