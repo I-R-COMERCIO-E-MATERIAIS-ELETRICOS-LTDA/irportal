@@ -163,13 +163,7 @@ h2 {
 
 /* STATUS DE CONEXÃO */
 .connection-status {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4rem 1rem;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    font-weight: 600;
+    display: none !important;
 }
 
 .status-dot {
@@ -1278,7 +1272,9 @@ button.small {
 }
 
 .alert-modal {
-    max-width: 700px;
+    max-width: 680px;
+    max-height: 90vh;
+    overflow: hidden;
 }
 
 .modal-actions-alert {
@@ -1702,4 +1698,97 @@ button.small {
     .grafico-totais .total-value-simple {
         font-size: 1.5rem;
     }
+}
+
+/* ALERT MODAL PAGINATION */
+.alert-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0 0 0;
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.alert-page-btn {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    padding: 4px 14px;
+    border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin: 0;
+    line-height: 1.4;
+    transition: background 0.2s;
+}
+
+.alert-page-btn:hover:not(:disabled) {
+    background: var(--bg-secondary);
+    transform: none;
+}
+
+.alert-page-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background: var(--bg-card);
+}
+
+.alert-page-info {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 48px;
+    text-align: center;
+}
+
+/* FORM TAB NAV BUTTONS */
+.form-tab-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.tab-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    margin: 0;
+    transition: opacity 0.2s;
+}
+
+.tab-nav-btn:hover:not(:disabled) {
+    opacity: 0.8;
+    transform: none;
+}
+
+/* TABLE ROW HOVER FOR CLICKABLE ROWS */
+tbody tr[onclick] {
+    transition: background 0.15s;
+}
+
+tbody tr[onclick]:hover {
+    background: var(--table-hover) !important;
+}
+
+/* ALERT MODAL BODY - NO SCROLL */
+#alertModal .modal-content {
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#alertModal .modal-body {
+    overflow: hidden;
+    flex: 1;
 }
