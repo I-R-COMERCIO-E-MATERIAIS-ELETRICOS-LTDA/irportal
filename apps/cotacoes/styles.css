@@ -62,14 +62,12 @@ body {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
-/* SYNC BUTTON SPIN */
 @keyframes spinSync {
     to { transform: rotate(360deg); }
 }
 .sync-btn.syncing svg {
     animation: spinSync 0.8s linear infinite;
 }
-
 
 @keyframes fadeOut {
     to { opacity: 0; pointer-events: none; }
@@ -279,7 +277,6 @@ h2 {
     color: var(--text-secondary);
 }
 
-/* MONTH NAVIGATION INLINE */
 .month-navigation-inline {
     display: flex;
     align-items: center;
@@ -320,7 +317,6 @@ h2 {
     text-align: center;
 }
 
-/* CALENDAR MODAL */
 .calendar-modal {
     display: none;
     position: fixed;
@@ -753,6 +749,7 @@ button.success, button.save, button[type="submit"], .action-btn.success {
     background: var(--btn-save);
 }
 
+/* Botão Salvar/Atualizar na cor verde */
 .btn-save-green {
     background: #22C55E !important;
     color: white !important;
@@ -1260,7 +1257,6 @@ button.small {
     }
 }
 
-/* ── Modal de NF / Delete style ────────────────────────────────────────── */
 .modal-delete {
     text-align: center;
     padding: 2rem 2rem 1.5rem;
@@ -1289,7 +1285,6 @@ button.small {
     border-top: none !important;
 }
 
-/* NF Modal - input spacing away from close button */
 #nfModal .modal-delete {
     padding-top: 3.5rem;
 }
