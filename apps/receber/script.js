@@ -11,7 +11,7 @@ let sessionToken = null;
 let currentMonth = new Date().getMonth();
 let currentYear = new Date().getFullYear();
 let showAllMonths = false;
-let _editingParcelasTemp = []; // parcelas sendo editadas no modal
+let _editingParcelasTemp = [];
 
 const meses = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -74,7 +74,7 @@ function inicializarApp() {
 }
 
 // ============================================
-// CONEXÃO E STATUS
+// CONEXÃO E STATUS (removido o indicador visual)
 // ============================================
 async function checkServerStatus() {
     try {
@@ -97,18 +97,11 @@ async function checkServerStatus() {
             await loadContas();
         }
 
-        updateConnectionStatus();
         return isOnline;
     } catch (error) {
         isOnline = false;
-        updateConnectionStatus();
         return false;
     }
-}
-
-function updateConnectionStatus() {
-    const el = document.getElementById('connectionStatus');
-    if (el) el.className = isOnline ? 'connection-status online' : 'connection-status offline';
 }
 
 // ============================================
@@ -201,14 +194,12 @@ window.updateMonthDisplay = updateMonthDisplay;
 // DASHBOARD
 // ============================================
 function updateDashboard() {
-    // Para o dashboard de vencidos: sempre universal (todos os registros)
     const hoje = new Date().toISOString().split('T')[0];
 
     const vencido = contas.filter(c =>
         c.status === 'A RECEBER' && c.data_vencimento && c.data_vencimento < hoje
     ).length;
 
-    // Demais cards: filtrados pelo mês/ano selecionado
     const filtered = getContasFiltradas();
 
     const pago = filtered
@@ -233,9 +224,13 @@ function updateDashboard() {
     if (cardVencido) {
         cardVencido.classList.toggle('has-alert', vencido > 0);
     }
+
+    const badge = document.getElementById('pulseBadgeVencido');
+    if (badge) {
+        badge.style.display = vencido > 0 ? 'flex' : 'none';
+    }
 }
 
-// Verifica se o status representa um pagamento (total ou parcial)
 function isStatusPago(status) {
     if (!status) return false;
     return status === 'PAGO' || /parcela/i.test(status);
@@ -361,13 +356,11 @@ function renderRow(c, hoje) {
     const isPagoAlgum  = isPagoTotal || isParcial;
     const isVencido    = !isPagoAlgum && c.data_vencimento && c.data_vencimento < hoje;
 
-    // Calcular valor pago total (soma parcelas ou valor_pago simples)
     const parcelas = getParcelas(c);
     const valorPagoTotal = parcelas.length > 0
         ? parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0)
         : parseFloat(c.valor_pago || 0);
 
-    // Data de pagamento: última parcela paga (ou data_pagamento simples)
     let dataPgto = '-';
     if (parcelas.length > 0) {
         const datas = parcelas.map(p => p.data).filter(Boolean).sort();
@@ -455,15 +448,12 @@ window.togglePagamento = async function(id, checked) {
     if (!conta) return;
 
     if (checked) {
-        // Reverter checkbox até confirmar
         const chk = document.getElementById(`chk-${id}`);
         if (chk) chk.checked = false;
-
-        // Modal de confirmação: parcelado ou não?
         showConfirmacaoPagamentoModal(id, conta);
     } else {
-        // Desmarcar pagamento — reverter para A RECEBER
-        if (!confirm('Reverter este pagamento para "A RECEBER"?')) {
+        const confirm = await showConfirm(`Reverter pagamento da NF ${conta.numero_nf} para "A Receber"?`);
+        if (!confirm) {
             const chk = document.getElementById(`chk-${id}`);
             if (chk) chk.checked = true;
             return;
@@ -472,43 +462,123 @@ window.togglePagamento = async function(id, checked) {
     }
 };
 
-function showConfirmacaoPagamentoModal(id, conta) {
-    document.getElementById('confirmPagModal')?.remove();
+// ============================================
+// MODAL DE CONFIMAÇÃO GENÉRICO (estilo Controle de Frete)
+// ============================================
+function showConfirm(message, options = {}) {
+    return new Promise((resolve) => {
+        const { title = 'Confirmação', confirmText = 'Sim', cancelText = 'Cancelar', type = 'danger' } = options;
 
-    const html = `
-        <div class="modal-overlay show" id="confirmPagModal">
-            <div class="modal-content" style="max-width:420px;">
-                <div class="modal-header">
-                    <h3 class="modal-title">Confirmar Pagamento</h3>
-                    <button class="close-modal" onclick="document.getElementById('confirmPagModal').remove()">✕</button>
-                </div>
-                <div style="padding:1.5rem 0 0.5rem;">
-                    <p style="font-size:1rem;color:var(--text-primary);margin-bottom:1.5rem;text-align:center;">
-                        O pagamento da NF <strong>${conta.numero_nf}</strong> será parcelado?
-                    </p>
-                    <div class="modal-actions" style="justify-content:center;gap:1rem;">
-                        <button class="action-btn edit" style="min-width:110px;" onclick="document.getElementById('confirmPagModal').remove(); showFormModal('${id}', true);">Sim</button>
-                        <button class="action-btn success" style="min-width:110px;background:var(--btn-save);" onclick="confirmarPagamentoTotal('${id}')">Não</button>
-                        <button class="btn-cancel" style="min-width:110px;" onclick="document.getElementById('confirmPagModal').remove()">Cancelar</button>
+        const modalHTML = `
+            <div class="modal-overlay" id="confirmModal" style="display: flex !important; z-index: 10001 !important;">
+                <div class="modal-content confirm-modal-content" style="max-width: 450px !important;">
+                    <button class="close-modal" id="confirmModalClose">✕</button>
+                    <div class="confirm-modal-body">
+                        <h3 class="confirm-modal-title">${message}</h3>
+                    </div>
+                    <div class="modal-actions confirm-modal-actions">
+                        <button class="${type === 'danger' ? 'danger' : 'success'}" id="modalConfirmBtn">${confirmText}</button>
+                        <button class="secondary" id="modalCancelBtn">${cancelText}</button>
                     </div>
                 </div>
             </div>
-        </div>`;
+        `;
 
-    document.body.insertAdjacentHTML('beforeend', html);
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        const modal = document.getElementById('confirmModal');
+        const confirmBtn = document.getElementById('modalConfirmBtn');
+        const cancelBtn = document.getElementById('modalCancelBtn');
+        const closeBtn = document.getElementById('confirmModalClose');
+
+        if (modal) {
+            modal.style.display = 'flex';
+            modal.style.opacity = '1';
+        }
+
+        const closeModal = (result) => {
+            if (modal) {
+                modal.style.animation = 'fadeOut 0.2s ease forwards';
+                setTimeout(() => { 
+                    modal.remove(); 
+                    resolve(result); 
+                }, 200);
+            } else {
+                resolve(result);
+            }
+        };
+
+        if (confirmBtn) confirmBtn.addEventListener('click', () => closeModal(true));
+        if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal(false));
+        if (closeBtn) closeBtn.addEventListener('click', () => closeModal(false));
+        
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closeModal(false);
+                }
+            });
+        }
+
+        if (!document.querySelector('#modalAnimations')) {
+            const style = document.createElement('style');
+            style.id = 'modalAnimations';
+            style.textContent = `@keyframes fadeOut { to { opacity: 0; } }`;
+            document.head.appendChild(style);
+        }
+    });
+}
+
+// ============================================
+// CONFIRMAÇÃO DE PAGAMENTO (SIM / NÃO / CANCELAR)
+// ============================================
+function showConfirmacaoPagamentoModal(id, conta) {
+    document.getElementById('confirmPagModal')?.remove();
+
+    const modalHTML = `
+        <div class="modal-overlay" id="confirmPagModal" style="display: flex !important; z-index: 10001 !important;">
+            <div class="modal-content confirm-modal-content" style="max-width: 450px !important;">
+                <button class="close-modal" id="confirmPagClose">✕</button>
+                <div class="confirm-modal-body">
+                    <h3 class="confirm-modal-title">O pagamento da NF ${conta.numero_nf} será parcelado?</h3>
+                </div>
+                <div class="modal-actions confirm-modal-actions">
+                    <button class="action-btn edit" id="btnSim">Sim</button>
+                    <button class="action-btn success" id="btnNao" style="background: var(--btn-save);">Não</button>
+                    <button class="secondary" id="btnCancelar">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    const modal = document.getElementById('confirmPagModal');
+    const btnSim = document.getElementById('btnSim');
+    const btnNao = document.getElementById('btnNao');
+    const btnCancelar = document.getElementById('btnCancelar');
+    const btnClose = document.getElementById('confirmPagClose');
+
+    const fechar = () => modal && modal.remove();
+
+    btnSim.addEventListener('click', () => {
+        fechar();
+        showFormModal(id, true);
+    });
+    btnNao.addEventListener('click', () => {
+        fechar();
+        confirmarPagamentoTotal(id);
+    });
+    btnCancelar.addEventListener('click', fechar);
+    btnClose.addEventListener('click', fechar);
+    modal.addEventListener('click', (e) => { if (e.target === modal) fechar(); });
 }
 
 window.confirmarPagamentoTotal = async function(id) {
-    document.getElementById('confirmPagModal')?.remove();
     const conta = contas.find(x => String(x.id) === String(id));
     if (!conta) return;
-
-    // Abrir modal de edição na aba Valores e Datas com valor_pago = valor NF
     showFormModalPagamentoIntegral(id, conta);
 };
 
 window.showFormModalPagamentoIntegral = function(editingId, conta) {
-    // Abre o modal na aba de Valores e Datas, foco no pagamento
     showFormModal(editingId, false, true);
 };
 
@@ -516,14 +586,7 @@ window.showFormModalPagamentoIntegral = function(editingId, conta) {
 // AÇÕES DA TABELA
 // ============================================
 window.handleRowClick = function(event, id) {
-    // Não abrir se clicou em botão ou checkbox
     if (event.target.closest('button') || event.target.closest('input') || event.target.closest('label')) return;
-    const c = contas.find(x => String(x.id) === String(id));
-    if (!c) return showToast('Conta não encontrada!', 'error');
-    showViewModal(c);
-};
-
-window.handleViewClick = function(id) {
     const c = contas.find(x => String(x.id) === String(id));
     if (!c) return showToast('Conta não encontrada!', 'error');
     showViewModal(c);
@@ -538,11 +601,13 @@ window.handleEditClick = function(id) {
 window.handleDeleteClick = async function(id) {
     const conta = contas.find(x => String(x.id) === String(id));
     if (!conta) return showToast('Conta não encontrada!', 'error');
-    if (!confirm(`Excluir NF ${conta.numero_nf}?`)) return;
+
+    const confirm = await showConfirm(`Excluir NF ${conta.numero_nf}?`, { type: 'danger' });
+    if (!confirm) return;
 
     contas = contas.filter(x => String(x.id) !== String(id));
     filterContas();
-    showToast(`NF ${conta.numero_nf} excluída`, 'success');
+    showToast(`NF ${conta.numero_nf} excluída`, 'error');
 
     if (isOnline || DEVELOPMENT_MODE) {
         try {
@@ -679,19 +744,16 @@ window.showFormModal = function(editingId = null, focusPagamento = false, focusV
     const parcelas = c ? getParcelas(c) : [];
     _editingParcelasTemp = JSON.parse(JSON.stringify(parcelas));
 
-    // Calcular valor pago total das parcelas existentes
     const valorPagoAtual = _editingParcelasTemp.length > 0
         ? _editingParcelasTemp.reduce((s, p) => s + parseFloat(p.valor || 0), 0)
         : parseFloat(c?.valor_pago || 0);
 
-    // Data de pagamento atual
     let dataPgAtual = c?.data_pagamento || '';
     if (_editingParcelasTemp.length > 0) {
         const datas = _editingParcelasTemp.map(p => p.data).filter(Boolean).sort();
         if (datas.length > 0) dataPgAtual = datas[datas.length - 1];
     }
 
-    // Aba inicial
     const activeTab = focusPagamento ? 2 : (focusValores ? 1 : 0);
     const tabActive = (idx) => activeTab === idx ? 'active' : '';
 
@@ -834,7 +896,6 @@ window.showFormModal = function(editingId = null, focusPagamento = false, focusV
     document.getElementById('formModal')?.remove();
     document.body.insertAdjacentHTML('beforeend', html);
 
-    // Maiúsculas automáticas
     ['f_numero_nf', 'f_orgao', 'f_banco'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', e => {
@@ -844,7 +905,6 @@ window.showFormModal = function(editingId = null, focusPagamento = false, focusV
         });
     });
 
-    // Renderizar parcelas existentes
     renderParcelasForm();
     window._formTabIndex = activeTab;
     updateFormNavState();
@@ -879,7 +939,7 @@ function updateFormNavState() {
     const save = document.getElementById('btnFormSave');
     if (prev) prev.style.display = idx === 0 ? 'none' : 'inline-flex';
     if (next) next.style.display = idx === FORM_TABS.length - 1 ? 'none' : 'inline-flex';
-    if (save) save.style.display = 'inline-flex'; // sempre visível
+    if (save) save.style.display = 'inline-flex';
 }
 
 window.closeFormModal = function() {
@@ -923,19 +983,14 @@ function renderParcelasForm() {
 
 window.adicionarParcelaForm = function() {
     const numero = (_editingParcelasTemp.length + 1);
-    const sufixos = ['ª','ª','ª','ª','ª','ª','ª','ª','ª','ª'];
-    const label = numero + (sufixos[numero-1] || 'ª') + ' Parcela';
-    _editingParcelasTemp.push({ numero: label, valor: 0, data: '' });
+    _editingParcelasTemp.push({ numero: numero + 'ª Parcela', valor: 0, data: '' });
     renderParcelasForm();
     atualizarValorPagoForm();
 };
 
 window.removerParcelaForm = function(i) {
     _editingParcelasTemp.splice(i, 1);
-    // Renumerar
-    _editingParcelasTemp.forEach((p, idx) => {
-        p.numero = (idx + 1) + 'ª Parcela';
-    });
+    _editingParcelasTemp.forEach((p, idx) => p.numero = (idx + 1) + 'ª Parcela');
     renderParcelasForm();
     atualizarValorPagoForm();
 };
@@ -947,7 +1002,6 @@ function atualizarValorPagoForm() {
         elVP.value = total > 0 ? total.toFixed(2) : '';
     }
 
-    // Data de pagamento = última parcela com data preenchida
     const datas = _editingParcelasTemp.map(p => p.data).filter(Boolean).sort();
     const elData = document.getElementById('f_data_pagamento');
     if (elData && !elData.dataset.manualEdit) {
@@ -955,7 +1009,6 @@ function atualizarValorPagoForm() {
     }
 }
 
-// Marcar como edição manual ao digitar diretamente nos campos
 document.addEventListener('change', function(e) {
     if (e.target.id === 'f_valor_pago' || e.target.id === 'f_data_pagamento') {
         e.target.dataset.manualEdit = '1';
@@ -1028,11 +1081,9 @@ window.handleSubmitForm = async function(editId) {
         return;
     }
 
-    // Parcelas
     const parcelas = _editingParcelasTemp.filter(p => p.valor > 0 || p.data);
     const totalParcelas = parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
 
-    // Validação: se há parcelas, todas precisam de data
     for (const p of parcelas) {
         if (p.valor > 0 && !p.data) {
             showToast(`Preencha a data de pagamento da ${p.numero}`, 'error');
@@ -1040,24 +1091,20 @@ window.handleSubmitForm = async function(editId) {
         }
     }
 
-    // Valor pago: lê o campo (pode ser manual ou calculado pelas parcelas)
     const valorPagoCampo = parseFloat(document.getElementById('f_valor_pago')?.value) || 0;
     const valorPago = parcelas.length > 0 ? totalParcelas : valorPagoCampo;
 
-    // Data de pagamento: lê o campo (pode ser manual ou automático)
     let data_pagamento = document.getElementById('f_data_pagamento')?.value || null;
     if (parcelas.length > 0 && !document.getElementById('f_data_pagamento')?.dataset.manualEdit) {
         const datas = parcelas.map(p => p.data).filter(Boolean).sort();
         data_pagamento = datas.length > 0 ? datas[datas.length - 1] : null;
     }
 
-    // Status
     let status = document.getElementById('f_status')?.value || 'A RECEBER';
     if (parcelas.length > 0) {
         if (totalParcelas >= valor && valor > 0) {
             status = 'PAGO';
         } else if (totalParcelas > 0) {
-            // Ordinal: "1ª PARCELA", "2ª PARCELA"...
             status = parcelas.length + 'ª PARCELA';
         }
     } else if (valorPago > 0 && valor > 0 && valorPago >= valor) {
@@ -1131,26 +1178,44 @@ async function salvarConta(id, data, silencioso = false) {
 }
 
 // ============================================
-// MODAL DE VENCIDOS
+// MODAL DE VENCIDOS (com paginação)
 // ============================================
+let vencidosModalPage = 1;
+const VENCIDOS_PAGE_SIZE = 4;
+let vencidosModalData = [];
+
 window.showVencidosModal = function() {
     const hoje = new Date().toISOString().split('T')[0];
-    const vencidos = contas.filter(c =>
+    vencidosModalData = contas.filter(c =>
         c.status === 'A RECEBER' && c.data_vencimento && c.data_vencimento < hoje
     ).sort((a, b) => a.data_vencimento.localeCompare(b.data_vencimento));
 
+    vencidosModalPage = 1;
+    renderVencidosModalPage();
+
+    const modal = document.getElementById('vencidosModal');
+    if (modal) modal.style.display = 'flex';
+};
+
+function renderVencidosModalPage() {
     const body = document.getElementById('vencidosModalBody');
     if (!body) return;
 
-    if (vencidos.length === 0) {
-        body.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Nenhuma conta vencida</div>';
+    const totalPages = Math.ceil(vencidosModalData.length / VENCIDOS_PAGE_SIZE);
+    const start = (vencidosModalPage - 1) * VENCIDOS_PAGE_SIZE;
+    const pageData = vencidosModalData.slice(start, start + VENCIDOS_PAGE_SIZE);
+
+    let html = '';
+
+    if (pageData.length === 0) {
+        html = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Nenhuma conta vencida</div>';
     } else {
-        body.innerHTML = `
+        html = `
             <div style="overflow-x:auto;">
                 <table>
                     <thead><tr><th>NF</th><th>Órgão</th><th>Vendedor</th><th>Vencimento</th><th>Valor</th></tr></thead>
                     <tbody>
-                        ${vencidos.map(c => `
+                        ${pageData.map(c => `
                             <tr>
                                 <td><strong>${c.numero_nf || '-'}</strong></td>
                                 <td>${c.orgao || '-'}</td>
@@ -1163,8 +1228,22 @@ window.showVencidosModal = function() {
             </div>`;
     }
 
-    const modal = document.getElementById('vencidosModal');
-    if (modal) modal.style.display = 'flex';
+    if (totalPages > 1) {
+        html += `
+            <div class="alert-pagination">
+                <button class="alert-page-btn" onclick="changeVencidosPage(-1)" ${vencidosModalPage === 1 ? 'disabled' : ''}>‹</button>
+                <span class="alert-page-info">${vencidosModalPage} / ${totalPages}</span>
+                <button class="alert-page-btn" onclick="changeVencidosPage(1)" ${vencidosModalPage === totalPages ? 'disabled' : ''}>›</button>
+            </div>`;
+    }
+
+    body.innerHTML = html;
+}
+
+window.changeVencidosPage = function(direction) {
+    const totalPages = Math.ceil(vencidosModalData.length / VENCIDOS_PAGE_SIZE);
+    vencidosModalPage = Math.max(1, Math.min(totalPages, vencidosModalPage + direction));
+    renderVencidosModalPage();
 };
 
 window.closeVencidosModal = function() {
