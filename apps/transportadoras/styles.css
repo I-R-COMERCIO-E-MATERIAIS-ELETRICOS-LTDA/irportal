@@ -1,4 +1,6 @@
-/* VARIÁVEIS BASE */
+/* ============================================
+   VARIÁVEIS BASE
+   ============================================ */
 :root {
     --primary: #ff521d;
     --bg-primary: #FFFFFF;
@@ -219,11 +221,13 @@ tbody tr:hover {
     white-space: nowrap;
     min-width: 160px;
 }
+
 .actions {
     display: flex;
     gap: 8px;
     justify-content: center;
 }
+
 .action-btn {
     padding: 8px 12px;
     font-size: 0.85rem;
@@ -231,6 +235,9 @@ tbody tr:hover {
     min-width: 70px;
     border-radius: 6px;
     font-weight: 600;
+    border: none;
+    color: white;
+    cursor: pointer;
 }
 
 /* FORMULÁRIO E MODAL */
@@ -240,9 +247,11 @@ tbody tr:hover {
     gap: 1.2rem;
     margin-bottom: 1.5rem;
 }
+
 .form-group {
     margin-bottom: 1rem;
 }
+
 label {
     display: block;
     margin-bottom: 8px;
@@ -250,6 +259,7 @@ label {
     color: var(--text-primary);
     font-size: 0.9rem;
 }
+
 input, select, textarea {
     width: 100%;
     padding: 12px 16px;
@@ -261,10 +271,12 @@ input, select, textarea {
     font-family: inherit;
     transition: all 0.2s ease;
 }
+
 input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--primary);
 }
+
 button {
     background: var(--primary);
     color: white;
@@ -281,35 +293,55 @@ button {
     gap: 0.5rem;
     transition: all 0.3s ease;
 }
+
 button:hover:not(:disabled) {
     opacity: 0.9;
     transform: translateY(-1px);
 }
+
 button:disabled {
     background: #9CA3AF;
     cursor: not-allowed;
     opacity: 0.5;
 }
+
 button.btn-save-green {
     background: #22C55E !important;
     color: white !important;
 }
+
 button.btn-save-green:hover {
     background: #16A34A !important;
 }
+
 button.cancel-close {
     background: #EF4444;
 }
+
+button.secondary {
+    background: #6B7280;
+}
+
+button.success {
+    background: var(--btn-save) !important;
+}
+
+button.danger {
+    background: var(--btn-delete) !important;
+}
+
 button.close-modal {
     background: transparent !important;
     padding: 0 !important;
     margin: 0 !important;
     border-radius: 0 !important;
 }
+
 button.close-modal:hover {
     opacity: 1 !important;
     transform: none !important;
 }
+
 .modal-overlay {
     display: none;
     position: fixed;
@@ -325,12 +357,15 @@ button.close-modal:hover {
     opacity: 0;
     animation: fadeIn 0.2s ease forwards;
 }
+
 .modal-overlay.show {
     display: flex;
 }
+
 @keyframes fadeIn {
     to { opacity: 1; }
 }
+
 .modal-content {
     background: var(--bg-card);
     border-radius: 16px;
@@ -344,9 +379,11 @@ button.close-modal:hover {
     transform: scale(0.9);
     animation: scaleIn 0.2s ease forwards;
 }
+
 @keyframes scaleIn {
     to { transform: scale(1); }
 }
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -355,15 +392,18 @@ button.close-modal:hover {
     padding-bottom: 1rem;
     border-bottom: 2px solid var(--border-color);
 }
+
 .modal-title {
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--text-primary);
     margin: 0;
 }
+
 .tabs-container {
     margin-bottom: 1.5rem;
 }
+
 .tabs-nav {
     display: flex;
     gap: 0.5rem;
@@ -372,6 +412,7 @@ button.close-modal:hover {
     overflow-x: auto;
     flex-wrap: wrap;
 }
+
 .tab-btn {
     background: transparent;
     border: none;
@@ -386,26 +427,32 @@ button.close-modal:hover {
     margin: 0;
     border-radius: 0;
 }
+
 .tab-btn:hover {
     color: var(--text-primary);
     background: rgba(255, 82, 29, 0.05);
 }
+
 .tab-btn.active {
     color: var(--primary);
     border-bottom-color: var(--primary);
     background: transparent;
 }
+
 .tab-content {
     display: none;
     animation: fadeInTab 0.3s ease;
 }
+
 .tab-content.active {
     display: block;
 }
+
 @keyframes fadeInTab {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
 .modal-actions {
     display: flex;
     gap: 0.75rem;
@@ -414,21 +461,24 @@ button.close-modal:hover {
     padding-top: 1.5rem;
     border-top: 2px solid var(--border-color);
 }
+
 .modal-actions button {
     margin: 0;
     min-width: 120px;
 }
-/* Chips (seletores de região/estado) - RETANGULARES */
+
+/* Chips (seletores de região/estado) */
 .chips-container {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 8px;
 }
+
 .chip-selector {
     background: var(--input-bg);
     border: 1px solid var(--border-color);
-    border-radius: 6px;        /* retangular */
+    border-radius: 6px;
     padding: 8px 16px;
     font-size: 0.85rem;
     font-weight: 500;
@@ -437,15 +487,46 @@ button.close-modal:hover {
     transition: all 0.2s ease;
     margin: 0;
 }
+
 .chip-selector:hover {
     background: rgba(255, 82, 29, 0.1);
     border-color: var(--primary);
 }
+
 .chip-selector.selected {
     background: #22C55E;
     border-color: #22C55E;
     color: white;
 }
+
+/* Modal de exclusão */
+.modal-delete {
+    position: relative;
+    padding: 2.5rem 2rem 2rem 2rem;
+    max-width: 500px !important;
+}
+
+.modal-delete .close-modal {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+}
+
+.modal-message-delete {
+    margin: 2rem 0 2.5rem 0;
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    line-height: 1.6;
+    text-align: center;
+    font-weight: 500;
+}
+
+.modal-actions-no-border {
+    border-top: none !important;
+    padding-top: 0 !important;
+    justify-content: center !important;
+}
+
 /* Mensagens flutuantes */
 .floating-message {
     position: fixed;
@@ -461,23 +542,28 @@ button.close-modal:hover {
     animation: slideInBottom 0.3s ease;
     min-width: 300px;
 }
+
 .floating-message.success {
     background: #10B981;
     color: #FFFFFF;
     border-color: #059669;
 }
+
 .floating-message.error {
     background: #EF4444;
     color: #FFFFFF;
     border-color: #DC2626;
 }
+
 @keyframes slideInBottom {
     from { opacity: 0; transform: translateY(100px); }
     to { opacity: 1; transform: translateY(0); }
 }
+
 @keyframes slideOutBottom {
     to { opacity: 0; transform: translateY(100px); }
 }
+
 /* Responsivo */
 @media (max-width: 768px) {
     .container { padding: 0 1rem 5rem 1rem; margin: 1rem auto; }
@@ -497,33 +583,3 @@ button.close-modal:hover {
     .chips-container { gap: 6px; }
     .chip-selector { padding: 6px 12px; font-size: 0.75rem; }
 }
-
-/* Copie do styles - Ordem de compra.css */
-.modal-delete {
-    position: relative;
-    padding: 2.5rem 2rem 2rem 2rem;
-    max-width: 500px !important;
-}
-.modal-delete .close-modal {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
-}
-.modal-message-delete {
-    margin: 2rem 0 2.5rem 0;
-    color: var(--text-primary);
-    font-size: 1.25rem;
-    line-height: 1.6;
-    text-align: center;
-    font-weight: 500;
-}
-.modal-actions-no-border {
-    border-top: none !important;
-    padding-top: 0 !important;
-    justify-content: center !important;
-}
-
-.modal-delete { position: relative; padding: 2.5rem 2rem 2rem 2rem; max-width: 500px !important; }
-.modal-delete .close-modal { position: absolute; top: 1rem; right: 1rem; }
-.modal-message-delete { margin: 2rem 0 2.5rem 0; color: var(--text-primary); font-size: 1.25rem; line-height: 1.6; text-align: center; font-weight: 500; }
-.modal-actions-no-border { border-top: none !important; padding-top: 0 !important; justify-content: center !important; }
