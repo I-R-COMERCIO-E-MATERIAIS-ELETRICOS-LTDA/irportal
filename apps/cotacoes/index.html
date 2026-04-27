@@ -163,9 +163,7 @@
                     <table>
                         <thead>
                             <tr>
-                                <th style="width: 40px; text-align: center;">
-                                    <span style="font-size: 1.1rem;">✓</span>
-                                </th>
+                                <th style="width: 40px; text-align: center;">✓</th>
                                 <th>Data</th>
                                 <th>Transportadora</th>
                                 <th>Destino</th>
@@ -200,93 +198,52 @@
                 <!-- Tab Geral -->
                 <div class="tab-content active" id="form-tab-geral">
                     <div class="form-grid" style="padding: 1rem 0;">
-                        <div class="form-group">
-                            <label>Data da Cotação</label>
-                            <input type="text" id="dataCotacao" placeholder="DD/MM/YYYY">
-                        </div>
-                        <div class="form-group">
-                            <label>Transportadora *</label>
-                            <select id="transportadora">
-                                <option value="">Selecione...</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Destino</label>
-                            <input type="text" id="destino" placeholder="Cidade / Estado">
-                        </div>
-                        <div class="form-group">
-                            <label>Documento</label>
-                            <input type="text" id="documento" placeholder="Nº do documento">
-                        </div>
-                        <div class="form-group">
-                            <label>Nº da Cotação</label>
-                            <input type="text" id="numeroCotacao" placeholder="Nº da cotação">
-                        </div>
-                        <div class="form-group">
-                            <label>Responsável</label>
-                            <input type="text" id="responsavel" placeholder="Nome do responsável">
-                        </div>
-                        <div class="form-group">
-                            <label>Vendedor</label>
-                            <input type="text" id="vendedor" placeholder="Nome do vendedor">
-                        </div>
+                        <div class="form-group"><label>Data da Cotação</label><input type="text" id="dataCotacao" placeholder="DD/MM/YYYY"></div>
+                        <div class="form-group"><label>Transportadora *</label><select id="transportadora"><option value="">Selecione...</option></select></div>
+                        <div class="form-group"><label>Destino</label><input type="text" id="destino" placeholder="Cidade / Estado"></div>
+                        <div class="form-group"><label>Documento</label><input type="text" id="documento" placeholder="Nº do documento"></div>
+                        <div class="form-group"><label>Nº da Cotação</label><input type="text" id="numeroCotacao" placeholder="Nº da cotação"></div>
+                        <div class="form-group"><label>Responsável</label><input type="text" id="responsavel" placeholder="Nome do responsável"></div>
+                        <div class="form-group"><label>Vendedor</label><input type="text" id="vendedor" placeholder="Nome do vendedor"></div>
                     </div>
                 </div>
 
                 <!-- Tab Transportadora -->
                 <div class="tab-content" id="form-tab-transportadora">
                     <div class="form-grid" style="padding: 1rem 0;">
-                        <div class="form-group">
-                            <label>Responsável na Transportadora</label>
-                            <input type="text" id="responsavelTransportadora" placeholder="Nome do responsável">
-                        </div>
-                        <div class="form-group">
-                            <label>Canal de Comunicação</label>
-                            <input type="text" id="canalComunicacao" placeholder="WhatsApp, E-mail, Telefone...">
-                        </div>
-                        <div class="form-group">
-                            <label>Código de Coleta</label>
-                            <input type="text" id="codigoColeta" placeholder="Código">
-                        </div>
+                        <div class="form-group"><label>Resp. na Transp.</label><input type="text" id="responsavelTransportadora" placeholder="Nome do responsável"></div>
+                        <div class="form-group"><label>Canal Comunicação</label><input type="text" id="canalComunicacao" placeholder="WhatsApp, E-mail..."></div>
+                        <div class="form-group"><label>Código Coleta</label><input type="text" id="codigoColeta" placeholder="Código"></div>
                     </div>
                 </div>
 
                 <!-- Tab Detalhes -->
                 <div class="tab-content" id="form-tab-detalhes">
                     <div class="form-grid" style="padding: 1rem 0;">
-                        <div class="form-group">
-                            <label>Valor do Frete (R$)</label>
-                            <input type="number" id="valorFrete" min="0" step="0.01" placeholder="0.00">
-                        </div>
-                        <div class="form-group">
-                            <label>Previsão de Entrega</label>
-                            <input type="text" id="previsaoEntrega" placeholder="DD/MM/YYYY">
-                        </div>
-                        <div class="form-group form-group-full">
-                            <label>Observações</label>
-                            <textarea id="observacoes" rows="4" placeholder="Observações adicionais..."></textarea>
-                        </div>
+                        <div class="form-group"><label>Valor do Frete (R$)</label><input type="number" id="valorFrete" min="0" step="0.01" placeholder="0.00"></div>
+                        <div class="form-group"><label>Previsão Entrega</label><input type="text" id="previsaoEntrega" placeholder="DD/MM/YYYY"></div>
+                        <div class="form-group form-group-full"><label>Observações</label><textarea id="observacoes" rows="4" placeholder="Observações..."></textarea></div>
                     </div>
                 </div>
             </div>
 
             <div class="modal-actions">
-                <button type="button" id="btnFormPrevious" onclick="previousFormTab()" class="secondary" style="display:none;">← Anterior</button>
-                <button type="button" id="btnFormNext" onclick="nextFormTab()" class="secondary">Próximo →</button>
+                <button type="button" id="btnFormPrevious" onclick="previousFormTab()" class="secondary" style="display:none;">Anterior</button>
+                <button type="button" id="btnFormNext" onclick="nextFormTab()" class="secondary">Próximo</button>
                 <button type="button" id="btnFormSave" onclick="saveCotacao()" class="btn-save-green">Salvar</button>
                 <button type="button" onclick="closeFormModal()" class="cancel-close">Cancelar</button>
             </div>
         </div>
     </div>
 
-    <!-- MODAL DE CONFIRMAÇÃO DE EXCLUSÃO -->
+    <!-- MODAL DE EXCLUSÃO -->
     <div class="modal-overlay" id="deleteModal">
         <div class="modal-content modal-delete" style="max-width: 500px;">
             <button class="close-modal" onclick="closeDeleteModal()">✕</button>
             <div class="modal-message-delete" id="deleteModalMessage">Tem certeza que deseja excluir esta cotação?</div>
             <div class="modal-actions modal-actions-no-border">
-                <button type="button" id="confirmDeleteBtn" class="danger">Excluir</button>
-                <button type="button" onclick="closeDeleteModal()" class="secondary">Cancelar</button>
+                <button type="button" id="confirmDeleteBtn" class="danger">Sim</button>
+                <button type="button" onclick="closeDeleteModal()" class="success">Cancelar</button>
             </div>
         </div>
     </div>
@@ -294,11 +251,7 @@
     <!-- MODAL DE VISUALIZAÇÃO -->
     <div class="modal-overlay" id="infoModal">
         <div class="modal-content">
-            <div class="modal-header">
-                <h3 class="modal-title">Cotação - <span id="modalDocumento"></span></h3>
-                <button class="close-modal" onclick="closeInfoModal()">✕</button>
-            </div>
-
+            <div class="modal-header"><h3 class="modal-title">Cotação - <span id="modalDocumento"></span></h3><button class="close-modal" onclick="closeInfoModal()">✕</button></div>
             <div class="tabs-container">
                 <div class="tabs-nav">
                     <button class="tab-btn active" onclick="switchInfoTab('info-tab-geral')">Geral</button>
@@ -309,9 +262,8 @@
                 <div class="tab-content" id="info-tab-transportadora"></div>
                 <div class="tab-content" id="info-tab-detalhes"></div>
             </div>
-
             <div class="modal-actions">
-                <button type="button" id="btnInfoPrevious" onclick="previousInfoTab()" class="secondary" style="display: none;">Anterior</button>
+                <button type="button" id="btnInfoPrevious" onclick="previousInfoTab()" class="secondary" style="display:none;">Anterior</button>
                 <button type="button" id="btnInfoNext" onclick="nextInfoTab()" class="secondary">Próximo</button>
                 <button type="button" id="btnInfoClose" onclick="closeInfoModal()" class="cancel-close">Fechar</button>
             </div>
