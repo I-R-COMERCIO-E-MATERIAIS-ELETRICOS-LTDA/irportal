@@ -45,14 +45,15 @@ function detectResponsavelFromUser() {
 
 function userCanToggleEmissao() {
     if (!currentUser) return false;
-    // Verifica todos os campos possíveis de role/cargo/setor
-    const allFields = Object.values(currentUser).map(v => String(v || '').toLowerCase()).join(' ');
-    const role = (currentUser.role || currentUser.cargo || currentUser.setor || currentUser.perfil || currentUser.tipo || '').toLowerCase();
-    const name = (currentUser.name || currentUser.nome || currentUser.username || currentUser.email || '').toLowerCase();
-    if (ROLES_CHECKBOX.some(r => role.includes(r))) return true;
-    if (ROLES_CHECKBOX.some(r => allFields.includes(r))) return true;
+    // is_admin = acesso total
+    if (currentUser.is_admin === true) return true;
+    // sector = campo do servidor (ex: "financeiro", "administrador")
+    const sector = (currentUser.sector || '').toLowerCase();
+    if (ROLES_CHECKBOX.some(r => sector.includes(r))) return true;
+    // fallback: checar nome
+    const name = (currentUser.name || currentUser.nome || currentUser.username || '').toLowerCase();
     if (NAMES_CHECKBOX.some(n => name.includes(n))) return true;
-    console.log('🔒 Usuário sem permissão para emissão:', JSON.stringify(currentUser));
+    console.log('🔒 Sem permissão:', JSON.stringify(currentUser));
     return false;
 }
 // ============================================
@@ -151,29 +152,19 @@ async function verificarAutenticacao() {
     }
 
     try {
-        const verifyRes = await fetch(`${PORTAL_URL}/api/verify-session`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionToken })
+        // Busca dados do usuário no próprio servidor (que já valida o token)
+        const meRes = await fetch(`${API_URL}/pedidos/me`, {
+            headers: { 'X-Session-Token': sessionToken }
         });
-        if (verifyRes.ok) {
-            const sessionData = await verifyRes.json();
-            if (sessionData.valid && sessionData.session) {
-                currentUser = sessionData.session;
-                sessionStorage.setItem('pedidosUserData', JSON.stringify(currentUser));
-            } else if (sessionData.valid && sessionData.user) {
-                currentUser = sessionData.user;
-                sessionStorage.setItem('pedidosUserData', JSON.stringify(currentUser));
-            } else if (sessionData.valid) {
-                // Tenta usar o próprio sessionData como currentUser
-                currentUser = sessionData;
-                sessionStorage.setItem('pedidosUserData', JSON.stringify(currentUser));
-            } else {
-                mostrarTelaAcessoNegado('Sua sessão expirou');
-                return;
-            }
+        if (meRes.ok) {
+            currentUser = await meRes.json();
+            sessionStorage.setItem('pedidosUserData', JSON.stringify(currentUser));
+        } else if (meRes.status === 401) {
+            mostrarTelaAcessoNegado('Sua sessão expirou');
+            return;
         }
     } catch(e) {
+        // Fallback: usa dados salvos localmente
         try {
             const userData = sessionStorage.getItem('pedidosUserData');
             if (userData) currentUser = JSON.parse(userData);
