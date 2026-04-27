@@ -185,7 +185,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE FORMULÁRIO -->
+    <!-- MODAL DE FORMULÁRIO (checkbox "Negócio Fechado" removido) -->
     <div class="modal-overlay" id="formModal">
         <div class="modal-content">
             <div class="modal-header">
@@ -200,7 +200,7 @@
                     <button class="tab-btn" onclick="switchFormTab('form-tab-detalhes')">Detalhes</button>
                 </div>
 
-                <!-- Tab Geral -->
+                <!-- Tab Geral (sem checkbox de negócio fechado) -->
                 <div class="tab-content active" id="form-tab-geral">
                     <div class="form-grid" style="padding: 1rem 0;">
                         <div class="form-group">
@@ -232,10 +232,6 @@
                         <div class="form-group">
                             <label>Vendedor</label>
                             <input type="text" id="vendedor" placeholder="Nome do vendedor">
-                        </div>
-                        <div class="form-group" style="display:flex;align-items:center;gap:0.75rem;padding-top:1.5rem;">
-                            <input type="checkbox" id="negocioFechado" style="width:18px;height:18px;cursor:pointer;">
-                            <label for="negocioFechado" style="cursor:pointer;margin:0;">Negócio Fechado (Aprovada)</label>
                         </div>
                     </div>
                 </div>
