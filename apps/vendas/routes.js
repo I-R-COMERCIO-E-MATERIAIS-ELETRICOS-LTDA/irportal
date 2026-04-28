@@ -6,6 +6,7 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
+    // GET /
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor, status_frete, status_pagamento } = req.query;
@@ -28,6 +29,7 @@ module.exports = function (supabase) {
         }
     });
 
+    // GET /:id
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase.from('vendas').select('*').eq('id', req.params.id).single();
@@ -40,16 +42,16 @@ module.exports = function (supabase) {
         }
     });
 
+    // POST /sincronizar
     router.post('/sincronizar', async (req, res) => {
         try {
             let inseridos = 0, atualizados = 0;
 
-            // 1. FREInclusão apenas de status que não sejam devolução/devolvida
+            // 1. Fretes (exceto devoluções)
             const { data: fretes, error: erroFrete } = await supabase
                 .from('controle_frete')
                 .select('*')
                 .not('status', 'in', '("DEVOLVIDO","DEVOLUCAO")');
-
             if (erroFrete) throw erroFrete;
 
             for (const f of fretes) {
@@ -87,20 +89,19 @@ module.exports = function (supabase) {
                     .maybeSingle();
 
                 if (existente) {
-                    const { error: upErr } = await supabase.from('vendas').update(payload).eq('id', existente.id);
-                    if (!upErr) atualizados++;
+                    await supabase.from('vendas').update(payload).eq('id', existente.id);
+                    atualizados++;
                 } else {
-                    const { error: insErr } = await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]);
-                    if (!insErr) inseridos++;
+                    await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]);
+                    inseridos++;
                 }
             }
 
-            // 2. CONTAS A RECEBER — apenas status PAGO ou que contenham PARCELA
+            // 2. Contas a receber (apenas PAGO ou PARCELA)
             const { data: contas, error: erroContas } = await supabase
                 .from('contas_receber')
                 .select('*')
                 .or('status.eq.PAGO,status.ilike.%PARCELA%');
-
             if (erroContas) throw erroContas;
 
             for (const c of contas) {
@@ -133,9 +134,8 @@ module.exports = function (supabase) {
                     .maybeSingle();
 
                 if (existente) {
-                    const update = { ...payloadPgto };
-                    const { error: upErr } = await supabase.from('vendas').update(update).eq('id', existente.id);
-                    if (!upErr) atualizados++;
+                    await supabase.from('vendas').update(payloadPgto).eq('id', existente.id);
+                    atualizados++;
                 } else {
                     const novo = {
                         numero_nf: c.numero_nf,
@@ -148,8 +148,8 @@ module.exports = function (supabase) {
                         ...payloadPgto,
                         prioridade: 1
                     };
-                    const { error: insErr } = await supabase.from('vendas').insert([novo]);
-                    if (!insErr) inseridos++;
+                    await supabase.from('vendas').insert([novo]);
+                    inseridos++;
                 }
             }
 
