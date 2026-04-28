@@ -6,7 +6,7 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── GET /api/contas ────────────────────────────────────────────────────────
+    // ─── GET /api/contas ────────────────────────────────────────────────────
     router.get('/contas', async (req, res) => {
         try {
             const { mes, ano } = req.query;
@@ -21,7 +21,7 @@ module.exports = function (supabase) {
                 const mesNum  = parseInt(mes);
                 const anoNum  = parseInt(ano);
                 const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
-                const fimDate = new Date(anoNum, mesNum, 0); // último dia do mês
+                const fimDate = new Date(anoNum, mesNum, 0);
                 const fim     = fimDate.toISOString().split('T')[0];
                 query = query.gte('data_vencimento', inicio).lte('data_vencimento', fim);
             }
@@ -35,7 +35,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── GET /api/contas/grupo/:grupoId ─────────────────────────────────────────
+    // ─── GET /api/contas/grupo/:grupoId ─────────────────────────────────────
     router.get('/contas/grupo/:grupoId', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -51,7 +51,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── POST /api/contas ────────────────────────────────────────────────────────
+    // ─── POST /api/contas ───────────────────────────────────────────────────
     router.post('/contas', async (req, res) => {
         try {
             const body = req.body;
@@ -72,7 +72,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── PUT /api/contas/:id ─────────────────────────────────────────────────────
+    // ─── PUT /api/contas/:id ────────────────────────────────────────────────
     router.put('/contas/:id', async (req, res) => {
         try {
             const body = { ...req.body };
@@ -95,7 +95,29 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── DELETE /api/contas/:id ──────────────────────────────────────────────────
+    // ─── PATCH /api/contas/:id (NOVO – resolve o erro 404 no toggle) ────────
+    router.patch('/contas/:id', async (req, res) => {
+        try {
+            const updates = { ...req.body, updated_at: new Date().toISOString() };
+            delete updates.id;
+            delete updates.created_at;
+
+            const { data, error } = await supabase
+                .from('contas_pagar')
+                .update(updates)
+                .eq('id', req.params.id)
+                .select()
+                .single();
+            if (error) throw error;
+            if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
+            res.json(data);
+        } catch (err) {
+            console.error('[pagar] PATCH /contas/:id:', err.message);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
+    // ─── DELETE /api/contas/:id ─────────────────────────────────────────────
     router.delete('/contas/:id', async (req, res) => {
         try {
             const { error } = await supabase
