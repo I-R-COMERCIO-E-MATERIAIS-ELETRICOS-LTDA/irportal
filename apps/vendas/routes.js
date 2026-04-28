@@ -161,6 +161,13 @@ module.exports = function (supabase) {
                             }
                         } catch (_) { /* mantém valor original */ }
 
+                        // id_contas_receber na tabela vendas é bigint,
+                        // mas contas_receber pode usar UUID como id.
+                        // Só gravamos se o valor for um inteiro válido.
+                        const idContasReceber = Number.isInteger(Number(c.id)) && !isNaN(Number(c.id))
+                            ? Number(c.id)
+                            : null;
+
                         // Campos de pagamento que serão gravados / atualizados
                         const payFields = {
                             banco:              c.banco            || null,
@@ -168,7 +175,7 @@ module.exports = function (supabase) {
                             data_pagamento:     c.data_pagamento   || null,
                             status_pagamento:   c.status           || 'A RECEBER',
                             valor_pago:         valorPago,
-                            id_contas_receber:  c.id,
+                            id_contas_receber:  idContasReceber,
                             updated_at:         new Date().toISOString(),
                         };
 
