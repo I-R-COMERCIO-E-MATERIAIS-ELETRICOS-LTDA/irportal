@@ -21,7 +21,7 @@ module.exports = function (supabase) {
                 const mesNum  = parseInt(mes);
                 const anoNum  = parseInt(ano);
                 const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
-                const fimDate = new Date(anoNum, mesNum, 0);
+                const fimDate = new Date(anoNum, mesNum, 0); // último dia do mês
                 const fim     = fimDate.toISOString().split('T')[0];
                 query = query.gte('data_vencimento', inicio).lte('data_vencimento', fim);
             }
@@ -35,6 +35,7 @@ module.exports = function (supabase) {
         }
     });
 
+    // ─── GET /api/contas/grupo/:grupoId ─────────────────────────────────────────
     router.get('/contas/grupo/:grupoId', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -50,6 +51,7 @@ module.exports = function (supabase) {
         }
     });
 
+    // ─── POST /api/contas ────────────────────────────────────────────────────────
     router.post('/contas', async (req, res) => {
         try {
             const body = req.body;
@@ -70,6 +72,7 @@ module.exports = function (supabase) {
         }
     });
 
+    // ─── PUT /api/contas/:id ─────────────────────────────────────────────────────
     router.put('/contas/:id', async (req, res) => {
         try {
             const body = { ...req.body };
@@ -92,6 +95,7 @@ module.exports = function (supabase) {
         }
     });
 
+    // ─── DELETE /api/contas/:id ──────────────────────────────────────────────────
     router.delete('/contas/:id', async (req, res) => {
         try {
             const { error } = await supabase
