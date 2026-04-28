@@ -46,21 +46,9 @@
     }
 }
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Inter', 'Segoe UI', system-ui, sans-serif; background: var(--bg-secondary); color: var(--text-primary); line-height: 1.6; overflow-y: scroll; }
 
-body {
-    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
-    background: var(--bg-secondary);
-    color: var(--text-primary);
-    line-height: 1.6;
-    overflow-y: scroll;
-}
-
-/* ANIMAÇÕES */
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes spinSync { to { transform: rotate(360deg); } }
 @keyframes fadeOut { to { opacity: 0; pointer-events: none; } }
@@ -78,7 +66,6 @@ body {
 .header-left { display: flex; align-items: center; gap: 1rem; }
 h1 { font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; display: flex; align-items: center; margin: 0; }
 
-/* BARRA DE PESQUISA */
 .search-bar-wrapper { margin-bottom: 0.5rem; }
 .search-bar { background: var(--bg-card); padding: 0.75rem 1rem; border-radius: 12px 12px 0 0; border: 1px solid var(--border-color); border-bottom: none; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
 .search-icon { color: var(--text-secondary); flex-shrink: 0; }
@@ -99,7 +86,6 @@ h1 { font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spaci
 .calendar-btn:hover { background: var(--input-bg); color: var(--primary); }
 .calendar-btn.syncing svg { animation: spinSync 0.8s linear infinite; }
 
-/* CALENDAR MODAL */
 .calendar-modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(4px); z-index: 10000; align-items: center; justify-content: center; }
 .calendar-modal.show { display: flex; }
 .calendar-content { background: var(--bg-card); border-radius: 16px; padding: 2rem; box-shadow: 0 20px 60px var(--shadow); border: 1px solid var(--border-color); max-width: 400px; width: 90%; animation: scaleIn 0.2s ease; }
@@ -112,7 +98,6 @@ h1 { font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spaci
 .calendar-month:hover { background: var(--primary); color: white; border-color: var(--primary); transform: translateY(-2px); box-shadow: 0 4px 8px rgba(255, 82, 29, 0.3); }
 .calendar-month.current { background: var(--primary); color: white; border-color: var(--primary); }
 
-/* DASHBOARD */
 .dashboard-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
 @media (max-width: 768px) { .dashboard-grid { grid-template-columns: repeat(2, 1fr); } }
 .stat-card { background: var(--bg-card); padding: 1.25rem; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: var(--card-shadow); display: flex; align-items: center; gap: 1rem; transition: all 0.2s ease; }
@@ -133,7 +118,6 @@ h1 { font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spaci
 .stat-value-commission { color: #FBBF24; font-weight: 700; }
 .stat-label { font-size: 0.875rem; color: var(--text-secondary); font-weight: 500; }
 
-/* TABELA */
 table { width: 100%; border-collapse: separate; border-spacing: 0; }
 thead { background: var(--th-bg); }
 th { padding: 14px 16px; text-align: left; font-weight: 600; color: var(--th-color); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--th-border); }
@@ -142,7 +126,6 @@ tbody tr { background: var(--bg-card); transition: background 0.2s ease; cursor:
 tbody tr:nth-child(even) { background: var(--table-stripe); }
 tbody tr:hover { background: var(--table-hover); }
 
-/* FORMULÁRIOS */
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; margin-bottom: 1.5rem; }
 .form-group { margin-bottom: 1rem; position: relative; }
 label { display: block; margin-bottom: 8px; font-weight: 500; color: var(--text-primary); font-size: 0.9rem; }
@@ -150,7 +133,6 @@ input, select, textarea { width: 100%; padding: 12px 16px; border: 1px solid var
 textarea { resize: vertical; min-height: 100px; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); }
 
-/* BOTÕES */
 button { background: var(--primary); color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 0.95rem; font-weight: 600; margin-right: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; transition: all 0.3s ease; }
 button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
 button:disabled { background: #9CA3AF; cursor: not-allowed; opacity: 0.5; }
@@ -160,7 +142,6 @@ button.success { background: var(--btn-save) !important; }
 .btn-save-green { background: var(--btn-save); }
 button.small { padding: 8px 12px; font-size: 0.85rem; }
 
-/* MODAL */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); align-items: center; justify-content: center; z-index: 10000; opacity: 0; animation: fadeIn 0.2s ease forwards; }
 .modal-overlay.show { display: flex; }
 .modal-content { background: var(--bg-card); border-radius: 16px; padding: 2rem; max-width: 900px; width: 95%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px var(--shadow); border: 1px solid var(--border-color); transform: scale(0.9); animation: scaleIn 0.2s ease forwards; display: flex; flex-direction: column; }
@@ -173,13 +154,11 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
 .modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; padding-top: 0; border-top: none; }
 .modal-actions button { margin: 0; min-width: 120px; }
 
-/* MODAL DE EXCLUSÃO PADRONIZADO */
 .modal-delete { position: relative; padding: 2.5rem 2rem 2rem 2rem; max-width: 500px !important; }
 .modal-delete .close-modal { position: absolute; top: 1rem; right: 1rem; }
 .modal-message-delete { margin: 2rem 0 2.5rem 0; color: var(--text-primary); font-size: 1.25rem; line-height: 1.6; text-align: center; font-weight: 500; }
 .modal-actions-no-border { display: flex; gap: 0.75rem; justify-content: center; margin-top: 0; padding-top: 0; border-top: none !important; }
 
-/* MENSAGENS FLUTUANTES */
 .floating-message { position: fixed; bottom: 24px; right: 24px; padding: 14px 20px; border-radius: 10px; font-weight: 500; font-size: 0.95rem; z-index: 9999999; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); border: 1px solid; animation: slideInBottom 0.3s ease; min-width: 300px; }
 .floating-message.success { background: #10B981; color: #FFFFFF; border-color: #059669; }
 .floating-message.error { background: #EF4444; color: #FFFFFF; border-color: #DC2626; }
