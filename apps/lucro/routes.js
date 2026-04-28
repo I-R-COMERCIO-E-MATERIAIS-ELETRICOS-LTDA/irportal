@@ -9,8 +9,6 @@ module.exports = function (supabase) {
     const router  = express.Router();
 
     // ─── GET /api/lucro-real ─────────────────────────────────────────────────
-    // ?mes=N&ano=N  → filtra por mês (1-based) e ano
-    // ?ano=N        → retorna todos os registros do ano (relatório anual)
     router.get('/lucro-real', async (req, res) => {
         try {
             const { mes, ano } = req.query;
@@ -21,12 +19,11 @@ module.exports = function (supabase) {
                 .order('data_emissao', { ascending: false });
 
             if (ano && !mes) {
-                // Relatório anual completo
                 query = query
                     .gte('data_emissao', `${ano}-01-01`)
                     .lte('data_emissao', `${ano}-12-31`);
             } else if (mes && ano) {
-                const mesNum  = parseInt(mes);   // 1-based (Janeiro = 1)
+                const mesNum  = parseInt(mes);
                 const anoNum  = parseInt(ano);
                 const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
                 const fimDate = new Date(anoNum, mesNum, 0); // último dia do mês
@@ -43,8 +40,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── PATCH /api/lucro-real/:codigo ──────────────────────────────────────
-    // Aceita PATCH (usado pelo frontend) — atualiza apenas os campos enviados
+    // ─── PATCH /api/lucro-real/:codigo (para edição individual) ─────────────
     router.patch('/lucro-real/:codigo', async (req, res) => {
         try {
             const body = { ...req.body };
@@ -68,32 +64,24 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── PUT /api/lucro-real/:codigo (mantido por compatibilidade) ──────────
-    router.put('/lucro-real/:codigo', async (req, res) => {
+    // ─── DELETE /api/lucro-real/:id (exclusão por UUID) ────────────────────
+    router.delete('/lucro-real/:id', async (req, res) => {
         try {
-            const body = { ...req.body };
-            delete body.id;
-            delete body.created_at;
-            body.updated_at = new Date().toISOString();
-
-            const { data, error } = await supabase
+            // Usar o campo 'id' (UUID) para excluir
+            const { error } = await supabase
                 .from('lucro_real')
-                .update(body)
-                .eq('codigo', req.params.codigo)
-                .select()
-                .single();
+                .delete()
+                .eq('id', req.params.id);
 
             if (error) throw error;
-            if (!data) return res.status(404).json({ error: 'Registro não encontrado' });
-            res.json(data);
+            res.json({ success: true });
         } catch (err) {
-            console.error('[lucro] PUT /lucro-real/:codigo:', err.message);
+            console.error('[lucro] DELETE /lucro-real/:id:', err.message);
             res.status(500).json({ error: err.message });
         }
     });
 
     // ─── GET /api/custo-fixo ─────────────────────────────────────────────────
-    // Retorna o custo_fixo_mensal do mês — lido diretamente de qualquer registro
     router.get('/custo-fixo', async (req, res) => {
         try {
             const { mes, ano } = req.query;
@@ -122,7 +110,6 @@ module.exports = function (supabase) {
     });
 
     // ─── POST /api/custo-fixo ────────────────────────────────────────────────
-    // Atualiza custo_fixo_mensal em TODOS os registros do mês
     router.post('/custo-fixo', async (req, res) => {
         try {
             const { mes, ano, custo_fixo_mensal } = req.body;
@@ -150,7 +137,6 @@ module.exports = function (supabase) {
     });
 
     // ─── POST /api/monitorar-pedidos ─────────────────────────────────────────
-    // Heartbeat / sync — mantido para compatibilidade com o frontend
     router.post('/monitorar-pedidos', (req, res) => res.json({ ok: true }));
 
     return router;
