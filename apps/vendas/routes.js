@@ -95,7 +95,8 @@ module.exports = function (supabase) {
                     cidade_destino:   f.cidade_destino || null,
                     previsao_entrega: f.previsao_entrega || null,
                     status_frete:     statusFreteMap[f.status] || f.status || null,
-                    id_controle_frete: f.id,
+                    // id_controle_frete é bigint na tabela vendas — só salva se for numérico
+                    id_controle_frete: Number.isInteger(f.id) || /^\d+$/.test(String(f.id)) ? parseInt(f.id) : null,
                     updated_at:       new Date().toISOString()
                 };
 
@@ -130,11 +131,12 @@ module.exports = function (supabase) {
             }
 
             // ── 2. Processar contas a receber (PAGO, A RECEBER e PARCELA) ────
-            // CORREÇÃO: incluído 'A RECEBER' no filtro — antes só trazia PAGO/PARCELA
+            // ATENÇÃO: o .or() do Supabase não aceita espaço em valores — usar neq encadeado
             const { data: contas, error: erroContas } = await supabase
                 .from('contas_receber')
                 .select('*')
-                .or('status.eq.PAGO,status.eq.A RECEBER,status.ilike.%PARCELA%');
+                .neq('status', 'CANCELADO')
+                .neq('status', 'CANCELADA');
 
             if (erroContas) throw erroContas;
 
@@ -159,7 +161,8 @@ module.exports = function (supabase) {
                     data_pagamento:    c.data_pagamento || null,
                     status_pagamento:  c.status || 'A RECEBER',
                     valor_pago:        valorPago,
-                    id_contas_receber: c.id,
+                    // id_contas_receber é bigint na tabela vendas — só salva se for numérico, senão null
+                    id_contas_receber: Number.isInteger(c.id) || /^\d+$/.test(String(c.id)) ? parseInt(c.id) : null,
                     updated_at:        new Date().toISOString()
                 };
 
