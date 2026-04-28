@@ -43,20 +43,27 @@ function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
     document.body.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:var(--bg-primary);color:var(--text-primary);text-align:center;padding:2rem;"><h1 style="font-size:2.2rem;margin-bottom:1rem;">${mensagem}</h1><p style="color:var(--text-secondary);margin-bottom:2rem;">Somente usuários autenticados podem acessar esta área.</p><a href="${PORTAL_URL}" style="display:inline-block;background:var(--btn-register);color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:600;">Ir para o Portal</a></div>`;
 }
 
-function inicializarApp() {
+async function inicializarApp() {
     updateMonthDisplay();
-    checkServerStatus().then(async () => {
-        if (isOnline) {
-            console.log('🔄 Executando sincronização inicial...');
-            await syncData(true);
-        }
-    });
+
+    // Verifica conexão primeiro
+    await checkServerStatus();
+
+    // Se online, dispara sincronização imediatamente
+    if (isOnline) {
+        console.log('🔄 Sincronizando dados automaticamente...');
+        await syncData(true); // true = silencioso
+    } else {
+        console.warn('⚠️ Offline. Dados não serão sincronizados agora.');
+    }
+
+    // Polling de status e dados
     setInterval(checkServerStatus, 15000);
     startPolling();
 }
 
 // ============================================
-// CONEXÃO (indicador removido)
+// CONEXÃO
 // ============================================
 async function checkServerStatus() {
     try {
@@ -90,12 +97,12 @@ async function loadVendas(showMsg = false) {
         if (!DEVELOPMENT_MODE && r.status === 401) {
             sessionStorage.removeItem('vendasSession'); mostrarTelaAcessoNegado('Sessão expirou'); return;
         }
-        if (!r.ok) { if (showMsg) showToast('Erro ao sincronizar', 'error'); return; }
+        if (!r.ok) { if (showMsg) showToast('Erro ao carregar', 'error'); return; }
         vendas = await r.json();
         console.log(`✅ ${vendas.length} vendas carregadas`);
         updateDashboard(); filterVendas();
     } catch (err) {
-        console.error(err); if (showMsg) showToast('Erro ao sincronizar', 'error');
+        console.error(err); if (showMsg) showToast('Erro ao carregar', 'error');
     }
 }
 
@@ -109,19 +116,25 @@ window.syncData = async function (silencioso = false) {
                 method: 'POST',
                 headers: { 'X-Session-Token': sessionToken }
             });
+            const data = await res.json();
             if (res.ok) {
-                const data = await res.json();
-                console.log('📊 Sincronização:', data.message);
+                console.log('📊', data.message);
+                if (!silencioso) showToast(data.message, 'success');
             } else {
-                const err = await res.text();
-                console.error('❌ Sincronização falhou:', err);
+                console.error('❌ Erro na sincronização:', data.error || data);
+                if (!silencioso) showToast('Erro na sincronização', 'error');
             }
         } catch (e) {
-            console.warn('Sync manual falhou:', e);
+            console.warn('Sync falhou:', e);
+            if (!silencioso) showToast('Erro na sincronização', 'error');
         }
+    } else {
+        if (!silencioso) showToast('Sistema offline', 'warning');
     }
 
+    // Recarrega a lista após sincronizar
     await loadVendas(!silencioso);
+
     setTimeout(() => {
         btns.forEach(b => { const s = b.querySelector('svg'); if (s) s.style.animation = ''; });
     }, 1000);
@@ -235,23 +248,20 @@ window.handleViewClick = function (id) {
             <p><strong>Tipo NF:</strong> ${v.tipo_nf || '-'}</p>
             <p><strong>Data:</strong> ${d(v.data_emissao)}</p>
             <p><strong>Valor:</strong> ${fmt(v.valor_nf)}</p>
-            <p><strong>Origem:</strong> ${v.origem === 'CONTROLE_FRETE' ? 'Controle de Frete' : 'Contas a Receber'}</p>
         </div>
-        ${v.origem === 'CONTROLE_FRETE' || v.transportadora ? `
         <div class="info-section"><h4>Frete</h4>
             <p><strong>Transportadora:</strong> ${v.transportadora || '-'}</p>
             <p><strong>Valor Frete:</strong> ${fmt(v.valor_frete)}</p>
             <p><strong>Destino:</strong> ${v.cidade_destino || '-'}</p>
             <p><strong>Previsão:</strong> ${d(v.previsao_entrega)}</p>
             <p><strong>Status:</strong> ${v.status_frete || '-'}</p>
-        </div>` : ''}
-        ${v.origem === 'CONTAS_RECEBER' || v.status_pagamento ? `
+        </div>
         <div class="info-section"><h4>Pagamento</h4>
             <p><strong>Banco:</strong> ${v.banco || '-'}</p>
             <p><strong>Vencimento:</strong> ${d(v.data_vencimento)}</p>
             <p><strong>Pago em:</strong> ${d(v.data_pagamento)}</p>
             <p><strong>Status:</strong> ${badgePagto(v.status_pagamento)}</p>
-        </div>` : ''}
+        </div>
     `;
     document.getElementById('infoModal').style.display = 'flex';
 };
