@@ -115,15 +115,12 @@ app.get('/health', async (req, res) => {
 app.get('/api/supabase-config', (req, res) => {
     const url = process.env.SUPABASE_URL;
     const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
-
     console.log('[supabase-config] URL exists:', !!url);
     console.log('[supabase-config] ANON_KEY exists:', !!anonKey);
-
     if (!url || !anonKey) {
         console.error('❌ Supabase config missing: URL or ANON_KEY not set in environment');
         return res.status(500).json({ error: 'Configuração do Supabase incompleta no servidor' });
     }
-
     res.json({ url, anonKey });
 });
 
@@ -147,91 +144,55 @@ APPS.forEach(appName => {
     }
 });
 
-// ─── MIDDLEWARE: FALLBACK DE ASSETS NA RAIZ → REDIRECIONA PARA O APP CORRETO ─
+// ─── MIDDLEWARE: FALLBACK DE ASSETS ───────────────────────────────────────────
 app.use((req, res, next) => {
     if (!STATIC_EXTENSIONS.test(req.path)) return next();
-
     const referer = req.get('Referer') || '';
-
     let matchedApp = null;
     for (const appName of APPS) {
-        if (referer.includes(`/${appName}`)) {
-            matchedApp = appName;
-            break;
-        }
+        if (referer.includes(`/${appName}`)) { matchedApp = appName; break; }
     }
-
     if (!matchedApp) return next();
-
     const appPath = path.join(__dirname, 'apps', matchedApp);
     const fileName = req.path.replace(/^\//, '');
     const filePath = path.join(appPath, fileName);
-
     if (fs.existsSync(filePath)) {
         console.log(`🔧 Asset fallback: ${req.path} → /${matchedApp}/${fileName}`);
         return res.sendFile(filePath);
     }
-
     next();
 });
 
 // ─── ROTA RAIZ → PORTAL ───────────────────────────────────────────────────────
 app.get('/', (req, res) => {
     const portalPath = path.join(__dirname, 'apps', 'portal', 'index.html');
-    if (fs.existsSync(portalPath)) {
-        res.sendFile(portalPath);
-    } else {
-        res.json({ message: 'I.R. Comércio - Sistema Central', apps: APPS.map(a => `/${a}`) });
-    }
+    if (fs.existsSync(portalPath)) res.sendFile(portalPath);
+    else res.json({ message: 'I.R. Comércio - Sistema Central', apps: APPS.map(a => `/${a}`) });
 });
 
-// ─── API DO PORTAL (sem autenticação central — gerencia a própria auth) ──────
+// ─── API DO PORTAL (sem autenticação central) ─────────────────────────────────
 const portalRoutes = require('./apps/portal/routes');
 app.use('/api/portal', portalRoutes(supabase));
 
 // ─── MIDDLEWARE DE AUTENTICAÇÃO (aplicado a TODAS as rotas /api a partir daqui)
 app.use('/api', verificarAutenticacao);
 
-// ─── API DE NOTIFICAÇÕES GLOBAIS ─────────────────────────────────────────────
+// ─── API DE NOTIFICAÇÕES ──────────────────────────────────────────────────────
 app.post('/api/notifications', async (req, res) => {
     try {
         const { message } = req.body;
-        if (!message || typeof message !== 'string') {
-            return res.status(400).json({ error: 'Mensagem inválida' });
-        }
-
-        const { data, error } = await supabase
-            .from('compranotifications')
-            .insert({ message })
-            .select()
-            .single();
-
-        if (error) {
-            console.error('Erro ao inserir notificação:', error);
-            return res.status(500).json({ error: 'Erro ao criar notificação' });
-        }
-
+        if (!message || typeof message !== 'string') return res.status(400).json({ error: 'Mensagem inválida' });
+        const { data, error } = await supabase.from('compranotifications').insert({ message }).select().single();
+        if (error) throw error;
         res.status(201).json({ id: data.id });
-    } catch (err) {
-        console.error('Erro no endpoint de notificações:', err);
-        res.status(500).json({ error: 'Erro interno' });
-    }
+    } catch (err) { res.status(500).json({ error: 'Erro interno' }); }
 });
-
 app.get('/api/notifications', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('compranotifications')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(50);
-
+        const { data, error } = await supabase.from('compranotifications').select('*').order('created_at', { ascending: false }).limit(50);
         if (error) throw error;
         res.json(data || []);
-    } catch (err) {
-        console.error('Erro ao buscar notificações:', err);
-        res.status(500).json({ error: 'Erro ao buscar notificações' });
-    }
+    } catch (err) { res.status(500).json({ error: 'Erro ao buscar notificações' }); }
 });
 
 // ─── API DE PREÇOS ────────────────────────────────────────────────────────────
@@ -270,36 +231,26 @@ app.use('/api/vendas', vendasRoutes(supabase));
 const lucroRoutes = require('./apps/lucro/routes');
 app.use('/api', lucroRoutes(supabase));
 
+// 🚨🚨 NOVO – API DE CONTAS A PAGAR 🚨🚨
+const contasPagarRoutes = require('./apps/pagar/routes');
+app.use('/api', contasPagarRoutes(supabase));
+// 🚨🚨 FIM DA ADIÇÃO 🚨🚨
+
 // ─── ROTA DE ESTOQUE ──────────────────────────────────────────────────────────
 app.get('/api/estoque', async (req, res) => {
     try {
-        const { data, error } = await supabase
-            .from('estoque')
-            .select('*')
-            .order('codigo', { ascending: true });
+        const { data, error } = await supabase.from('estoque').select('*').order('codigo', { ascending: true });
         if (error) throw error;
         res.json(data);
-    } catch (err) {
-        console.error('Erro ao listar estoque:', err.message);
-        res.status(500).json({ error: 'Erro ao listar estoque' });
-    }
+    } catch (err) { res.status(500).json({ error: 'Erro ao listar estoque' }); }
 });
-
 app.patch('/api/estoque/:codigo', async (req, res) => {
     try {
         const { quantidade } = req.body;
-        const { data, error } = await supabase
-            .from('estoque')
-            .update({ quantidade })
-            .eq('codigo', req.params.codigo)
-            .select()
-            .single();
+        const { data, error } = await supabase.from('estoque').update({ quantidade }).eq('codigo', req.params.codigo).select().single();
         if (error) throw error;
         res.json(data);
-    } catch (err) {
-        console.error('Erro ao atualizar estoque:', err.message);
-        res.status(500).json({ error: 'Erro ao atualizar estoque' });
-    }
+    } catch (err) { res.status(500).json({ error: 'Erro ao atualizar estoque' }); }
 });
 
 // ─── ENDPOINT DE VERIFICAÇÃO DE SESSÃO ────────────────────────────────────────
@@ -307,7 +258,6 @@ app.post('/api/verify-session', async (req, res) => {
     try {
         const { sessionToken } = req.body;
         if (!sessionToken) return res.json({ valid: false });
-
         const { data: session, error } = await supabase
             .from('active_sessions')
             .select(`*, users(id, username, name, is_admin, is_active, sector, apps, authorized_ips)`)
@@ -315,28 +265,16 @@ app.post('/api/verify-session', async (req, res) => {
             .eq('is_active', true)
             .gt('expires_at', new Date().toISOString())
             .single();
-
-        if (error || !session || !session.users || !session.users.is_active) {
-            return res.json({ valid: false });
-        }
-
+        if (error || !session || !session.users || !session.users.is_active) return res.json({ valid: false });
         res.json({ valid: true, session: session.users });
-    } catch (err) {
-        console.error('Erro ao verificar sessão:', err.message);
-        res.status(500).json({ valid: false });
-    }
+    } catch (err) { res.status(500).json({ valid: false }); }
 });
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
-app.use((req, res) => {
-    res.status(404).json({ error: '404 - Rota não encontrada' });
-});
+app.use((req, res) => { res.status(404).json({ error: '404 - Rota não encontrada' }); });
 
 // ─── TRATAMENTO DE ERROS ──────────────────────────────────────────────────────
-app.use((error, req, res, next) => {
-    console.error('Erro interno:', error.message);
-    res.status(500).json({ error: 'Erro interno do servidor' });
-});
+app.use((error, req, res, next) => { console.error('Erro interno:', error.message); res.status(500).json({ error: 'Erro interno do servidor' }); });
 
 // ─── INICIAR ──────────────────────────────────────────────────────────────────
 app.listen(PORT, '0.0.0.0', () => {
@@ -362,5 +300,6 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log('  CRUD /api/receber            → Contas a Receber');
     console.log('  CRUD /api/vendas             → Vendas');
     console.log('  CRUD /api/lucro-real         → Lucro Real');
-    console.log('  POST /api/custo-fixo         → Custo Fixo Mensal\n');
+    console.log('  POST /api/custo-fixo         → Custo Fixo Mensal');
+    console.log('  CRUD /api/contas             → Contas a Pagar\n');  // 🚨 NOVO
 });
