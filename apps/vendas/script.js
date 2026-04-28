@@ -45,19 +45,13 @@ function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
 
 async function inicializarApp() {
     updateMonthDisplay();
-
-    // Verifica conexão primeiro
     await checkServerStatus();
-
-    // Se online, dispara sincronização imediatamente
     if (isOnline) {
         console.log('🔄 Sincronizando dados automaticamente...');
-        await syncData(true); // true = silencioso
+        await syncData(true);
     } else {
-        console.warn('⚠️ Offline. Dados não serão sincronizados agora.');
+        console.warn('⚠️ Offline');
     }
-
-    // Polling de status e dados
     setInterval(checkServerStatus, 15000);
     startPolling();
 }
@@ -132,7 +126,6 @@ window.syncData = async function (silencioso = false) {
         if (!silencioso) showToast('Sistema offline', 'warning');
     }
 
-    // Recarrega a lista após sincronizar
     await loadVendas(!silencioso);
 
     setTimeout(() => {
