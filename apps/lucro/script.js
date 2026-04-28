@@ -9,9 +9,9 @@ let sessionToken = null;
 let currentMonth = new Date();
 let lastDataHash = '';
 let currentFetchController = null;
-
 let calendarYear = new Date().getFullYear();
 let custoFixoMensal = 0;
+let impostoManual = null; // null = automático, número = valor manual
 
 // ============================================
 // INICIALIZAÇÃO
@@ -65,10 +65,10 @@ function inicializarApp() {
 }
 
 // ============================================
-// CONEXÃO (sem indicador visual)
+// CONEXÃO
 // ============================================
 function updateConnectionStatus() {
-    // removida – status não é mais exibido
+    // removida
 }
 
 async function syncData() {
@@ -181,6 +181,47 @@ function closeCustoFixoModal() {
 }
 
 // ============================================
+// IMPOSTO FEDERAL TOTAL MANUAL
+// ============================================
+function abrirModalImpostoFixo() {
+    // Preencher com o valor atual (se manual, mostra ele; senão mostra a soma calculada)
+    const value = impostoManual !== null ? impostoManual : lucroData.reduce((s, r) => s + (r.imposto_federal || 0), 0);
+    document.getElementById('impostoFixoInput').value = value;
+    document.getElementById('editImpostoModal').classList.add('show');
+}
+
+function closeImpostoModal() {
+    document.getElementById('editImpostoModal').classList.remove('show');
+}
+
+function saveImpostoFixo() {
+    const valor = parseFloat(document.getElementById('impostoFixoInput').value) || 0;
+    impostoManual = valor;
+    updateDashboard();
+    closeImpostoModal();
+    showMessage('IMPOSTO FEDERAL TOTAL ATUALIZADO', 'success');
+}
+
+// ============================================
+// CONFIRMAÇÃO PARA VOLTAR AO CÁLCULO AUTOMÁTICO
+// ============================================
+function showConfirmAutoImposto() {
+    document.getElementById('confirmAutoImpostoModal').classList.add('show');
+    document.getElementById('btnSimAutoImposto').onclick = () => {
+        impostoManual = null;
+        updateDashboard();
+        closeConfirmAutoImposto();
+    };
+    document.getElementById('btnNaoAutoImposto').onclick = () => {
+        closeConfirmAutoImposto();
+    };
+}
+
+function closeConfirmAutoImposto() {
+    document.getElementById('confirmAutoImpostoModal').classList.remove('show');
+}
+
+// ============================================
 // NAVEGAÇÃO DE MESES
 // ============================================
 function changeMonth(direction) {
@@ -223,10 +264,13 @@ function updateDashboard() {
                          - (r.comissao || 0) - (r.imposto_federal || 0);
     });
 
+    // Se existir valor manual, usar ele em vez da soma
+    const impostoExibido = impostoManual !== null ? impostoManual : totalImposto;
+
     document.getElementById('totalVenda').innerHTML   = `<span class="stat-value-success">${formatarMoeda(totalVenda)}</span>`;
     document.getElementById('totalCusto').innerHTML   = `<span style="color:#EF4444;font-weight:700;">${formatarMoeda(totalCusto)}</span>`;
     document.getElementById('totalFrete').innerHTML   = `<span style="color:#3B82F6;font-weight:700;">${formatarMoeda(totalFrete)}</span>`;
-    document.getElementById('totalImposto').innerHTML = `<span style="color:#EF4444;">${formatarMoeda(totalImposto)}</span>`;
+    document.getElementById('totalImposto').innerHTML = `<span style="color:#EF4444;">${formatarMoeda(impostoExibido)}</span>`;
 
     const lucroBrutoEl = document.getElementById('totalLucroBruto');
     lucroBrutoEl.innerHTML = formatarMoeda(totalLucroBruto);
@@ -445,6 +489,11 @@ async function saveEditModal() {
         updateDashboard();
         closeEditModal();
         showMessage('VALORES ATUALIZADOS', 'success');
+
+        // Se houver valor manual para imposto, perguntar se deseja voltar ao automático
+        if (impostoManual !== null) {
+            showConfirmAutoImposto();
+        }
     } catch (error) {
         showMessage('ERRO AO SALVAR: ' + error.message, 'error');
     }
