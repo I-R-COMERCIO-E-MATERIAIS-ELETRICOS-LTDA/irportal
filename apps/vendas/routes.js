@@ -59,11 +59,13 @@ module.exports = function (supabase) {
             let inseridos = 0, atualizados = 0, erros = 0;
 
             // ── 1. Processar fretes (todos, exceto devoluções) ────────────────
-            // CORREÇÃO: sintaxe correta do Supabase para NOT IN é array, não string
+            // Sintaxe correta PostgREST: NOT IN usa .not com .or encadeado
+            // O Supabase não aceita array no .not('in') — usamos neq encadeado
             const { data: fretes, error: erroFrete } = await supabase
                 .from('controle_frete')
                 .select('*')
-                .not('status', 'in', ['DEVOLVIDO', 'DEVOLUCAO']);
+                .neq('status', 'DEVOLVIDO')
+                .neq('status', 'DEVOLUCAO');
 
             if (erroFrete) throw erroFrete;
 
