@@ -21,7 +21,6 @@
                 </button>
             </div>
 
-            <!-- Dashboard Cards -->
             <div class="dashboard-grid">
                 <div class="stat-card stat-card-success"><div class="stat-icon stat-icon-success"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg></div><div class="stat-content"><div class="stat-value stat-value-success" id="statPagos">R$ 0,00</div><div class="stat-label">Pagos</div></div></div>
                 <div class="stat-card stat-card-danger" id="cardVencido" onclick="window.showVencidoModal()" style="cursor:pointer;position:relative;" title="Clique para ver detalhes"><span class="pulse-badge" id="pulseBadge" style="display:none;"></span><div class="stat-icon stat-icon-danger"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg></div><div class="stat-content"><div class="stat-value stat-value-danger" id="statVencido">0</div><div class="stat-label">Vencido</div></div></div>
@@ -29,7 +28,6 @@
                 <div class="stat-card"><div class="stat-icon stat-icon-default"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg></div><div class="stat-content"><div class="stat-value" id="statValorTotal">R$ 0,00</div><div class="stat-label">Valor Total</div></div></div>
             </div>
 
-            <!-- Search Bar com Filtros -->
             <div class="search-bar-wrapper"><div class="search-bar">
                 <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
                 <input type="text" id="search" placeholder="Pesquisar" oninput="filterContas()">
@@ -47,17 +45,14 @@
                 <button class="calendar-btn" onclick="window.sincronizarDados()" title="Sincronizar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
             </div></div>
 
-            <!-- Calendar Modal -->
             <div class="calendar-modal" id="calendarModal">
                 <div class="calendar-content"><div class="calendar-header"><button onclick="window.changeCalendarYear(-1)" class="calendar-year-nav"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg></button><h3 id="calendarYear">2026</h3><button onclick="window.changeCalendarYear(1)" class="calendar-year-nav"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg></button></div><div class="calendar-months" id="calendarMonths"></div></div>
             </div>
 
-            <!-- Table Card -->
             <div class="card table-card"><div id="contasContainer"></div></div>
         </div>
     </div>
 
-    <!-- Modal de Vencidos -->
     <div class="modal-overlay" id="vencidoModal" style="display:none;"><div class="modal-content alert-modal"><div class="modal-header-alert"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg><button class="close-modal" onclick="window.closeVencidoModal()">✕</button></div><div class="modal-body" id="vencidoModalBody"></div><div class="modal-actions-alert"><button type="button" onclick="window.closeVencidoModal()" class="btn-close-red">Fechar</button></div></div></div>
 
     <script>setTimeout(() => { const s = document.getElementById('splashScreen'); if(s) s.style.display='none'; }, 3000);</script>
