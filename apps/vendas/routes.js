@@ -1,12 +1,7 @@
-// ============================================
-// VENDAS ROUTES — /api/vendas
-// ============================================
 const express = require('express');
-
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // GET /
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor, status_frete, status_pagamento } = req.query;
@@ -17,136 +12,88 @@ module.exports = function (supabase) {
                 const fim = `${ano}-${String(mes).padStart(2, '0')}-${fimDia}`;
                 query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
             }
-            if (vendedor) query = query.eq('vendedor', vendedor.toUpperCase());
+            if (vendedor) query = query.eq('vendedor', vendedor);
             if (status_frete) query = query.eq('status_frete', status_frete);
             if (status_pagamento) query = query.eq('status_pagamento', status_pagamento);
             const { data, error } = await query;
             if (error) throw error;
             res.json(data);
-        } catch (err) {
-            console.error('[vendas] GET /:', err.message);
-            res.status(500).json({ error: 'Erro ao listar vendas' });
-        }
+        } catch (e) { res.status(500).json({ error: e.message }); }
     });
 
-    // GET /:id
     router.get('/:id', async (req, res) => {
-        try {
-            const { data, error } = await supabase.from('vendas').select('*').eq('id', req.params.id).single();
-            if (error) throw error;
-            if (!data) return res.status(404).json({ error: 'Venda não encontrada' });
-            res.json(data);
-        } catch (err) {
-            console.error('[vendas] GET /:id:', err.message);
-            res.status(500).json({ error: 'Erro ao buscar venda' });
-        }
+        const { data, error } = await supabase.from('vendas').select('*').eq('id', req.params.id).single();
+        if (error) return res.status(500).json({ error: error.message });
+        if (!data) return res.status(404).json({ error: 'Não encontrado' });
+        res.json(data);
     });
 
-    // POST /sincronizar
     router.post('/sincronizar', async (req, res) => {
         try {
             let inseridos = 0, atualizados = 0;
 
-            // 1. Fretes (exceto devoluções)
-            const { data: fretes, error: erroFrete } = await supabase
+            // FREInclusão de fretes (exceto devolução/dev)
+            const { data: fretes, error: fErr } = await supabase
                 .from('controle_frete')
                 .select('*')
                 .not('status', 'in', '("DEVOLVIDO","DEVOLUCAO")');
-            if (erroFrete) throw erroFrete;
+            if (fErr) throw fErr;
 
             for (const f of fretes) {
-                const statusFreteMap = {
-                    'EM_TRANSITO': 'EM TRÂNSITO',
-                    'ENTREGUE': 'ENTREGUE',
-                    'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
-                    'EXTRAVIADO': 'EXTRAVIADO'
-                };
+                const statusMap = { 'EM_TRANSITO':'EM TRÂNSITO', 'ENTREGUE':'ENTREGUE', 'AGUARDANDO_COLETA':'AGUARDANDO COLETA', 'EXTRAVIADO':'EXTRAVIADO' };
                 const payload = {
-                    numero_nf: f.numero_nf,
-                    origem: 'CONTROLE_FRETE',
-                    data_emissao: f.data_emissao,
-                    valor_nf: parseFloat(f.valor_nf) || 0,
-                    tipo_nf: f.tipo_nf || null,
-                    nome_orgao: f.nome_orgao,
-                    vendedor: f.vendedor,
-                    documento: f.documento || null,
-                    contato_orgao: f.contato_orgao || null,
-                    transportadora: f.transportadora || null,
-                    valor_frete: parseFloat(f.valor_frete) || 0,
-                    data_coleta: f.data_coleta || null,
-                    cidade_destino: f.cidade_destino || null,
-                    previsao_entrega: f.previsao_entrega || null,
-                    status_frete: statusFreteMap[f.status] || f.status || null,
-                    id_controle_frete: f.id,
-                    updated_at: new Date().toISOString()
+                    numero_nf: f.numero_nf, origem: 'CONTROLE_FRETE',
+                    data_emissao: f.data_emissao, valor_nf: parseFloat(f.valor_nf)||0,
+                    tipo_nf: f.tipo_nf, nome_orgao: f.nome_orgao, vendedor: f.vendedor,
+                    documento: f.documento, contato_orgao: f.contato_orgao,
+                    transportadora: f.transportadora, valor_frete: parseFloat(f.valor_frete)||0,
+                    data_coleta: f.data_coleta, cidade_destino: f.cidade_destino,
+                    previsao_entrega: f.previsao_entrega,
+                    status_frete: statusMap[f.status] || f.status,
+                    id_controle_frete: f.id, updated_at: new Date().toISOString()
                 };
-
-                const { data: existente } = await supabase
-                    .from('vendas')
-                    .select('id')
-                    .eq('numero_nf', f.numero_nf)
-                    .eq('vendedor', f.vendedor)
-                    .maybeSingle();
-
-                if (existente) {
-                    await supabase.from('vendas').update(payload).eq('id', existente.id);
+                const { data: exist } = await supabase.from('vendas').select('id').eq('numero_nf', f.numero_nf).eq('vendedor', f.vendedor).maybeSingle();
+                if (exist) {
+                    await supabase.from('vendas').update(payload).eq('id', exist.id);
                     atualizados++;
                 } else {
-                    await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]);
+                    await supabase.from('vendas').insert([{...payload, prioridade:1}]);
                     inseridos++;
                 }
             }
 
-            // 2. Contas a receber (apenas PAGO ou PARCELA)
-            const { data: contas, error: erroContas } = await supabase
+            // CONTAS A RECEBER (apenas PAGO ou PARCELA)
+            const { data: contas, error: cErr } = await supabase
                 .from('contas_receber')
                 .select('*')
                 .or('status.eq.PAGO,status.ilike.%PARCELA%');
-            if (erroContas) throw erroContas;
+            if (cErr) throw cErr;
 
             for (const c of contas) {
-                let valorPago = parseFloat(c.valor_pago) || 0;
+                let valorPago = parseFloat(c.valor_pago)||0;
                 try {
                     const obs = c.observacoes;
                     if (obs) {
                         const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
-                        if (parsed && Array.isArray(parsed.parcelas) && parsed.parcelas.length > 0) {
-                            valorPago = parsed.parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
-                        }
+                        if (parsed?.parcelas?.length) valorPago = parsed.parcelas.reduce((s,p)=>s+parseFloat(p.valor||0),0);
                     }
                 } catch {}
-
-                const payloadPgto = {
-                    banco: c.banco || null,
-                    data_vencimento: c.data_vencimento || null,
-                    data_pagamento: c.data_pagamento || null,
-                    status_pagamento: c.status || 'A RECEBER',
-                    valor_pago: valorPago,
-                    id_contas_receber: c.id,
+                const pay = {
+                    banco: c.banco, data_vencimento: c.data_vencimento,
+                    data_pagamento: c.data_pagamento, status_pagamento: c.status,
+                    valor_pago: valorPago, id_contas_receber: c.id,
                     updated_at: new Date().toISOString()
                 };
-
-                const { data: existente } = await supabase
-                    .from('vendas')
-                    .select('id, origem')
-                    .eq('numero_nf', c.numero_nf)
-                    .eq('vendedor', c.vendedor)
-                    .maybeSingle();
-
-                if (existente) {
-                    await supabase.from('vendas').update(payloadPgto).eq('id', existente.id);
+                const { data: exist } = await supabase.from('vendas').select('id').eq('numero_nf', c.numero_nf).eq('vendedor', c.vendedor).maybeSingle();
+                if (exist) {
+                    await supabase.from('vendas').update(pay).eq('id', exist.id);
                     atualizados++;
                 } else {
                     const novo = {
-                        numero_nf: c.numero_nf,
-                        origem: 'CONTAS_RECEBER',
-                        data_emissao: c.data_emissao,
-                        valor_nf: parseFloat(c.valor) || 0,
-                        tipo_nf: c.tipo_nf || null,
-                        nome_orgao: c.orgao,
-                        vendedor: c.vendedor,
-                        ...payloadPgto,
-                        prioridade: 1
+                        numero_nf: c.numero_nf, origem: 'CONTAS_RECEBER',
+                        data_emissao: c.data_emissao, valor_nf: parseFloat(c.valor)||0,
+                        tipo_nf: c.tipo_nf, nome_orgao: c.orgao, vendedor: c.vendedor,
+                        ...pay, prioridade:1
                     };
                     await supabase.from('vendas').insert([novo]);
                     inseridos++;
@@ -154,10 +101,10 @@ module.exports = function (supabase) {
             }
 
             console.log(`[vendas] Sync: ${inseridos} inseridos, ${atualizados} atualizados`);
-            res.json({ success: true, message: `Sincronização concluída: ${inseridos} inseridos, ${atualizados} atualizados` });
+            res.json({ success:true, message:`${inseridos} inseridos, ${atualizados} atualizados` });
         } catch (err) {
-            console.error('[vendas] Erro na sincronização:', err.message);
-            res.status(500).json({ error: 'Erro na sincronização', details: err.message });
+            console.error('[vendas] Erro sync:', err);
+            res.status(500).json({ success:false, error:err.message });
         }
     });
 
