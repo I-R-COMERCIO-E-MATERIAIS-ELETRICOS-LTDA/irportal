@@ -71,7 +71,7 @@ function inicializarApp() {
 }
 
 // ============================================
-// CONEXÃO E STATUS
+// CONEXÃO E STATUS (indicador removido)
 // ============================================
 async function checkServerStatus() {
     try {
@@ -90,18 +90,11 @@ async function checkServerStatus() {
         const wasOffline = !isOnline;
         isOnline = response.ok;
         if (wasOffline && isOnline) await loadVendas();
-        updateConnectionStatus();
         return isOnline;
     } catch {
         isOnline = false;
-        updateConnectionStatus();
         return false;
     }
-}
-
-function updateConnectionStatus() {
-    const el = document.getElementById('connectionStatus');
-    if (el) el.className = isOnline ? 'connection-status online' : 'connection-status offline';
 }
 
 // ============================================
@@ -150,7 +143,6 @@ window.syncData = async function () {
     const btns = document.querySelectorAll('button[onclick="syncData()"]');
     btns.forEach(b => { const s = b.querySelector('svg'); if (s) s.style.animation = 'spin 1s linear infinite'; });
 
-    // Dispara sincronização manual no backend
     if (isOnline) {
         try {
             await fetch(`${API_URL}/vendas/sincronizar`, {
@@ -188,7 +180,6 @@ window.changeMonth = function (direction) {
     updateMonthDisplay();
 };
 
-// Compatibilidade com calendar.js
 window.selectMonth = function (monthIndex) {
     currentMonth = new Date(currentMonth.getFullYear(), monthIndex, 1);
     updateMonthDisplay();
@@ -202,7 +193,7 @@ function updateDashboard() {
     const mesAtual = getVendasMes();
 
     const totalPago = mesAtual
-        .filter(v => v.status_pagamento === 'PAGO')
+        .filter(v => v.status_pagamento === 'PAGO' || /parcela/i.test(v.status_pagamento))
         .reduce((s, v) => s + parseFloat(v.valor_nf || 0), 0);
 
     const totalAReceber = mesAtual
@@ -244,7 +235,6 @@ window.filterVendas = function () {
     if (vendedor) filtered = filtered.filter(v => v.vendedor === vendedor);
     if (status) {
         filtered = filtered.filter(v => {
-            // Verificar em ambos os campos de status
             return v.status_frete === status ||
                    v.status_pagamento === status ||
                    v.tipo_nf === status;
@@ -288,12 +278,11 @@ function renderVendas(lista) {
                         <th>Valor NF</th>
                         <th>Status Frete</th>
                         <th>Status Pgto</th>
-                        <th style="text-align: center;">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${lista.map(v => `
-                    <tr data-id="${v.id}">
+                    <tr data-id="${v.id}" style="cursor:pointer;" onclick="handleViewClick('${v.id}')">
                         <td><strong>${v.numero_nf || '-'}</strong></td>
                         <td style="max-width: 200px; word-wrap: break-word; white-space: normal;">${v.nome_orgao || '-'}</td>
                         <td>${v.vendedor || '-'}</td>
@@ -301,9 +290,6 @@ function renderVendas(lista) {
                         <td><strong>R$ ${parseFloat(v.valor_nf || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong></td>
                         <td>${getStatusFreteBadge(v.status_frete)}</td>
                         <td>${getStatusPagamentoBadge(v.status_pagamento)}</td>
-                        <td class="actions-cell" style="text-align: center; white-space: nowrap;">
-                            <button class="action-btn view" onclick="handleViewClick('${v.id}')" title="Ver detalhes">Ver</button>
-                        </td>
                     </tr>
                     `).join('')}
                 </tbody>
@@ -326,12 +312,21 @@ function getStatusFreteBadge(status) {
 
 function getStatusPagamentoBadge(status) {
     if (!status) return '<span style="color: var(--text-secondary);">-</span>';
-    const map = { 'PAGO': 'entregue', 'A RECEBER': 'transito' };
-    return `<span class="badge ${map[status] || 'transito'}">${status}</span>`;
+    // Verificar se é status de parcela (ex: "1ª PARCELA", "2ª PARCELA")
+    if (/parcela/i.test(status)) {
+        return `<span class="badge pago">${status}</span>`;
+    }
+    if (status === 'PAGO') {
+        return '<span class="badge pago">PAGO</span>';
+    }
+    if (status === 'A RECEBER') {
+        return '<span class="badge transito">A RECEBER</span>';
+    }
+    return `<span class="badge transito">${status}</span>`;
 }
 
 // ============================================
-// MODAL DE VISUALIZAÇÃO
+// MODAL DE VISUALIZAÇÃO (abre ao clicar na linha)
 // ============================================
 window.handleViewClick = function (id) {
     const v = vendas.find(x => String(x.id) === String(id));
@@ -369,7 +364,7 @@ window.handleViewClick = function (id) {
                 <p><strong>Banco:</strong> ${v.banco || '-'}</p>
                 <p><strong>Vencimento:</strong> ${d(v.data_vencimento)}</p>
                 <p><strong>Data Pagamento:</strong> ${d(v.data_pagamento)}</p>
-                <p><strong>Status Pagamento:</strong> ${v.status_pagamento || '-'}</p>
+                <p><strong>Status Pagamento:</strong> ${getStatusPagamentoBadge(v.status_pagamento)}</p>
             </div>` : ''}
         `;
     }
