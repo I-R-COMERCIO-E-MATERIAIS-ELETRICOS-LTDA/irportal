@@ -67,9 +67,7 @@ function inicializarApp() {
 // ============================================
 // CONEXÃO
 // ============================================
-function updateConnectionStatus() {
-    // removida
-}
+function updateConnectionStatus() { /* removida */ }
 
 async function syncData() {
     const btnSync = document.getElementById('btnSync');
@@ -89,7 +87,7 @@ async function syncData() {
 }
 
 // ============================================
-// CARREGAR DADOS (com desduplicação)
+// CARREGAR DADOS (com desduplicação por id)
 // ============================================
 async function loadLucroReal() {
     if (currentFetchController) currentFetchController.abort();
@@ -119,11 +117,11 @@ async function loadLucroReal() {
         let data = await response.json();
         if (mes !== currentMonth.getMonth() + 1 || ano !== currentMonth.getFullYear()) return;
 
-        // Remover duplicados baseado no campo "codigo"
+        // Remover duplicados baseado no campo "id" (UUID único)
         const seen = new Set();
         lucroData = data.filter(item => {
-            if (seen.has(item.codigo)) return false;
-            seen.add(item.codigo);
+            if (seen.has(item.id)) return false;
+            seen.add(item.id);
             return true;
         });
 
@@ -184,7 +182,6 @@ function closeCustoFixoModal() {
 // IMPOSTO FEDERAL TOTAL MANUAL
 // ============================================
 function abrirModalImpostoFixo() {
-    // Preencher com o valor atual (se manual, mostra ele; senão mostra a soma calculada)
     const value = impostoManual !== null ? impostoManual : lucroData.reduce((s, r) => s + (r.imposto_federal || 0), 0);
     document.getElementById('impostoFixoInput').value = value;
     document.getElementById('editImpostoModal').classList.add('show');
@@ -264,7 +261,6 @@ function updateDashboard() {
                          - (r.comissao || 0) - (r.imposto_federal || 0);
     });
 
-    // Se existir valor manual, usar ele em vez da soma
     const impostoExibido = impostoManual !== null ? impostoManual : totalImposto;
 
     document.getElementById('totalVenda').innerHTML   = `<span class="stat-value-success">${formatarMoeda(totalVenda)}</span>`;
@@ -357,7 +353,7 @@ function updateTable() {
             <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;font-weight:700;" class="${lucroClass}">${formatarMoeda(lucroReal)}</td>
             <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;">${margem.toFixed(2)}%</td>
             <td style="text-align:center;">
-                <button onclick="showDeleteModal('${r.codigo}', '${(r.nf || '').toUpperCase()}')"
+                <button onclick="showDeleteModal('${r.id}', '${(r.nf || '').toUpperCase()}')"
                         style="background:var(--btn-delete);color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">
                     Excluir
                 </button>
@@ -369,9 +365,9 @@ function updateTable() {
 }
 
 // ============================================
-// EXCLUSÃO – modal padronizado (Sim vermelho, Cancelar verde)
+// EXCLUSÃO – usando 'id' (UUID) para evitar 404
 // ============================================
-function showDeleteModal(codigo, nf) {
+function showDeleteModal(id, nf) {
     const existing = document.getElementById('deleteModal');
     if (existing) existing.remove();
 
@@ -381,7 +377,7 @@ function showDeleteModal(codigo, nf) {
                 <button class="close-modal" onclick="closeDeleteModal()">✕</button>
                 <div class="modal-message-delete">Tem certeza que deseja excluir a NF <strong>${nf}</strong>?</div>
                 <div class="modal-actions modal-actions-no-border">
-                    <button type="button" onclick="confirmDelete('${codigo}')" class="danger">Sim</button>
+                    <button type="button" onclick="confirmDelete('${id}')" class="danger">Sim</button>
                     <button type="button" onclick="closeDeleteModal()" class="success">Cancelar</button>
                 </div>
             </div>
@@ -398,13 +394,15 @@ function closeDeleteModal() {
     }
 }
 
-async function confirmDelete(codigo) {
+async function confirmDelete(id) {
     closeDeleteModal();
-    const registro = lucroData.find(r => r.codigo === codigo);
-    const nf = registro ? (registro.nf || codigo) : codigo;
+    // Encontrar o registro local para exibir a mensagem com NF
+    const registro = lucroData.find(r => r.id === id);
+    const nf = registro ? (registro.nf || id) : id;
 
     try {
-        const response = await fetch(`${API_URL}/lucro-real/${codigo}`, {
+        // Rota DELETE agora usa :id (UUID)
+        const response = await fetch(`${API_URL}/lucro-real/${id}`, {
             method: 'DELETE',
             headers: { 'X-Session-Token': sessionToken }
         });
@@ -416,7 +414,7 @@ async function confirmDelete(codigo) {
         }
         if (!response.ok) throw new Error('Erro ao excluir');
 
-        lucroData = lucroData.filter(r => r.codigo !== codigo);
+        lucroData = lucroData.filter(r => r.id !== id);
         lastDataHash = JSON.stringify(lucroData.map(r => r.id));
         updateDisplay();
         showMessage(`NF ${nf} EXCLUÍDA`, 'error');
@@ -467,6 +465,7 @@ async function saveEditModal() {
     const novoImposto  = parseFloat(document.getElementById('editImposto').value)  || 0;
 
     try {
+        // PATCH usando 'codigo' (ou poderíamos migrar para 'id', mas manter compatibilidade)
         const response = await fetch(`${API_URL}/lucro-real/${currentEditCodigo}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
@@ -490,7 +489,7 @@ async function saveEditModal() {
         closeEditModal();
         showMessage('VALORES ATUALIZADOS', 'success');
 
-        // Se houver valor manual para imposto, perguntar se deseja voltar ao automático
+        // Se imposto manual estava ativo, perguntar se deseja retornar ao automático
         if (impostoManual !== null) {
             showConfirmAutoImposto();
         }
