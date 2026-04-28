@@ -13,15 +13,11 @@
             <div class="header">
                 <div class="header-left">
                     <h1>Lucro Real</h1>
-                    <div id="connectionStatus" class="connection-status offline">
-                        <span class="status-dot"></span>
-                    </div>
                 </div>
             </div>
 
             <!-- DASHBOARD CARDS -->
             <div class="dashboard-grid">
-                <!-- VENDA -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-success">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -33,8 +29,6 @@
                         <div class="stat-label">VENDA</div>
                     </div>
                 </div>
-
-                <!-- CUSTO -->
                 <div class="stat-card">
                     <div class="stat-icon" style="background: rgba(239, 68, 68, 0.1); color: #EF4444;">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -46,8 +40,6 @@
                         <div class="stat-label">CUSTO</div>
                     </div>
                 </div>
-
-                <!-- FRETE -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-info">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -60,8 +52,6 @@
                         <div class="stat-label">FRETE</div>
                     </div>
                 </div>
-
-                <!-- IMP FED -->
                 <div class="stat-card">
                     <div class="stat-icon" style="background: rgba(239, 68, 68, 0.1); color: #EF4444;">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -73,8 +63,6 @@
                         <div class="stat-label">IMP FED</div>
                     </div>
                 </div>
-
-                <!-- LUCRO BRUTO (agora com estilo padrão, sem cor especial) -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-default">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -86,8 +74,6 @@
                         <div class="stat-label">LUCRO BRUTO</div>
                     </div>
                 </div>
-
-                <!-- COMISSÃO (nova cor amarela) -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-commission">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -100,8 +86,6 @@
                         <div class="stat-label">COMISSÃO</div>
                     </div>
                 </div>
-
-                <!-- LUCRO REAL (custo fixo mensal - editável) -->
                 <div class="stat-card" id="cardLucroReal" style="cursor: pointer;" onclick="abrirModalCustoFixo()">
                     <div class="stat-icon" id="iconLucroReal">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -164,13 +148,6 @@
                             <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                         </svg>
                     </button>
-                    <button class="calendar-btn" onclick="openRelatorioAnualModal()" title="Relatório Anual">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <line x1="18" y1="20" x2="18" y2="10" />
-                            <line x1="12" y1="20" x2="12" y2="4" />
-                            <line x1="6" y1="20" x2="6" y2="14" />
-                        </svg>
-                    </button>
                 </div>
             </div>
 
@@ -209,6 +186,7 @@
                                 <th>IMP FED (R$)</th>
                                 <th>LUCRO REAL (R$)</th>
                                 <th>MARGEM LÍQ.</th>
+                                <th style="text-align:center;">AÇÕES</th>
                             </tr>
                         </thead>
                         <tbody id="lucroContainer"></tbody>
@@ -246,7 +224,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE CUSTO FIXO MENSAL (LUCRO REAL) -->
+    <!-- MODAL DE CUSTO FIXO MENSAL -->
     <div class="modal-overlay" id="editCustoFixoModal">
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">
@@ -263,29 +241,6 @@
                 <button type="button" onclick="closeCustoFixoModal()" class="secondary">CANCELAR</button>
                 <button type="button" onclick="saveCustoFixo()" class="btn-save-green">SALVAR</button>
             </div>
-        </div>
-    </div>
-
-    <!-- MODAL DE RELATÓRIO ANUAL -->
-    <div class="modal-overlay" id="relatorioModal">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <div style="display: flex; align-items: center; gap: 0.5rem; width: 100%;">
-                    <button onclick="changeRelatorioYear(-1)" class="year-nav-btn">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="15 18 9 12 15 6"></polyline>
-                        </svg>
-                    </button>
-                    <h3 class="modal-title" id="relatorioAnoTitulo" style="flex:1; text-align:center; margin:0;">2026</h3>
-                    <button onclick="changeRelatorioYear(1)" class="year-nav-btn">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                    </button>
-                </div>
-                <button class="close-modal" onclick="closeRelatorioModal()">✕</button>
-            </div>
-            <div class="modal-body" id="relatorioBody"></div>
         </div>
     </div>
 
