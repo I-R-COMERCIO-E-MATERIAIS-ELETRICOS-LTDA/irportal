@@ -16,8 +16,9 @@
                 </div>
             </div>
 
-            <!-- DASHBOARD CARDS -->
+            <!-- DASHBOARD CARDS (mantidos) -->
             <div class="dashboard-grid">
+                <!-- VENDA -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-success">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -29,6 +30,7 @@
                         <div class="stat-label">VENDA</div>
                     </div>
                 </div>
+                <!-- CUSTO -->
                 <div class="stat-card">
                     <div class="stat-icon" style="background: rgba(239, 68, 68, 0.1); color: #EF4444;">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -40,6 +42,7 @@
                         <div class="stat-label">CUSTO</div>
                     </div>
                 </div>
+                <!-- FRETE -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-info">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -52,7 +55,7 @@
                         <div class="stat-label">FRETE</div>
                     </div>
                 </div>
-                <!-- CARD IMP FED agora é clicável -->
+                <!-- IMP FED (agora clicável) -->
                 <div class="stat-card" id="cardImposto" style="cursor:pointer;" onclick="abrirModalImpostoFixo()">
                     <div class="stat-icon" style="background: rgba(239, 68, 68, 0.1); color: #EF4444;">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -64,6 +67,7 @@
                         <div class="stat-label">IMP FED</div>
                     </div>
                 </div>
+                <!-- LUCRO BRUTO -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-default">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -75,6 +79,7 @@
                         <div class="stat-label">LUCRO BRUTO</div>
                     </div>
                 </div>
+                <!-- COMISSÃO -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-commission">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -87,6 +92,7 @@
                         <div class="stat-label">COMISSÃO</div>
                     </div>
                 </div>
+                <!-- LUCRO REAL -->
                 <div class="stat-card" id="cardLucroReal" style="cursor: pointer;" onclick="abrirModalCustoFixo()">
                     <div class="stat-icon" id="iconLucroReal">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -197,7 +203,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE EDIÇÃO (CUSTO, COMISSÃO, IMPOSTO) -->
+    <!-- MODAIS (mantidos) -->
     <div class="modal-overlay" id="editModal">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">
@@ -205,18 +211,9 @@
                 <button class="close-modal" onclick="closeEditModal()">✕</button>
             </div>
             <div class="modal-body">
-                <div class="form-group">
-                    <label for="editCusto">CUSTO (R$)</label>
-                    <input type="number" id="editCusto" step="0.01" min="0" max="5000000">
-                </div>
-                <div class="form-group">
-                    <label for="editComissao">COMISSÃO (R$)</label>
-                    <input type="number" id="editComissao" step="0.01" min="0">
-                </div>
-                <div class="form-group">
-                    <label for="editImposto">IMPOSTO FEDERAL (R$)</label>
-                    <input type="number" id="editImposto" step="0.01" min="0">
-                </div>
+                <div class="form-group"><label for="editCusto">CUSTO (R$)</label><input type="number" id="editCusto" step="0.01" min="0" max="5000000"></div>
+                <div class="form-group"><label for="editComissao">COMISSÃO (R$)</label><input type="number" id="editComissao" step="0.01" min="0"></div>
+                <div class="form-group"><label for="editImposto">IMPOSTO FEDERAL (R$)</label><input type="number" id="editImposto" step="0.01" min="0"></div>
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="closeEditModal()" class="secondary">CANCELAR</button>
@@ -225,47 +222,22 @@
         </div>
     </div>
 
-    <!-- MODAL DE CUSTO FIXO MENSAL (LUCRO REAL) -->
     <div class="modal-overlay" id="editCustoFixoModal">
         <div class="modal-content" style="max-width: 400px;">
-            <div class="modal-header">
-                <h3 class="modal-title">EDITAR CUSTO FIXO MENSAL</h3>
-                <button class="close-modal" onclick="closeCustoFixoModal()">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="custoFixoInput">VALOR (R$)</label>
-                    <input type="number" id="custoFixoInput" step="0.01" min="0" value="0">
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" onclick="closeCustoFixoModal()" class="secondary">CANCELAR</button>
-                <button type="button" onclick="saveCustoFixo()" class="btn-save-green">SALVAR</button>
-            </div>
+            <div class="modal-header"><h3 class="modal-title">EDITAR CUSTO FIXO MENSAL</h3><button class="close-modal" onclick="closeCustoFixoModal()">✕</button></div>
+            <div class="modal-body"><div class="form-group"><label for="custoFixoInput">VALOR (R$)</label><input type="number" id="custoFixoInput" step="0.01" min="0" value="0"></div></div>
+            <div class="modal-actions"><button type="button" onclick="closeCustoFixoModal()" class="secondary">CANCELAR</button><button type="button" onclick="saveCustoFixo()" class="btn-save-green">SALVAR</button></div>
         </div>
     </div>
 
-    <!-- NOVO: MODAL DE EDIÇÃO DO IMPOSTO FEDERAL TOTAL -->
     <div class="modal-overlay" id="editImpostoModal">
         <div class="modal-content" style="max-width: 400px;">
-            <div class="modal-header">
-                <h3 class="modal-title">EDITAR IMPOSTO FEDERAL TOTAL</h3>
-                <button class="close-modal" onclick="closeImpostoModal()">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="impostoFixoInput">VALOR (R$)</label>
-                    <input type="number" id="impostoFixoInput" step="0.01" min="0" value="0">
-                </div>
-            </div>
-            <div class="modal-actions">
-                <button type="button" onclick="closeImpostoModal()" class="secondary">CANCELAR</button>
-                <button type="button" onclick="saveImpostoFixo()" class="btn-save-green">SALVAR</button>
-            </div>
+            <div class="modal-header"><h3 class="modal-title">EDITAR IMPOSTO FEDERAL TOTAL</h3><button class="close-modal" onclick="closeImpostoModal()">✕</button></div>
+            <div class="modal-body"><div class="form-group"><label for="impostoFixoInput">VALOR (R$)</label><input type="number" id="impostoFixoInput" step="0.01" min="0" value="0"></div></div>
+            <div class="modal-actions"><button type="button" onclick="closeImpostoModal()" class="secondary">CANCELAR</button><button type="button" onclick="saveImpostoFixo()" class="btn-save-green">SALVAR</button></div>
         </div>
     </div>
 
-    <!-- MODAL DE CONFIRMAÇÃO: deseja voltar ao cálculo automático? -->
     <div class="modal-overlay" id="confirmAutoImpostoModal">
         <div class="modal-content modal-delete" style="max-width: 450px;">
             <button class="close-modal" onclick="closeConfirmAutoImposto()">✕</button>
