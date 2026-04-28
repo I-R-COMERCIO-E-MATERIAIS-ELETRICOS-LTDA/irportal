@@ -45,13 +45,26 @@ function mostrarTelaAcessoNegado(mensagem = 'NÃO AUTORIZADO') {
 
 async function inicializarApp() {
     updateMonthDisplay();
-    await checkServerStatus();
-    if (isOnline) {
-        console.log('🔄 Sincronizando dados automaticamente...');
-        await syncData(true);
-    } else {
-        console.warn('⚠️ Offline');
+
+    // Tenta sincronizar IMEDIATAMENTE (independente de online/offline – se falhar, apenas loga)
+    try {
+        console.log('🔄 Forçando sincronização inicial...');
+        const res = await fetch(`${API_URL}/vendas/sincronizar`, {
+            method: 'POST',
+            headers: { 'X-Session-Token': sessionToken }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            console.log('📊 Sincronização inicial:', data.message);
+        } else {
+            console.warn('Sincronização inicial falhou:', res.status);
+        }
+    } catch (e) {
+        console.warn('Erro ao sincronizar (início):', e);
     }
+
+    // Agora carrega a lista e verifica status periodicamente
+    await checkServerStatus();
     setInterval(checkServerStatus, 15000);
     startPolling();
 }
@@ -79,10 +92,6 @@ async function checkServerStatus() {
 }
 
 async function loadVendas(showMsg = false) {
-    if (!isOnline && !DEVELOPMENT_MODE) {
-        if (showMsg) showToast('Sistema offline.', 'error');
-        return;
-    }
     try {
         const r = await fetch(`${API_URL}/vendas?_t=${Date.now()}`, {
             headers: { 'X-Session-Token': sessionToken, 'Accept': 'application/json', 'Cache-Control': 'no-cache' },
@@ -91,12 +100,16 @@ async function loadVendas(showMsg = false) {
         if (!DEVELOPMENT_MODE && r.status === 401) {
             sessionStorage.removeItem('vendasSession'); mostrarTelaAcessoNegado('Sessão expirou'); return;
         }
-        if (!r.ok) { if (showMsg) showToast('Erro ao carregar', 'error'); return; }
+        if (!r.ok) {
+            if (showMsg) showToast('Erro ao carregar', 'error');
+            return;
+        }
         vendas = await r.json();
         console.log(`✅ ${vendas.length} vendas carregadas`);
         updateDashboard(); filterVendas();
     } catch (err) {
-        console.error(err); if (showMsg) showToast('Erro ao carregar', 'error');
+        console.error(err);
+        if (showMsg) showToast('Erro ao carregar', 'error');
     }
 }
 
@@ -104,26 +117,22 @@ window.syncData = async function (silencioso = false) {
     const btns = document.querySelectorAll('button[onclick="syncData()"]');
     btns.forEach(b => { const s = b.querySelector('svg'); if (s) s.style.animation = 'spin 1s linear infinite'; });
 
-    if (isOnline) {
-        try {
-            const res = await fetch(`${API_URL}/vendas/sincronizar`, {
-                method: 'POST',
-                headers: { 'X-Session-Token': sessionToken }
-            });
-            const data = await res.json();
-            if (res.ok) {
-                console.log('📊', data.message);
-                if (!silencioso) showToast(data.message, 'success');
-            } else {
-                console.error('❌ Erro na sincronização:', data.error || data);
-                if (!silencioso) showToast('Erro na sincronização', 'error');
-            }
-        } catch (e) {
-            console.warn('Sync falhou:', e);
+    try {
+        const res = await fetch(`${API_URL}/vendas/sincronizar`, {
+            method: 'POST',
+            headers: { 'X-Session-Token': sessionToken }
+        });
+        const data = await res.json();
+        if (res.ok) {
+            console.log('📊', data.message);
+            if (!silencioso) showToast(data.message, 'success');
+        } else {
+            console.error('❌ Erro na sincronização:', data.error || data);
             if (!silencioso) showToast('Erro na sincronização', 'error');
         }
-    } else {
-        if (!silencioso) showToast('Sistema offline', 'warning');
+    } catch (e) {
+        console.warn('Sync falhou:', e);
+        if (!silencioso) showToast('Erro na sincronização', 'error');
     }
 
     await loadVendas(!silencioso);
