@@ -53,12 +53,12 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── SINCRONIZAÇÃO MANUAL (merge inteligente) ───────────────────────────────
+    // ─── SINCRONIZAÇÃO (MERGE INTELIGENTE) ──────────────────────────────────────
     router.post('/sincronizar', async (req, res) => {
         try {
             let inseridos = 0, atualizados = 0;
 
-            // 1. FREInclusão apenas de status que não sejam devolução/devolvida
+            // 1. FREInclusão apenas de status que NÃO sejam devolução/devolvida
             const { data: fretes, error: erroFrete } = await supabase
                 .from('controle_frete')
                 .select('*')
@@ -67,6 +67,12 @@ module.exports = function (supabase) {
             if (erroFrete) throw erroFrete;
 
             for (const frete of fretes) {
+                const statusFreteMap = {
+                    'EM_TRANSITO': 'EM TRÂNSITO',
+                    'ENTREGUE': 'ENTREGUE',
+                    'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
+                    'EXTRAVIADO': 'EXTRAVIADO'
+                };
                 const payload = {
                     numero_nf: frete.numero_nf,
                     origem: 'CONTROLE_FRETE',
@@ -82,12 +88,12 @@ module.exports = function (supabase) {
                     data_coleta: frete.data_coleta || null,
                     cidade_destino: frete.cidade_destino || null,
                     previsao_entrega: frete.previsao_entrega || null,
-                    status_frete: frete.status || null,
+                    status_frete: statusFreteMap[frete.status] || frete.status || null,
                     id_controle_frete: frete.id,
                     updated_at: new Date().toISOString()
                 };
 
-                // Upsert: se já existir (por numero_nf + vendedor), atualiza; senão insere
+                // Upsert por numero_nf + vendedor
                 const { data: existente } = await supabase
                     .from('vendas')
                     .select('id')
@@ -104,7 +110,7 @@ module.exports = function (supabase) {
                 }
             }
 
-            // 2. CONTAS A RECEBER — apenas se status for PAGO ou conter "PARCELA"
+            // 2. CONTAS A RECEBER — apenas status PAGO ou que contenha "PARCELA"
             const { data: contas, error: erroContas } = await supabase
                 .from('contas_receber')
                 .select('*')
@@ -150,24 +156,24 @@ module.exports = function (supabase) {
                     .maybeSingle();
 
                 if (existente) {
-                    // Atualiza apenas os campos de pagamento, mantendo os de frete
+                    // Atualiza apenas campos de pagamento, preservando origem se já existir
                     const updatePayload = { ...payload };
-                    delete updatePayload.origem; // mantém a origem original (frete)
+                    delete updatePayload.origem; // mantém a origem original (CONTROLE_FRETE)
                     await supabase.from('vendas').update(updatePayload).eq('id', existente.id);
                     atualizados++;
                 } else {
-                    // Se não existir no frete, insere como venda somente com dados de pagamento
                     await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]);
                     inseridos++;
                 }
             }
 
+            console.log(`[vendas] Sync concluída: ${inseridos} inseridos, ${atualizados} atualizados`);
             res.json({
                 success: true,
                 message: `Sincronização concluída: ${inseridos} inseridos, ${atualizados} atualizados`
             });
         } catch (err) {
-            console.error('Erro na sincronização:', err.message);
+            console.error('[vendas] Erro na sincronização:', err.message);
             res.status(500).json({ error: 'Erro na sincronização', details: err.message });
         }
     });
