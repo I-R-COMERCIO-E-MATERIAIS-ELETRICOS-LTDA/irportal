@@ -2,11 +2,15 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── GET / — Lista vendas com filtros opcionais ───────────────────────────
+    // ─── GET /api/vendas ────────────────────────────────────────────────────────
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor, status_frete, status_pagamento } = req.query;
-            let query = supabase.from('vendas').select('*').order('data_emissao', { ascending: false });
+
+            let query = supabase
+                .from('vendas')
+                .select('*')
+                .order('numero_nf', { ascending: true });
 
             if (mes && ano) {
                 const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
@@ -14,9 +18,8 @@ module.exports = function (supabase) {
                 const fim = `${ano}-${String(mes).padStart(2, '0')}-${fimDia}`;
                 query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
             }
-
-            if (vendedor) query = query.eq('vendedor', vendedor);
-            if (status_frete) query = query.eq('status_frete', status_frete);
+            if (vendedor)         query = query.eq('vendedor', vendedor);
+            if (status_frete)     query = query.eq('status_frete', status_frete);
             if (status_pagamento) query = query.eq('status_pagamento', status_pagamento);
 
             const { data, error } = await query;
@@ -28,7 +31,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── GET /:id — Busca uma venda por ID ────────────────────────────────────
+    // ─── GET /api/vendas/:id ────────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -37,173 +40,180 @@ module.exports = function (supabase) {
                 .eq('id', req.params.id)
                 .single();
             if (error) return res.status(500).json({ error: error.message });
-            if (!data) return res.status(404).json({ error: 'Não encontrado' });
+            if (!data)  return res.status(404).json({ error: 'Não encontrado' });
             res.json(data);
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
     });
 
-    // ─── POST /sincronizar — Sincroniza frete + contas a receber ─────────────
+    // ─── POST /api/vendas/sincronizar ───────────────────────────────────────────
     router.post('/sincronizar', async (req, res) => {
-        try {
-            let inseridos = 0, atualizados = 0, erros = 0;
+        let inseridos = 0, atualizados = 0, erros = 0;
 
-            // ── 1. CONTROLE DE FRETE ─────────────────────────────────────────
-            // CORREÇÃO: sintaxe correta para NOT IN no Supabase JS client
+        // Mapa de status do controle_frete → texto exibido
+        const statusFreteMap = {
+            'EM_TRANSITO':       'EM TRÂNSITO',
+            'ENTREGUE':          'ENTREGUE',
+            'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
+            'EXTRAVIADO':        'EXTRAVIADO',
+            // valores já no formato texto (caso já estejam assim no banco)
+            'EM TRÂNSITO':       'EM TRÂNSITO',
+            'AGUARDANDO COLETA': 'AGUARDANDO COLETA',
+        };
+
+        try {
+            // ── 1. CONTROLE DE FRETE ──────────────────────────────────────────
+            // Traz TODOS os fretes exceto devolvidos (múltiplos formatos do valor)
             const { data: fretes, error: fErr } = await supabase
                 .from('controle_frete')
                 .select('*')
-                .not('status', 'in', '(DEVOLVIDO,DEVOLUCAO,DEVOLU\u00C7\u00C3O)');
+                .not('status', 'in', '("DEVOLVIDO","DEVOLUCAO","devolvido","devolucao")');
 
             if (fErr) {
-                console.error('[vendas] Erro ao buscar fretes:', fErr.message);
-                throw fErr;
+                console.error('[vendas] Erro ao buscar controle_frete:', fErr.message);
+                return res.status(500).json({ success: false, error: fErr.message });
             }
 
             console.log(`[vendas] Fretes encontrados: ${fretes?.length || 0}`);
 
-            // Mapeamento de status do controle_frete → vendas
-            const statusFreteMap = {
-                'EM_TRANSITO':       'EM TRÂNSITO',
-                'EM TRANSITO':       'EM TRÂNSITO',
-                'EM_TRÂNSITO':       'EM TRÂNSITO',
-                'EM TRÂNSITO':       'EM TRÂNSITO',
-                'ENTREGUE':          'ENTREGUE',
-                'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
-                'AGUARDANDO COLETA': 'AGUARDANDO COLETA',
-                'EXTRAVIADO':        'EXTRAVIADO',
-                'SIMPLES_REMESSA':   'SIMPLES REMESSA',
-                'SIMPLES REMESSA':   'SIMPLES REMESSA',
-                'REMESSA_AMOSTRA':   'REMESSA DE AMOSTRA',
-                'REMESSA DE AMOSTRA':'REMESSA DE AMOSTRA',
-            };
-
             for (const f of (fretes || [])) {
                 try {
-                    const statusNormalizado = statusFreteMap[f.status] || f.status || null;
+                    const statusFrete = statusFreteMap[f.status] || f.status || 'EM TRÂNSITO';
 
                     const payload = {
                         numero_nf:        f.numero_nf,
                         origem:           'CONTROLE_FRETE',
-                        data_emissao:     f.data_emissao,
-                        valor_nf:         parseFloat(f.valor_nf) || 0,
-                        tipo_nf:          f.tipo_nf || null,
-                        nome_orgao:       f.nome_orgao || null,
-                        vendedor:         f.vendedor || null,
-                        documento:        f.documento || null,
-                        contato_orgao:    f.contato_orgao || null,
+                        data_emissao:     f.data_emissao   || null,
+                        valor_nf:         parseFloat(f.valor_nf)    || 0,
+                        tipo_nf:          f.tipo_nf        || null,
+                        nome_orgao:       f.nome_orgao     || f.orgao || null,
+                        vendedor:         f.vendedor       || null,
+                        documento:        f.documento      || null,
+                        contato_orgao:    f.contato_orgao  || null,
                         transportadora:   f.transportadora || null,
-                        valor_frete:      parseFloat(f.valor_frete) || 0,
-                        data_coleta:      f.data_coleta || null,
+                        valor_frete:      parseFloat(f.valor_frete)  || 0,
+                        data_coleta:      f.data_coleta    || null,
                         cidade_destino:   f.cidade_destino || null,
                         previsao_entrega: f.previsao_entrega || null,
-                        status_frete:     statusNormalizado,
+                        status_frete:     statusFrete,
                         id_controle_frete: f.id,
-                        updated_at:       new Date().toISOString()
+                        updated_at:       new Date().toISOString(),
                     };
 
-                    const { data: exist } = await supabase
+                    // Verifica se já existe pelo índice único numero_nf + vendedor
+                    const { data: exist, error: eErr } = await supabase
                         .from('vendas')
-                        .select('id')
+                        .select('id, status_pagamento')
                         .eq('numero_nf', f.numero_nf)
-                        .eq('vendedor', f.vendedor)
+                        .eq('vendedor',  f.vendedor || '')
                         .maybeSingle();
 
+                    if (eErr) throw eErr;
+
                     if (exist) {
-                        const { error: upErr } = await supabase
+                        // Atualiza campos de frete, preserva dados de pagamento
+                        const { error: uErr } = await supabase
                             .from('vendas')
                             .update(payload)
                             .eq('id', exist.id);
-                        if (upErr) throw upErr;
+                        if (uErr) throw uErr;
                         atualizados++;
                     } else {
-                        const { error: insErr } = await supabase
+                        const { error: iErr } = await supabase
                             .from('vendas')
                             .insert([{ ...payload, prioridade: 1 }]);
-                        if (insErr) throw insErr;
+                        if (iErr) throw iErr;
                         inseridos++;
                     }
-                } catch (loopErr) {
-                    console.error(`[vendas] Erro no frete NF ${f.numero_nf}:`, loopErr.message);
+                } catch (itemErr) {
+                    console.error(`[vendas] Erro frete NF ${f.numero_nf}:`, itemErr.message);
                     erros++;
                 }
             }
 
-            // ── 2. CONTAS A RECEBER ──────────────────────────────────────────
-            // CORREÇÃO: usar filter com OR explícito — Supabase aceita .or()
+            // ── 2. CONTAS A RECEBER ───────────────────────────────────────────
+            // IMPORTANTE: traz TODOS os status (PAGO, A RECEBER, PARCELA, etc.)
+            // para que o painel mostre também os valores a receber
             const { data: contas, error: cErr } = await supabase
                 .from('contas_receber')
-                .select('*')
-                .or('status.eq.PAGO,status.ilike.%PARCELA%,status.eq.A RECEBER');
+                .select('*');
 
             if (cErr) {
-                console.error('[vendas] Erro ao buscar contas:', cErr.message);
-                throw cErr;
-            }
+                console.error('[vendas] Erro ao buscar contas_receber:', cErr.message);
+                // Não aborta — continua com o que já foi sincronizado
+            } else {
+                console.log(`[vendas] Contas a receber encontradas: ${contas?.length || 0}`);
 
-            console.log(`[vendas] Contas encontradas: ${contas?.length || 0}`);
-
-            for (const c of (contas || [])) {
-                try {
-                    // Calcula valor pago (considera parcelas no JSON de observações)
-                    let valorPago = parseFloat(c.valor_pago) || 0;
+                for (const c of (contas || [])) {
                     try {
-                        const obs = c.observacoes;
-                        if (obs) {
-                            const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
-                            if (parsed?.parcelas?.length) {
-                                valorPago = parsed.parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
+                        // Calcula valor pago (considera parcelas no campo observacoes)
+                        let valorPago = parseFloat(c.valor_pago) || 0;
+                        try {
+                            const obs = c.observacoes;
+                            if (obs) {
+                                const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
+                                if (Array.isArray(parsed?.parcelas) && parsed.parcelas.length) {
+                                    valorPago = parsed.parcelas.reduce(
+                                        (s, p) => s + parseFloat(p.valor || 0), 0
+                                    );
+                                }
                             }
-                        }
-                    } catch { /* ignora erros de parse */ }
+                        } catch (_) { /* mantém valor original */ }
 
-                    const paymentPayload = {
-                        banco:              c.banco || null,
-                        data_vencimento:    c.data_vencimento || null,
-                        data_pagamento:     c.data_pagamento || null,
-                        status_pagamento:   c.status || null,
-                        valor_pago:         valorPago,
-                        id_contas_receber:  c.id,
-                        updated_at:         new Date().toISOString()
-                    };
-
-                    const { data: exist } = await supabase
-                        .from('vendas')
-                        .select('id')
-                        .eq('numero_nf', c.numero_nf)
-                        .eq('vendedor', c.vendedor)
-                        .maybeSingle();
-
-                    if (exist) {
-                        const { error: upErr } = await supabase
-                            .from('vendas')
-                            .update(paymentPayload)
-                            .eq('id', exist.id);
-                        if (upErr) throw upErr;
-                        atualizados++;
-                    } else {
-                        // Cria registro novo caso não exista pelo frete
-                        const novo = {
-                            numero_nf:   c.numero_nf,
-                            origem:      'CONTAS_RECEBER',
-                            data_emissao: c.data_emissao || null,
-                            valor_nf:    parseFloat(c.valor) || 0,
-                            tipo_nf:     c.tipo_nf || null,
-                            nome_orgao:  c.orgao || c.nome_orgao || null,
-                            vendedor:    c.vendedor || null,
-                            prioridade:  1,
-                            ...paymentPayload
+                        // Campos de pagamento que serão gravados / atualizados
+                        const payFields = {
+                            banco:              c.banco            || null,
+                            data_vencimento:    c.data_vencimento  || null,
+                            data_pagamento:     c.data_pagamento   || null,
+                            status_pagamento:   c.status           || 'A RECEBER',
+                            valor_pago:         valorPago,
+                            id_contas_receber:  c.id,
+                            updated_at:         new Date().toISOString(),
                         };
-                        const { error: insErr } = await supabase
+
+                        const { data: exist, error: eErr } = await supabase
                             .from('vendas')
-                            .insert([novo]);
-                        if (insErr) throw insErr;
-                        inseridos++;
+                            .select('id')
+                            .eq('numero_nf', c.numero_nf)
+                            .eq('vendedor',  c.vendedor || '')
+                            .maybeSingle();
+
+                        if (eErr) throw eErr;
+
+                        if (exist) {
+                            // Já existe (veio do frete ou entrada anterior) → atualiza só pagamento
+                            const { error: uErr } = await supabase
+                                .from('vendas')
+                                .update(payFields)
+                                .eq('id', exist.id);
+                            if (uErr) throw uErr;
+                            atualizados++;
+                        } else {
+                            // Não existe: cria entrada vinda apenas de contas_receber
+                            const novo = {
+                                numero_nf:       c.numero_nf,
+                                origem:          'CONTAS_RECEBER',
+                                data_emissao:    c.data_emissao || null,
+                                valor_nf:        parseFloat(c.valor) || 0,
+                                tipo_nf:         c.tipo_nf  || null,
+                                // campo orgao OU nome_orgao dependendo da tabela
+                                nome_orgao:      c.nome_orgao || c.orgao || null,
+                                vendedor:        c.vendedor || null,
+                                status_frete:    null,
+                                ...payFields,
+                                prioridade:      1,
+                            };
+                            const { error: iErr } = await supabase
+                                .from('vendas')
+                                .insert([novo]);
+                            if (iErr) throw iErr;
+                            inseridos++;
+                        }
+                    } catch (itemErr) {
+                        console.error(`[vendas] Erro conta NF ${c.numero_nf}:`, itemErr.message);
+                        erros++;
                     }
-                } catch (loopErr) {
-                    console.error(`[vendas] Erro na conta NF ${c.numero_nf}:`, loopErr.message);
-                    erros++;
                 }
             }
 
@@ -212,7 +222,7 @@ module.exports = function (supabase) {
             res.json({ success: true, message: msg, inseridos, atualizados, erros });
 
         } catch (err) {
-            console.error('[vendas] Erro crítico no sync:', err.message);
+            console.error('[vendas] Erro geral na sync:', err);
             res.status(500).json({ success: false, error: err.message });
         }
     });
