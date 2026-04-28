@@ -115,15 +115,15 @@ app.get('/health', async (req, res) => {
 app.get('/api/supabase-config', (req, res) => {
     const url = process.env.SUPABASE_URL;
     const anonKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
-    
+
     console.log('[supabase-config] URL exists:', !!url);
     console.log('[supabase-config] ANON_KEY exists:', !!anonKey);
-    
+
     if (!url || !anonKey) {
         console.error('❌ Supabase config missing: URL or ANON_KEY not set in environment');
         return res.status(500).json({ error: 'Configuração do Supabase incompleta no servidor' });
     }
-    
+
     res.json({ url, anonKey });
 });
 
@@ -238,7 +238,7 @@ app.get('/api/notifications', async (req, res) => {
 const precosRoutes = require('./apps/precos/routes');
 app.use('/api/precos', precosRoutes(supabase));
 
-// ─── API DE COMPRAS ────────────────────────────────────────────────────────────
+// ─── API DE COMPRAS ───────────────────────────────────────────────────────────
 const compraRoutes = require('./apps/compra/routes');
 app.use('/api', compraRoutes(supabase));
 
@@ -266,8 +266,12 @@ app.use('/api/receber', receberRoutes(supabase));
 const vendasRoutes = require('./apps/vendas/routes');
 app.use('/api/vendas', vendasRoutes(supabase));
 
+// ─── API DE LUCRO REAL ────────────────────────────────────────────────────────
+const lucroRoutes = require('./apps/lucro/routes');
+app.use('/api', lucroRoutes(supabase));
+
 // ─── ROTA DE ESTOQUE ──────────────────────────────────────────────────────────
-app.get('/api/estoque', verificarAutenticacao, async (req, res) => {
+app.get('/api/estoque', async (req, res) => {
     try {
         const { data, error } = await supabase
             .from('estoque')
@@ -281,7 +285,7 @@ app.get('/api/estoque', verificarAutenticacao, async (req, res) => {
     }
 });
 
-app.patch('/api/estoque/:codigo', verificarAutenticacao, async (req, res) => {
+app.patch('/api/estoque/:codigo', async (req, res) => {
     try {
         const { quantidade } = req.body;
         const { data, error } = await supabase
@@ -346,16 +350,17 @@ app.listen(PORT, '0.0.0.0', () => {
     });
     console.log(`\n📝 Logs salvos em: acessos.log\n`);
     console.log('📡 Rotas de API registradas:');
-    console.log('  POST /api/portal/...       → Portal (auth)');
-    console.log('  POST /api/notifications    → Notificações globais');
-    console.log('  GET  /api/transportadoras  → Transportadoras');
-    console.log('  GET  /api/cotacoes         → Cotações de Frete');
-    console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
-    console.log('  GET  /api/estoque          → Estoque');
-    console.log('  GET  /api/precos           → Preços');
-    console.log('  GET  /api/ordens           → Compras');
-    console.log('  CRUD /api/fretes           → Controle de Frete');
-    console.log('  CRUD /api/receber          → Contas a Receber');
-    console.log('  CRUD /api/vendas           → Vendas');
-    console.log('  POST /api/vendas/sincronizar → Sync manual\n');
+    console.log('  POST /api/portal/...         → Portal (auth)');
+    console.log('  POST /api/notifications      → Notificações globais');
+    console.log('  GET  /api/transportadoras    → Transportadoras');
+    console.log('  GET  /api/cotacoes           → Cotações de Frete');
+    console.log('  GET  /api/pedidos            → Pedidos de Faturamento');
+    console.log('  GET  /api/estoque            → Estoque');
+    console.log('  GET  /api/precos             → Preços');
+    console.log('  GET  /api/ordens             → Compras');
+    console.log('  CRUD /api/fretes             → Controle de Frete');
+    console.log('  CRUD /api/receber            → Contas a Receber');
+    console.log('  CRUD /api/vendas             → Vendas');
+    console.log('  CRUD /api/lucro-real         → Lucro Real');
+    console.log('  POST /api/custo-fixo         → Custo Fixo Mensal\n');
 });
