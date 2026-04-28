@@ -6,7 +6,7 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── LISTAR VENDAS ───────────────────────────────────────────────────────────
+    // ─── LISTAR VENDAS ───────────────────────────────────────────────────────
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor, status_frete, status_pagamento } = req.query;
@@ -31,12 +31,12 @@ module.exports = function (supabase) {
             if (error) throw error;
             res.json(data);
         } catch (err) {
-            console.error('Erro ao listar vendas:', err.message);
+            console.error('[vendas] GET /:', err.message);
             res.status(500).json({ error: 'Erro ao listar vendas' });
         }
     });
 
-    // ─── BUSCAR VENDA POR ID ─────────────────────────────────────────────────────
+    // ─── BUSCAR POR ID ───────────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -48,17 +48,17 @@ module.exports = function (supabase) {
             if (!data) return res.status(404).json({ error: 'Venda não encontrada' });
             res.json(data);
         } catch (err) {
-            console.error('Erro ao buscar venda:', err.message);
+            console.error('[vendas] GET /:id:', err.message);
             res.status(500).json({ error: 'Erro ao buscar venda' });
         }
     });
 
-    // ─── SINCRONIZAÇÃO (MERGE INTELIGENTE) ──────────────────────────────────────
+    // ─── SINCRONIZAR (MERGE DE CONTROLE_FRETE + CONTAS_RECEBER) ─────────────
     router.post('/sincronizar', async (req, res) => {
         try {
             let inseridos = 0, atualizados = 0;
 
-            // 1. FREInclusão apenas de status que NÃO sejam devolução/devolvida
+            // 1. Processar fretes (todos, exceto devoluções)
             const { data: fretes, error: erroFrete } = await supabase
                 .from('controle_frete')
                 .select('*')
@@ -66,30 +66,31 @@ module.exports = function (supabase) {
 
             if (erroFrete) throw erroFrete;
 
-            for (const frete of fretes) {
+            for (const f of fretes) {
                 const statusFreteMap = {
                     'EM_TRANSITO': 'EM TRÂNSITO',
                     'ENTREGUE': 'ENTREGUE',
                     'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
                     'EXTRAVIADO': 'EXTRAVIADO'
                 };
+
                 const payload = {
-                    numero_nf: frete.numero_nf,
+                    numero_nf: f.numero_nf,
                     origem: 'CONTROLE_FRETE',
-                    data_emissao: frete.data_emissao,
-                    valor_nf: parseFloat(frete.valor_nf) || 0,
-                    tipo_nf: frete.tipo_nf || null,
-                    nome_orgao: frete.nome_orgao,
-                    vendedor: frete.vendedor,
-                    documento: frete.documento || null,
-                    contato_orgao: frete.contato_orgao || null,
-                    transportadora: frete.transportadora || null,
-                    valor_frete: parseFloat(frete.valor_frete) || 0,
-                    data_coleta: frete.data_coleta || null,
-                    cidade_destino: frete.cidade_destino || null,
-                    previsao_entrega: frete.previsao_entrega || null,
-                    status_frete: statusFreteMap[frete.status] || frete.status || null,
-                    id_controle_frete: frete.id,
+                    data_emissao: f.data_emissao,
+                    valor_nf: parseFloat(f.valor_nf) || 0,
+                    tipo_nf: f.tipo_nf || null,
+                    nome_orgao: f.nome_orgao,
+                    vendedor: f.vendedor,
+                    documento: f.documento || null,
+                    contato_orgao: f.contato_orgao || null,
+                    transportadora: f.transportadora || null,
+                    valor_frete: parseFloat(f.valor_frete) || 0,
+                    data_coleta: f.data_coleta || null,
+                    cidade_destino: f.cidade_destino || null,
+                    previsao_entrega: f.previsao_entrega || null,
+                    status_frete: statusFreteMap[f.status] || f.status || null,
+                    id_controle_frete: f.id,
                     updated_at: new Date().toISOString()
                 };
 
@@ -97,20 +98,25 @@ module.exports = function (supabase) {
                 const { data: existente } = await supabase
                     .from('vendas')
                     .select('id')
-                    .eq('numero_nf', frete.numero_nf)
-                    .eq('vendedor', frete.vendedor)
+                    .eq('numero_nf', f.numero_nf)
+                    .eq('vendedor', f.vendedor)
                     .maybeSingle();
 
                 if (existente) {
-                    await supabase.from('vendas').update(payload).eq('id', existente.id);
-                    atualizados++;
+                    const { error: upErr } = await supabase
+                        .from('vendas')
+                        .update(payload)
+                        .eq('id', existente.id);
+                    if (!upErr) atualizados++;
                 } else {
-                    await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]);
-                    inseridos++;
+                    const { error: insErr } = await supabase
+                        .from('vendas')
+                        .insert([{ ...payload, prioridade: 1 }]);
+                    if (!insErr) inseridos++;
                 }
             }
 
-            // 2. CONTAS A RECEBER — apenas status PAGO ou que contenha "PARCELA"
+            // 2. Processar contas a receber (apenas PAGO ou que contenham PARCELA)
             const { data: contas, error: erroContas } = await supabase
                 .from('contas_receber')
                 .select('*')
@@ -118,11 +124,11 @@ module.exports = function (supabase) {
 
             if (erroContas) throw erroContas;
 
-            for (const conta of contas) {
-                // Calcula valor_pago a partir de parcelas, se houver
-                let valorPago = parseFloat(conta.valor_pago) || 0;
+            for (const c of contas) {
+                // Calcular valor_pago a partir das parcelas, se houver
+                let valorPago = parseFloat(c.valor_pago) || 0;
                 try {
-                    const obs = conta.observacoes;
+                    const obs = c.observacoes;
                     if (obs) {
                         const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
                         if (parsed && Array.isArray(parsed.parcelas) && parsed.parcelas.length > 0) {
@@ -131,43 +137,53 @@ module.exports = function (supabase) {
                     }
                 } catch {}
 
-                const payload = {
-                    numero_nf: conta.numero_nf,
-                    origem: 'CONTAS_RECEBER',
-                    data_emissao: conta.data_emissao,
-                    valor_nf: parseFloat(conta.valor) || 0,
-                    tipo_nf: conta.tipo_nf || null,
-                    nome_orgao: conta.orgao,
-                    vendedor: conta.vendedor,
-                    banco: conta.banco || null,
-                    data_vencimento: conta.data_vencimento || null,
-                    data_pagamento: conta.data_pagamento || null,
-                    status_pagamento: conta.status || 'A RECEBER',
+                const payloadPgto = {
+                    banco: c.banco || null,
+                    data_vencimento: c.data_vencimento || null,
+                    data_pagamento: c.data_pagamento || null,
+                    status_pagamento: c.status || 'A RECEBER',
                     valor_pago: valorPago,
-                    id_contas_receber: conta.id,
+                    id_contas_receber: c.id,
                     updated_at: new Date().toISOString()
                 };
 
                 const { data: existente } = await supabase
                     .from('vendas')
-                    .select('id')
-                    .eq('numero_nf', conta.numero_nf)
-                    .eq('vendedor', conta.vendedor)
+                    .select('id, origem')
+                    .eq('numero_nf', c.numero_nf)
+                    .eq('vendedor', c.vendedor)
                     .maybeSingle();
 
                 if (existente) {
-                    // Atualiza apenas campos de pagamento, preservando origem se já existir
-                    const updatePayload = { ...payload };
-                    delete updatePayload.origem; // mantém a origem original (CONTROLE_FRETE)
-                    await supabase.from('vendas').update(updatePayload).eq('id', existente.id);
-                    atualizados++;
+                    // Se já existe (veio do frete), só atualiza campos de pagamento
+                    const update = { ...payloadPgto };
+                    // Não sobrescreve a origem
+                    const { error: upErr } = await supabase
+                        .from('vendas')
+                        .update(update)
+                        .eq('id', existente.id);
+                    if (!upErr) atualizados++;
                 } else {
-                    await supabase.from('vendas').insert([{ ...payload, prioridade: 1 }]);
-                    inseridos++;
+                    // Se não existe, insere novo registro com dados de receber + campos de frete vazios
+                    const novo = {
+                        numero_nf: c.numero_nf,
+                        origem: 'CONTAS_RECEBER',
+                        data_emissao: c.data_emissao,
+                        valor_nf: parseFloat(c.valor) || 0,
+                        tipo_nf: c.tipo_nf || null,
+                        nome_orgao: c.orgao,
+                        vendedor: c.vendedor,
+                        ...payloadPgto,
+                        prioridade: 1
+                    };
+                    const { error: insErr } = await supabase
+                        .from('vendas')
+                        .insert([novo]);
+                    if (!insErr) inseridos++;
                 }
             }
 
-            console.log(`[vendas] Sync concluída: ${inseridos} inseridos, ${atualizados} atualizados`);
+            console.log(`[vendas] Sync: ${inseridos} inseridos, ${atualizados} atualizados`);
             res.json({
                 success: true,
                 message: `Sincronização concluída: ${inseridos} inseridos, ${atualizados} atualizados`
