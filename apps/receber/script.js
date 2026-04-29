@@ -312,7 +312,7 @@ function buildObservacoesJson(notas, parcelas) {
 }
 
 // ============================================
-// HANDLER DO CLIQUE NA LINHA (corrige erro)
+// HANDLER DO CLIQUE NA LINHA (abrir modal VER)
 // ============================================
 window.handleRowClick = function(event, id) {
     if (event.target.tagName === 'BUTTON' || event.target.closest('button')) return;
@@ -322,6 +322,13 @@ window.handleRowClick = function(event, id) {
     } else {
         showToast('Conta não encontrada', 'error');
     }
+};
+
+// ============================================
+// HANDLER DO BOTÃO EDITAR (CORREÇÃO AQUI)
+// ============================================
+window.handleEditClick = function(id) {
+    showFormModal(id);
 };
 
 // ============================================
