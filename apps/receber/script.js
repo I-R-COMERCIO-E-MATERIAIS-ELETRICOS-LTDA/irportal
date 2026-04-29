@@ -265,7 +265,10 @@ function renderRow(c, hoje) {
     const isPagoTotal  = c.status === 'PAGO';
     const isParcial    = /parcela/i.test(c.status || '');
     const isPagoAlgum  = isPagoTotal || isParcial;
-    const isVencido    = !isPagoAlgum && c.data_vencimento && c.data_vencimento < hoje;
+    // Status que nunca devem ser considerados vencidos
+    const nonPaymentStatuses = /^(DEVOLUÇÃO|DEVOLVIDA|SIMPLES REMESSA|REMESSA DE AMOSTRA|CANCELADA)$/i;
+    const isNonPayment = nonPaymentStatuses.test(c.status || '');
+    const isVencido    = !isPagoAlgum && !isNonPayment && c.data_vencimento && c.data_vencimento < hoje;
     const parcelas = getParcelas(c);
     const valorPagoTotal = parcelas.length > 0 ? parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0) : parseFloat(c.valor_pago || 0);
     let dataPgto = '-';
@@ -280,9 +283,15 @@ function renderRow(c, hoje) {
 }
 
 function getStatusBadge(conta, hoje) {
-    const s = conta.status || '';
+    const s = (conta.status || '').toUpperCase();
+    // Pagamentos
     if (s === 'PAGO') return '<span class="badge status-pago">PAGO</span>';
     if (/parcela/i.test(s)) return `<span class="badge status-parcela">${s}</span>`;
+    // Status especiais que não devem ser tratados como vencidos
+    if (['DEVOLUÇÃO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'].includes(s)) {
+        return `<span class="badge status-especial">${s}</span>`;
+    }
+    // Vencido apenas para 'A RECEBER' ou outros não mapeados
     if (conta.data_vencimento && conta.data_vencimento < hoje) return '<span class="badge status-vencido">VENCIDO</span>';
     return '<span class="badge status-a-receber">A RECEBER</span>';
 }
