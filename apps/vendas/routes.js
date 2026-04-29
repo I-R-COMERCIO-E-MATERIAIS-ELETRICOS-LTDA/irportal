@@ -1,12 +1,19 @@
+// ============================================
+// VENDAS ROUTES — /api/vendas
+// ============================================
 const express = require('express');
+
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── GET /api/vendas ────────────────────────────────────────────────────────
+    // ─── GET /api/vendas ─────────────────────────────────────────────────────
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor } = req.query;
-            let query = supabase.from('vendas').select('*').order('numero_nf', { ascending: true });
+            let query = supabase
+                .from('vendas')
+                .select('*')
+                .order('numero_nf', { ascending: true });
 
             if (mes && ano) {
                 const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
@@ -25,11 +32,14 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── GET /api/vendas/:id ────────────────────────────────────────────────────
+    // ─── GET /api/vendas/:id ─────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase
-                .from('vendas').select('*').eq('id', req.params.id).single();
+                .from('vendas')
+                .select('*')
+                .eq('id', req.params.id)
+                .single();
             if (error) return res.status(500).json({ error: error.message });
             if (!data)  return res.status(404).json({ error: 'Não encontrado' });
             res.json(data);
@@ -38,9 +48,10 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── POST /api/vendas/sincronizar ───────────────────────────────────────────
+    // ─── POST /api/vendas/sincronizar ────────────────────────────────────────
     router.post('/sincronizar', async (req, res) => {
 
+        // Normaliza status de frete
         const normFrete = s => ({
             'EM_TRANSITO':       'EM TRÂNSITO',
             'EM TRANSITO':       'EM TRÂNSITO',
@@ -50,15 +61,65 @@ module.exports = function (supabase) {
             'EXTRAVIADO':        'EM TRÂNSITO',
         }[s] || s || 'EM TRÂNSITO');
 
-        // Chave de merge — nunca deixa vendedor undefined/null para evitar conflito
-        const chave = (nf, vend) => `${(nf || '').trim()}||${(vend || '').toUpperCase().trim()}`;
+        // Chave única de merge
+        const chave = (nf, vend) =>
+            `${(nf   || '').trim()}||${(vend || '').toUpperCase().trim()}`;
+
+        // ── Processa observacoes de contas_receber ────────────────────────────
+        // Retorna { status_pagamento, valor_pago, data_pagamento, observacoes }
+        // onde observacoes é o JSON original preservado.
+        function processarConta(c) {
+            let status        = c.status || 'A RECEBER';
+            let valorPago     = parseFloat(c.valor_pago) || 0;
+            let dataPagamento = c.data_pagamento || null;
+            let obsOriginal   = c.observacoes;
+
+            try {
+                const raw = c.observacoes;
+                if (raw) {
+                    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+                    // Formato: { notas: [...], parcelas: [...] }  ← usado pelo app contas_receber
+                    const arrParcelas =
+                        Array.isArray(parsed?.parcelas) && parsed.parcelas.length > 0
+                            ? parsed.parcelas
+                            : Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.valor !== undefined
+                            ? parsed
+                            : null;
+
+                    if (arrParcelas) {
+                        valorPago     = arrParcelas.reduce((s, p) => s + parseFloat(p.valor || p.valor_parcela || 0), 0);
+                        // data da última parcela paga
+                        const datas   = arrParcelas.map(p => p.data || p.data_pagamento).filter(Boolean).sort();
+                        dataPagamento = datas.length > 0 ? datas[datas.length - 1] : dataPagamento;
+
+                        // Determina status: se soma parcelas >= valor da NF → PAGO; senão, Nª PARCELA
+                        const valorNF = parseFloat(c.valor) || 0;
+                        if (valorNF > 0 && valorPago >= valorNF) {
+                            status = 'PAGO';
+                        } else if (arrParcelas.length > 0) {
+                            status = `${arrParcelas.length}ª PARCELA`;
+                        }
+                    }
+
+                    // Preserva observacoes originais (inclui notas + parcelas completas)
+                    obsOriginal = typeof raw === 'string' ? raw : JSON.stringify(raw);
+                }
+            } catch (_) { /* mantém valores originais */ }
+
+            return { status_pagamento: status, valor_pago: valorPago, data_pagamento: dataPagamento, observacoes: obsOriginal };
+        }
 
         try {
             // ── 1. Busca as duas fontes em paralelo ───────────────────────────
             const [fretesRes, contasRes] = await Promise.all([
-                supabase.from('controle_frete').select('*')
+                supabase
+                    .from('controle_frete')
+                    .select('*')
                     .not('status', 'in', '("DEVOLVIDO","DEVOLUCAO","devolvido","devolucao","DEVOLUÇÃO","DEVOLUÇAO")'),
-                supabase.from('contas_receber').select('*'),
+                supabase
+                    .from('contas_receber')
+                    .select('*'),
             ]);
 
             if (fretesRes.error) throw new Error('controle_frete: ' + fretesRes.error.message);
@@ -67,7 +128,7 @@ module.exports = function (supabase) {
             const contas = contasRes.data || [];
             console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
 
-            // ── 2. Monta mapa de frete (base) ─────────────────────────────────
+            // ── 2. Mapa base a partir do controle_frete ───────────────────────
             const mapaFinal = {};
             for (const f of fretes) {
                 const k = chave(f.numero_nf, f.vendedor);
@@ -88,7 +149,7 @@ module.exports = function (supabase) {
                     previsao_entrega:  f.previsao_entrega || null,
                     status_frete:      normFrete(f.status),
                     id_controle_frete: (!isNaN(Number(f.id)) && String(f.id).length < 15) ? Number(f.id) : null,
-                    // Campos de pagamento — serão sobrescritos se houver entrada em contas_receber
+                    // Campos de pagamento — sobrescritos se houver conta_receber
                     status_pagamento:  null,
                     banco:             null,
                     data_vencimento:   null,
@@ -101,82 +162,43 @@ module.exports = function (supabase) {
                 };
             }
 
-            // ── 3. Aplica dados de contas_receber sobre o mapa ────────────────
+            // ── 3. Aplica dados de contas_receber (inclui parcelas) ───────────
             for (const c of contas) {
-                // Processa parcelas — suporta múltiplos formatos do campo observacoes
-                let valorPago     = parseFloat(c.valor_pago) || 0;
-                let dataPagamento = c.data_pagamento || null;
-                let metaStr       = null;
-
-                try {
-                    const raw = c.observacoes;
-                    if (raw) {
-                        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-
-                        // Formato 1: { parcelas: [{ numero, valor, data_pagamento }] }
-                        if (Array.isArray(parsed?.parcelas) && parsed.parcelas.length > 0) {
-                            const parcelas = parsed.parcelas;
-                            valorPago = parcelas.reduce((s, p) => s + parseFloat(p.valor || p.valor_parcela || 0), 0);
-                            // Última parcela = maior número OU último índice
-                            const ultima = parcelas.reduce((prev, curr) => {
-                                const nP = parseInt(prev.numero || prev.num || 0);
-                                const nC = parseInt(curr.numero || curr.num || 0);
-                                return nC >= nP ? curr : prev;
-                            });
-                            dataPagamento = ultima.data_pagamento || ultima.data || dataPagamento;
-                            metaStr = JSON.stringify({
-                                total:        parcelas.length,
-                                ultima_num:   parseInt(ultima.numero || ultima.num || parcelas.length),
-                                ultima_valor: parseFloat(ultima.valor || ultima.valor_parcela || 0),
-                            });
-                        }
-                        // Formato 2: array direto de parcelas
-                        else if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.valor !== undefined) {
-                            const parcelas = parsed;
-                            valorPago = parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
-                            const ultima = parcelas[parcelas.length - 1];
-                            dataPagamento = ultima.data_pagamento || ultima.data || dataPagamento;
-                            metaStr = JSON.stringify({
-                                total:        parcelas.length,
-                                ultima_num:   parcelas.length,
-                                ultima_valor: parseFloat(ultima.valor || 0),
-                            });
-                        }
-                    }
-                } catch (_) { /* mantém valores originais */ }
-
-                const idCR = (!isNaN(Number(c.id)) && String(c.id).length < 15) ? Number(c.id) : null;
                 const k    = chave(c.numero_nf, c.vendedor);
+                const idCR = (!isNaN(Number(c.id)) && String(c.id).length < 15) ? Number(c.id) : null;
 
-                const pgto = {
-                    status_pagamento:  c.status          || 'A RECEBER',
+                // Processa pagamento/parcelas da conta
+                const pgto = processarConta(c);
+
+                const paymentFields = {
+                    status_pagamento:  pgto.status_pagamento,
                     banco:             c.banco            || null,
                     data_vencimento:   c.data_vencimento  || null,
-                    data_pagamento:    dataPagamento,
-                    valor_pago:        valorPago,
-                    observacoes:       metaStr,
+                    data_pagamento:    pgto.data_pagamento,
+                    valor_pago:        pgto.valor_pago,
+                    observacoes:       pgto.observacoes,   // JSON completo (notas + parcelas)
                     id_contas_receber: idCR,
                 };
 
                 if (mapaFinal[k]) {
-                    // Merge: enriquece o registro de frete com dados de pagamento
-                    Object.assign(mapaFinal[k], pgto);
+                    // Merge: enriquece registro de frete com dados de pagamento
+                    Object.assign(mapaFinal[k], paymentFields);
                     mapaFinal[k].updated_at = new Date().toISOString();
                 } else {
-                    // Cria registro exclusivo de contas_receber (sem frete associado)
+                    // Registro exclusivo de contas_receber (sem frete associado)
                     mapaFinal[k] = {
                         numero_nf:    (c.numero_nf || '').trim(),
                         origem:       'CONTAS_RECEBER',
                         data_emissao: c.data_emissao || null,
                         valor_nf:     parseFloat(c.valor) || 0,
                         tipo_nf:      c.tipo_nf || null,
-                        nome_orgao:   c.nome_orgao || c.orgao || null,
+                        nome_orgao:   c.orgao   || null,
                         vendedor:     c.vendedor || null,
                         status_frete: null,
-                        ...pgto,
                         id_controle_frete: null,
-                        prioridade:        1,
-                        updated_at:        new Date().toISOString(),
+                        ...paymentFields,
+                        prioridade:   1,
+                        updated_at:   new Date().toISOString(),
                     };
                 }
             }
@@ -186,8 +208,7 @@ module.exports = function (supabase) {
                 return res.json({ success: true, message: '0 registros sincronizados' });
             }
 
-            // ── 4. Upsert em lote (chunks de 200) ─────────────────────────────
-            // O índice único vendas_nf_vendedor_idx (numero_nf, vendedor) garante merge correto
+            // ── 4. Upsert em lotes de 200 ─────────────────────────────────────
             const CHUNK = 200;
             let   erros = 0;
             for (let i = 0; i < registros.length; i += CHUNK) {
