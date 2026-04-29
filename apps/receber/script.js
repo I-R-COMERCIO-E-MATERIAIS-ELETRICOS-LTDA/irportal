@@ -25,12 +25,25 @@ console.log('📍 API URL:', API_URL);
 //  STATUS ESPECIAIS (nunca são contas a receber)
 // ════════════════════════════════════════════
 const SPECIAL_STATUS = [
-    'DEVOLUÇÃO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'
+    'DEVOLUCAO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'
 ];
 
+/**
+ * Normaliza um texto removendo acentos, cedilhas e underscores,
+ * transformando em maiúsculas para comparação.
+ */
+function normalizarTexto(str) {
+    if (!str) return '';
+    return str
+        .trim()
+        .toUpperCase()
+        .replace(/_/g, ' ')                         // underscores -> espaço
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // remove acentos/cedilha
+}
+
 function isContaEspecial(conta) {
-    const s = (conta.status || '').trim().toUpperCase();
-    const t = (conta.tipo_nf || '').trim().toUpperCase();
+    const s = normalizarTexto(conta.status || '');
+    const t = normalizarTexto(conta.tipo_nf || '');
     return SPECIAL_STATUS.some(sp => s === sp || t === sp);
 }
 
@@ -316,9 +329,9 @@ function getStatusBadge(conta, hoje) {
     // Se for uma conta especial, exibe o texto mais específico
     if (isContaEspecial(conta)) {
         // Prioriza o campo status se ele for especial; senão usa o tipo_nf
-        const rawStatus = s.toUpperCase();
-        const rawTipo   = (conta.tipo_nf || '').trim().toUpperCase();
-        const label = SPECIAL_STATUS.includes(rawStatus) ? s : conta.tipo_nf;
+        const rawStatus = normalizarTexto(conta.status || '');
+        const rawTipo   = normalizarTexto(conta.tipo_nf || '');
+        const label = SPECIAL_STATUS.includes(rawStatus) ? conta.status : conta.tipo_nf;
         return `<span class="badge status-especial">${label}</span>`;
     }
 
