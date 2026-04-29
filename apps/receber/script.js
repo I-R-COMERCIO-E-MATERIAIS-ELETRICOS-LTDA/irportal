@@ -646,4 +646,17 @@ window.closeVencidosModal = function() { const modal = document.getElementById('
 
 function formatDate(d) { if (!d) return '-'; return new Date(d+'T00:00:00').toLocaleDateString('pt-BR'); }
 function showToast(message, type) { document.querySelectorAll('.floating-message').forEach(m => m.remove()); const div = document.createElement('div'); div.className = `floating-message ${type}`; div.textContent = message; document.body.appendChild(div); setTimeout(() => { div.style.animation = 'slideOutBottom 0.3s ease forwards'; setTimeout(() => div.remove(), 300); }, 3000); }
+// ============================================
+// HANDLER DO CLIQUE NA LINHA (abrir modal VER)
+// ============================================
+window.handleRowClick = function(event, id) {
+    // Impede que o clique nos botões de ação também dispare a abertura do modal
+    if (event.target.tagName === 'BUTTON' || event.target.closest('button')) return;
+    const conta = contas.find(x => String(x.id) === String(id));
+    if (conta) {
+        showViewModal(conta);
+    } else {
+        showToast('Conta não encontrada', 'error');
+    }
+};
 console.log('✅ Script contas a receber carregado com sucesso!');
