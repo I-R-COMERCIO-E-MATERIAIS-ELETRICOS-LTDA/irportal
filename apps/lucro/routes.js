@@ -8,27 +8,143 @@ module.exports = function (supabase) {
     const express = require('express');
     const router  = express.Router();
 
+    // ─── HELPER: sincroniza controle_frete → lucro_real ─────────────────────
+    // Para cada NF em controle_frete do tipo ENVIO (ou qualquer tipo com valor > 0),
+    // garante que exista um registro correspondente em lucro_real.
+    // Campos vindos do controle_frete: numero_nf, vendedor, data_emissao, valor_nf, valor_frete.
+    // Campos exclusivos do lucro_real: custo, comissao, imposto_federal, custo_fixo_mensal.
+    async function sincronizarDoControleFrete(mesNum, anoNum) {
+        try {
+            const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
+            const fimDate = new Date(anoNum, mesNum, 0);
+            const fim     = fimDate.toISOString().split('T')[0];
+
+            // Busca todas as NFs de controle_frete no período (exclui DEVOLUCAO e CANCELADA)
+            const { data: fretes, error: erroFrete } = await supabase
+                .from('controle_frete')
+                .select('id, numero_nf, vendedor, data_emissao, valor_nf, valor_frete, tipo_nf')
+                .gte('data_emissao', inicio)
+                .lte('data_emissao', fim)
+                .not('tipo_nf', 'in', '("DEVOLUCAO","CANCELADA")');
+
+            if (erroFrete) throw erroFrete;
+            if (!fretes || fretes.length === 0) return;
+
+            // Busca os registros já existentes em lucro_real no período
+            const { data: existentes, error: erroExistentes } = await supabase
+                .from('lucro_real')
+                .select('numero_nf, codigo')
+                .gte('data_emissao', inicio)
+                .lte('data_emissao', fim);
+
+            if (erroExistentes) throw erroExistentes;
+
+            const nfsExistentes = new Set((existentes || []).map(r => String(r.numero_nf)));
+
+            // Insere apenas as NFs que ainda não existem em lucro_real
+            const novas = fretes.filter(f => !nfsExistentes.has(String(f.numero_nf)));
+
+            if (novas.length > 0) {
+                const registros = novas.map(f => ({
+                    // 'codigo' é o campo de chave usada no PATCH — usamos numero_nf como código legível
+                    codigo:            String(f.numero_nf),
+                    nf:                String(f.numero_nf),
+                    numero_nf:         String(f.numero_nf),
+                    vendedor:          f.vendedor || '',
+                    data_emissao:      f.data_emissao,
+                    venda:             parseFloat(f.valor_nf)    || 0,
+                    frete:             parseFloat(f.valor_frete) || 0,
+                    custo:             0,
+                    comissao:          0,
+                    imposto_federal:   0,
+                    custo_fixo_mensal: 0,
+                    frete_id:          f.id,   // referência ao controle_frete
+                    created_at:        new Date().toISOString(),
+                    updated_at:        new Date().toISOString(),
+                }));
+
+                await supabase.from('lucro_real').insert(registros);
+            }
+        } catch (err) {
+            console.error('[lucro] sincronizarDoControleFrete:', err.message);
+        }
+    }
+
+    // ─── HELPER: monta o resultado final mesclando controle_frete + lucro_real ─
+    // A fonte da verdade para venda e frete é sempre controle_frete.
+    // Custo, comissão e imposto vêm de lucro_real (editáveis pelo usuário).
+    async function buscarLucroMesclado(mesNum, anoNum) {
+        const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
+        const fimDate = new Date(anoNum, mesNum, 0);
+        const fim     = fimDate.toISOString().split('T')[0];
+
+        // 1. Garante que todas as NFs do controle_frete estejam em lucro_real
+        await sincronizarDoControleFrete(mesNum, anoNum);
+
+        // 2. Busca lucro_real do período
+        const { data: lucros, error: erroLucro } = await supabase
+            .from('lucro_real')
+            .select('*')
+            .gte('data_emissao', inicio)
+            .lte('data_emissao', fim)
+            .order('data_emissao', { ascending: false });
+
+        if (erroLucro) throw erroLucro;
+        if (!lucros || lucros.length === 0) return [];
+
+        // 3. Busca os dados atualizados de controle_frete para o período
+        const nfs = lucros.map(r => String(r.numero_nf || r.nf));
+        const { data: fretes, error: erroFrete } = await supabase
+            .from('controle_frete')
+            .select('numero_nf, valor_nf, valor_frete, vendedor, data_emissao, tipo_nf')
+            .in('numero_nf', nfs);
+
+        if (erroFrete) throw erroFrete;
+
+        // Monta mapa numero_nf → controle_frete
+        const freteMap = {};
+        (fretes || []).forEach(f => { freteMap[String(f.numero_nf)] = f; });
+
+        // 4. Mescla: venda e frete sempre do controle_frete; demais campos do lucro_real
+        const resultado = lucros.map(r => {
+            const nf    = String(r.numero_nf || r.nf || '');
+            const frete = freteMap[nf];
+            return {
+                ...r,
+                nf:       nf,
+                numero_nf: nf,
+                vendedor: frete ? (frete.vendedor || r.vendedor || '') : (r.vendedor || ''),
+                venda:    frete ? (parseFloat(frete.valor_nf)    || 0) : (r.venda    || 0),
+                frete:    frete ? (parseFloat(frete.valor_frete) || 0) : (r.frete    || 0),
+                // custo, comissao, imposto_federal permanecem do lucro_real
+            };
+        });
+
+        return resultado;
+    }
+
     // ─── GET /api/lucro-real ─────────────────────────────────────────────────
     router.get('/lucro-real', async (req, res) => {
         try {
             const { mes, ano } = req.query;
 
+            if (mes && ano) {
+                const mesNum = parseInt(mes);
+                const anoNum = parseInt(ano);
+                const data   = await buscarLucroMesclado(mesNum, anoNum);
+                return res.json(data);
+            }
+
+            // Sem filtro de mês: retorna apenas lucro_real sem mesclar
             let query = supabase
                 .from('lucro_real')
                 .select('*')
                 .order('data_emissao', { ascending: false });
 
-            if (ano && !mes) {
+            if (ano) {
                 query = query
                     .gte('data_emissao', `${ano}-01-01`)
                     .lte('data_emissao', `${ano}-12-31`);
-            } else if (mes && ano) {
-                const mesNum  = parseInt(mes);
-                const anoNum  = parseInt(ano);
-                const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
-                const fimDate = new Date(anoNum, mesNum, 0); // último dia do mês
-                const fim     = fimDate.toISOString().split('T')[0];
-                query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
             }
 
             const { data, error } = await query;
@@ -40,12 +156,15 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── PATCH /api/lucro-real/:codigo (para edição individual) ─────────────
+    // ─── PATCH /api/lucro-real/:codigo (edição de custo, comissão, imposto) ──
     router.patch('/lucro-real/:codigo', async (req, res) => {
         try {
+            // Remove campos que não devem ser sobrescritos via PATCH manual
             const body = { ...req.body };
             delete body.id;
             delete body.created_at;
+            delete body.venda;    // venda vem sempre do controle_frete
+            delete body.frete;    // frete vem sempre do controle_frete
             body.updated_at = new Date().toISOString();
 
             const { data, error } = await supabase
@@ -64,10 +183,9 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── DELETE /api/lucro-real/:id (exclusão por UUID) ────────────────────
+    // ─── DELETE /api/lucro-real/:id (exclusão por UUID) ─────────────────────
     router.delete('/lucro-real/:id', async (req, res) => {
         try {
-            // Usar o campo 'id' (UUID) para excluir
             const { error } = await supabase
                 .from('lucro_real')
                 .delete()
@@ -136,8 +254,18 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── POST /api/monitorar-pedidos ─────────────────────────────────────────
-    router.post('/monitorar-pedidos', (req, res) => res.json({ ok: true }));
+    // ─── POST /api/monitorar-pedidos (trigger de sincronização manual) ───────
+    router.post('/monitorar-pedidos', async (req, res) => {
+        try {
+            // Sincroniza o mês atual ao clicar em "Sincronizar"
+            const agora = new Date();
+            await sincronizarDoControleFrete(agora.getMonth() + 1, agora.getFullYear());
+            res.json({ ok: true });
+        } catch (err) {
+            console.error('[lucro] POST /monitorar-pedidos:', err.message);
+            res.status(500).json({ ok: false, error: err.message });
+        }
+    });
 
     return router;
 };
