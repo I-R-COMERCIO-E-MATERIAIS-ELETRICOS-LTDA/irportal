@@ -65,10 +65,8 @@ function inicializarApp() {
 }
 
 // ============================================
-// CONEXÃO
+// SINCRONIZAÇÃO MANUAL
 // ============================================
-function updateConnectionStatus() { /* removida */ }
-
 async function syncData() {
     const btnSync = document.getElementById('btnSync');
     if (btnSync) { btnSync.classList.add('syncing'); btnSync.disabled = true; }
@@ -87,7 +85,9 @@ async function syncData() {
 }
 
 // ============================================
-// CARREGAR DADOS (com desduplicação por id)
+// CARREGAR DADOS
+// Os campos venda e frete vêm automaticamente do controle_frete via backend.
+// Custo, comissão e imposto_federal são editáveis em lucro_real.
 // ============================================
 async function loadLucroReal() {
     if (currentFetchController) currentFetchController.abort();
@@ -117,7 +117,7 @@ async function loadLucroReal() {
         let data = await response.json();
         if (mes !== currentMonth.getMonth() + 1 || ano !== currentMonth.getFullYear()) return;
 
-        // Remover duplicados baseado no campo "id" (UUID único)
+        // Remove duplicados pelo campo "id" (UUID único)
         const seen = new Set();
         lucroData = data.filter(item => {
             if (seen.has(item.id)) return false;
@@ -142,7 +142,7 @@ async function loadLucroReal() {
 }
 
 // ============================================
-// CUSTO FIXO
+// CUSTO FIXO MENSAL
 // ============================================
 async function saveCustoFixo() {
     const valor = parseFloat(document.getElementById('custoFixoInput').value) || 0;
@@ -182,7 +182,9 @@ function closeCustoFixoModal() {
 // IMPOSTO FEDERAL TOTAL MANUAL
 // ============================================
 function abrirModalImpostoFixo() {
-    const value = impostoManual !== null ? impostoManual : lucroData.reduce((s, r) => s + (r.imposto_federal || 0), 0);
+    const value = impostoManual !== null
+        ? impostoManual
+        : lucroData.reduce((s, r) => s + (r.imposto_federal || 0), 0);
     document.getElementById('impostoFixoInput').value = value;
     document.getElementById('editImpostoModal').classList.add('show');
 }
@@ -252,11 +254,11 @@ function updateDashboard() {
     let totalVenda = 0, totalCusto = 0, totalFrete = 0, totalComissao = 0, totalImposto = 0, totalLucroBruto = 0;
 
     lucroData.forEach(r => {
-        totalVenda    += r.venda           || 0;
-        totalCusto    += r.custo           || 0;
-        totalFrete    += r.frete           || 0;
-        totalComissao += r.comissao        || 0;
-        totalImposto  += r.imposto_federal || 0;
+        totalVenda      += r.venda           || 0;
+        totalCusto      += r.custo           || 0;
+        totalFrete      += r.frete           || 0;
+        totalComissao   += r.comissao        || 0;
+        totalImposto    += r.imposto_federal || 0;
         totalLucroBruto += (r.venda || 0) - (r.custo || 0) - (r.frete || 0)
                          - (r.comissao || 0) - (r.imposto_federal || 0);
     });
@@ -269,8 +271,8 @@ function updateDashboard() {
     document.getElementById('totalImposto').innerHTML = `<span style="color:#EF4444;">${formatarMoeda(impostoExibido)}</span>`;
 
     const lucroBrutoEl = document.getElementById('totalLucroBruto');
-    lucroBrutoEl.innerHTML = formatarMoeda(totalLucroBruto);
-    lucroBrutoEl.className = 'stat-value';
+    lucroBrutoEl.innerHTML   = formatarMoeda(totalLucroBruto);
+    lucroBrutoEl.className   = 'stat-value';
 
     const comissaoEl = document.getElementById('totalComissao');
     comissaoEl.innerHTML = formatarMoeda(totalComissao);
@@ -365,7 +367,7 @@ function updateTable() {
 }
 
 // ============================================
-// EXCLUSÃO – usando 'id' (UUID) para evitar 404
+// EXCLUSÃO — usa 'id' (UUID)
 // ============================================
 function showDeleteModal(id, nf) {
     const existing = document.getElementById('deleteModal');
@@ -396,12 +398,10 @@ function closeDeleteModal() {
 
 async function confirmDelete(id) {
     closeDeleteModal();
-    // Encontrar o registro local para exibir a mensagem com NF
     const registro = lucroData.find(r => r.id === id);
     const nf = registro ? (registro.nf || id) : id;
 
     try {
-        // Rota DELETE agora usa :id (UUID)
         const response = await fetch(`${API_URL}/lucro-real/${id}`, {
             method: 'DELETE',
             headers: { 'X-Session-Token': sessionToken }
@@ -424,7 +424,8 @@ async function confirmDelete(id) {
 }
 
 // ============================================
-// MODAL DE EDIÇÃO (CUSTO, COMISSÃO, IMPOSTO)
+// MODAL DE EDIÇÃO (apenas CUSTO, COMISSÃO, IMPOSTO)
+// Venda e frete são somente leitura — vêm do controle_frete
 // ============================================
 let currentEditCodigo = null;
 
@@ -434,8 +435,8 @@ function abrirEditModal(codigo) {
 
     currentEditCodigo = codigo;
     document.getElementById('editNF').textContent    = registro.nf || '-';
-    document.getElementById('editCusto').value       = registro.custo || 0;
-    document.getElementById('editComissao').value    = registro.comissao || 0;
+    document.getElementById('editCusto').value       = registro.custo           || 0;
+    document.getElementById('editComissao').value    = registro.comissao        || 0;
     document.getElementById('editImposto').value     = registro.imposto_federal || 0;
 
     ['editCusto', 'editComissao', 'editImposto'].forEach(id => {
@@ -465,11 +466,15 @@ async function saveEditModal() {
     const novoImposto  = parseFloat(document.getElementById('editImposto').value)  || 0;
 
     try {
-        // PATCH usando 'codigo' (ou poderíamos migrar para 'id', mas manter compatibilidade)
+        // Envia apenas custo, comissão e imposto — venda e frete são imutáveis pelo frontend
         const response = await fetch(`${API_URL}/lucro-real/${currentEditCodigo}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
-            body: JSON.stringify({ custo: novoCusto, comissao: novaComissao, imposto_federal: novoImposto })
+            body: JSON.stringify({
+                custo:           novoCusto,
+                comissao:        novaComissao,
+                imposto_federal: novoImposto
+            })
         });
 
         if (!response.ok) {
@@ -489,7 +494,7 @@ async function saveEditModal() {
         closeEditModal();
         showMessage('VALORES ATUALIZADOS', 'success');
 
-        // Se imposto manual estava ativo, perguntar se deseja retornar ao automático
+        // Se imposto manual estava ativo, pergunta se quer voltar ao automático
         if (impostoManual !== null) {
             showConfirmAutoImposto();
         }
@@ -514,7 +519,7 @@ function showMessage(message, type = 'success') {
     div.textContent = message;
     document.body.appendChild(div);
     setTimeout(() => {
-        div.style.animation = 'slideOut 0.3s ease forwards';
+        div.style.animation = 'slideOutBottom 0.3s ease forwards';
         setTimeout(() => div.remove(), 300);
     }, 2000);
 }
