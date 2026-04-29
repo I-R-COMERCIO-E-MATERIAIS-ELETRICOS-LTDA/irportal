@@ -178,12 +178,31 @@ window.changeMonth = function (direction) {
 
 window.updateMonthDisplay = updateMonthDisplay;
 
+// ════════════════════════════════════════════
+//  TIPOS ESPECIAIS (não são contas a receber)
+// ════════════════════════════════════════════
+const SPECIAL_TIPOS_NF = [
+    'DEVOLUÇÃO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'
+];
+
+function isTipoNfEspecial(conta) {
+    const raw = (conta.tipo_nf || '').trim().toUpperCase();
+    return SPECIAL_TIPOS_NF.some(s => raw === s);
+}
+
 function updateDashboard() {
     const hoje = new Date().toISOString().split('T')[0];
-    const vencido = contas.filter(c => c.status === 'A RECEBER' && c.data_vencimento && c.data_vencimento < hoje).length;
+    // Apenas status 'A RECEBER' e tipo NF que NÃO é especial contam como vencido
+    const vencido = contas.filter(c =>
+        c.status === 'A RECEBER' &&
+        !isTipoNfEspecial(c) &&
+        c.data_vencimento &&
+        c.data_vencimento < hoje
+    ).length;
+
     const filtered = getContasFiltradas();
     const pago = filtered.filter(c => isStatusPago(c.status)).reduce((s, c) => s + parseFloat(c.valor || 0), 0);
-    const receber = filtered.filter(c => c.status === 'A RECEBER').reduce((s, c) => s + parseFloat(c.valor || 0), 0);
+    const receber = filtered.filter(c => c.status === 'A RECEBER' && !isTipoNfEspecial(c)).reduce((s, c) => s + parseFloat(c.valor || 0), 0);
     const faturado = pago + receber;
     const fmt = v => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const el = id => document.getElementById(id);
@@ -266,12 +285,10 @@ function renderRow(c, hoje) {
     const isParcial    = /parcela/i.test(c.status || '');
     const isPagoAlgum  = isPagoTotal || isParcial;
 
-    // Status que NUNCA devem ser considerados vencidos
-    const rawStatus = (c.status || '').trim();
-    const nonPaymentStatuses = ['DEVOLUÇÃO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'];
-    const isNonPayment = nonPaymentStatuses.some(s => rawStatus.toUpperCase() === s.toUpperCase());
+    // Notas com tipo NF especial nunca são consideradas vencidas
+    const isNonPayment = isTipoNfEspecial(c);
+    const isVencido    = !isPagoAlgum && !isNonPayment && c.data_vencimento && c.data_vencimento < hoje;
 
-    const isVencido = !isPagoAlgum && !isNonPayment && c.data_vencimento && c.data_vencimento < hoje;
     const parcelas = getParcelas(c);
     const valorPagoTotal = parcelas.length > 0 ? parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0) : parseFloat(c.valor_pago || 0);
     let dataPgto = '-';
@@ -292,10 +309,9 @@ function getStatusBadge(conta, hoje) {
     if (s === 'PAGO') return '<span class="badge status-pago">PAGO</span>';
     if (/parcela/i.test(s)) return `<span class="badge status-parcela">${conta.status}</span>`;
 
-    // Status especiais que não devem ser tratados como vencidos (independente de acentuação)
-    const specialStatuses = ['DEVOLUÇÃO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'];
-    if (specialStatuses.includes(s)) {
-        return `<span class="badge status-especial">${conta.status}</span>`;
+    // Se for um tipo NF especial, exibe como badge especial (ex.: DEVOLVIDA)
+    if (isTipoNfEspecial(conta)) {
+        return `<span class="badge status-especial">${conta.tipo_nf}</span>`;
     }
 
     // Vencido apenas para 'A RECEBER' ou outros não mapeados
@@ -343,7 +359,7 @@ window.handleRowClick = function(event, id) {
 };
 
 // ============================================
-// HANDLER DO BOTÃO EDITAR (CORREÇÃO AQUI)
+// HANDLER DO BOTÃO EDITAR
 // ============================================
 window.handleEditClick = function(id) {
     showFormModal(id);
@@ -649,7 +665,12 @@ const VENCIDOS_PAGE_SIZE = 4;
 let vencidosModalData = [];
 window.showVencidosModal = function() {
     const hoje = new Date().toISOString().split('T')[0];
-    vencidosModalData = contas.filter(c => c.status === 'A RECEBER' && c.data_vencimento && c.data_vencimento < hoje).sort((a,b) => a.data_vencimento.localeCompare(b.data_vencimento));
+    vencidosModalData = contas.filter(c =>
+        c.status === 'A RECEBER' &&
+        !isTipoNfEspecial(c) &&
+        c.data_vencimento &&
+        c.data_vencimento < hoje
+    ).sort((a,b) => a.data_vencimento.localeCompare(b.data_vencimento));
     vencidosModalPage = 1;
     renderVencidosModalPage();
     const modal = document.getElementById('vencidosModal'); if (modal) modal.style.display = 'flex';
