@@ -258,7 +258,7 @@ function renderContas(lista) {
         return;
     }
     const hoje = new Date().toISOString().split('T')[0];
-    container.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th style="width:50px;text-align:center;">✓</th><th>NF</th><th>Órgão</th><th>Vendedor</th><th>Banco</th><th>Valor</th><th>Valor Pago</th><th>Vencimento</th><th>Dt. Pagamento</th><th>Status</th><th style="text-align:center;">Ações</th></tr></thead><tbody>${lista.map(c => renderRow(c, hoje)).join('')}</tbody>}</div>`;
+    container.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th style="width:50px;text-align:center;">✓</th><th>NF</th><th>Órgão</th><th>Vendedor</th><th>Banco</th><th>Valor</th><th>Valor Pago</th><th>Vencimento</th><th>Dt. Pagamento</th><th>Status</th><th style="text-align:center;">Ações</th></tr></thead><tbody>${lista.map(c => renderRow(c, hoje)).join('')}</tbody></table></div>`;
 }
 
 function renderRow(c, hoje) {
@@ -276,7 +276,7 @@ function renderRow(c, hoje) {
         dataPgto = formatDate(c.data_pagamento);
     }
     const rowClass = isPagoTotal ? 'row-pago' : '';
-    return `<tr class="${rowClass} row-clickable" data-id="${c.id}" onclick="handleRowClick(event, '${c.id}')"><td style="text-align:center;"><div class="checkbox-wrapper"><input type="checkbox" class="styled-checkbox" id="chk-${c.id}" ${isPagoTotal?'checked':''} onchange="togglePagamento('${c.id}', this.checked)" onclick="event.stopPropagation()"><label for="chk-${c.id}" class="checkbox-label-styled" onclick="event.stopPropagation()"></label></div></td><td><strong>${c.numero_nf||'-'}</strong></td><td style="max-width:200px;word-wrap:break-word;white-space:normal;">${c.orgao||'-'}</td></td>${c.vendedor||'-'}</td></td>${c.banco||'-'}</td><td><strong>R$ ${parseFloat(c.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></td><td>${valorPagoTotal>0?'R$ '+valorPagoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'-'}</td><td style="white-space:nowrap;${isVencido?'color:#EF4444;font-weight:600;':''}">${c.data_vencimento?formatDate(c.data_vencimento):'-'}</td><td style="white-space:nowrap;">${dataPgto}</td><td>${getStatusBadge(c, hoje)}</td><td class="actions-cell" style="text-align:center;white-space:nowrap;"><button class="action-btn edit" onclick="event.stopPropagation();handleEditClick('${c.id}')" title="Editar">Editar</button><button class="action-btn delete" onclick="event.stopPropagation();handleDeleteClick('${c.id}')" title="Excluir">Excluir</button></td></tr>`;
+    return `<tr class="${rowClass} row-clickable" data-id="${c.id}" onclick="handleRowClick(event, '${c.id}')"><td style="text-align:center;"><div class="checkbox-wrapper"><input type="checkbox" class="styled-checkbox" id="chk-${c.id}" ${isPagoTotal?'checked':''} onchange="togglePagamento('${c.id}', this.checked)" onclick="event.stopPropagation()"><label for="chk-${c.id}" class="checkbox-label-styled" onclick="event.stopPropagation()"></label></div></td><td><strong>${c.numero_nf||'-'}</strong></td><td style="max-width:200px;word-wrap:break-word;white-space:normal;">${c.orgao||'-'}</td><td>${c.vendedor||'-'}</td><td>${c.banco||'-'}</td><td><strong>R$ ${parseFloat(c.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></td><td>${valorPagoTotal>0?'R$ '+valorPagoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'-'}</td><td style="white-space:nowrap;${isVencido?'color:#EF4444;font-weight:600;':''}">${c.data_vencimento?formatDate(c.data_vencimento):'-'}</td><td style="white-space:nowrap;">${dataPgto}</td><td>${getStatusBadge(c, hoje)}</td><td class="actions-cell" style="text-align:center;white-space:nowrap;"><button class="action-btn edit" onclick="event.stopPropagation();handleEditClick('${c.id}')" title="Editar">Editar</button><button class="action-btn delete" onclick="event.stopPropagation();handleDeleteClick('${c.id}')" title="Excluir">Excluir</button></td></tr>`;
 }
 
 function getStatusBadge(conta, hoje) {
@@ -312,7 +312,7 @@ function buildObservacoesJson(notas, parcelas) {
 }
 
 // ============================================
-// TOGGLE PAGAMENTO
+// TOGGLE PAGAMENTO (CORRIGIDO: usa PATCH ao desmarcar)
 // ============================================
 window.togglePagamento = async function(id, checked) {
     const conta = contas.find(x => String(x.id) === String(id));
@@ -391,7 +391,7 @@ function showConfirm(message, options = {}) {
 }
 
 // ============================================
-// EXCLUSÃO
+// EXCLUSÃO (Sim=vermelho, Cancelar=verde)
 // ============================================
 function showDeleteConfirmation(message, onConfirm) {
     const modalHTML = `
@@ -438,21 +438,7 @@ window.handleDeleteClick = async function(id) {
 };
 
 // ============================================
-// HANDLER DO CLIQUE NA LINHA (abrir modal VER)
-// ============================================
-window.handleRowClick = function(event, id) {
-    // Impede que o clique nos botões de ação também dispare a abertura do modal
-    if (event.target.tagName === 'BUTTON' || event.target.closest('button')) return;
-    const conta = contas.find(x => String(x.id) === String(id));
-    if (conta) {
-        showViewModal(conta);
-    } else {
-        showToast('Conta não encontrada', 'error');
-    }
-};
-
-// ============================================
-// CONFIRMAÇÃO DE PAGAMENTO
+// CONFIRMAÇÃO DE PAGAMENTO (Sim=verde, Não=vermelho, Cancelar=cinza)
 // ============================================
 function showConfirmacaoPagamentoModal(id, conta) {
     document.getElementById('confirmPagModal')?.remove();
@@ -507,7 +493,7 @@ function showViewModal(c) {
     const tabValores = `<div class="info-section"><h4>Valores e Datas</h4><div class="info-row"><span class="info-label">Valor NF:</span><span class="info-value">${fmt(c.valor)}</span></div><div class="info-row"><span class="info-label">Valor Pago Total:</span><span class="info-value">${valorPagoTotal>0?fmt(valorPagoTotal):'-'}</span></div><div class="info-row"><span class="info-label">Data Emissão:</span><span class="info-value">${d(c.data_emissao)}</span></div><div class="info-row"><span class="info-label">Vencimento:</span><span class="info-value">${d(c.data_vencimento)}</span></div><div class="info-row"><span class="info-label">Data Pagamento:</span><span class="info-value">${d(c.data_pagamento)}</span></div></div>`;
     let tabParcelas = `<div class="info-section"><h4>Pagamento Parcelado</h4>`;
     if (parcelas.length === 0) tabParcelas += `<p style="color:var(--text-secondary);font-style:italic;">Nenhuma parcela registrada.</p>`;
-    else { tabParcelas += `<table style="width:100%;margin-top:.5rem;"><thead><tr><th>Parcela</th><th>Valor</th><th>Data Pagamento</th></tr></thead><tbody>`; parcelas.forEach((p,i) => { tabParcelas += `<tr><td>${p.numero||(i+1)+'ª'}</td><td>R$ ${parseFloat(p.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td>${p.data?formatDate(p.data):'-'}</td></tr>`; }); tabParcelas += `</tbody>}</div>`; }
+    else { tabParcelas += `<table style="width:100%;margin-top:.5rem;"><thead><tr><th>Parcela</th><th>Valor</th><th>Data Pagamento</th></tr></thead><tbody>`; parcelas.forEach((p,i) => { tabParcelas += `<tr><td>${p.numero||(i+1)+'ª'}</td><td>R$ ${parseFloat(p.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</td><td>${p.data?formatDate(p.data):'-'}</td></tr>`; }); tabParcelas += `</tbody></table>`; }
     tabParcelas += `</div>`;
     let tabObs = `<div class="info-section"><h4>Observações</h4>`;
     if (notas.length === 0) tabObs += `<p style="color:var(--text-secondary);font-style:italic;">Nenhuma observação registrada.</p>`;
@@ -646,11 +632,12 @@ window.closeVencidosModal = function() { const modal = document.getElementById('
 
 function formatDate(d) { if (!d) return '-'; return new Date(d+'T00:00:00').toLocaleDateString('pt-BR'); }
 function showToast(message, type) { document.querySelectorAll('.floating-message').forEach(m => m.remove()); const div = document.createElement('div'); div.className = `floating-message ${type}`; div.textContent = message; document.body.appendChild(div); setTimeout(() => { div.style.animation = 'slideOutBottom 0.3s ease forwards'; setTimeout(() => div.remove(), 300); }, 3000); }
+console.log('✅ Script contas a receber carregado com sucesso!');
+
 // ============================================
 // HANDLER DO CLIQUE NA LINHA (abrir modal VER)
 // ============================================
 window.handleRowClick = function(event, id) {
-    // Impede que o clique nos botões de ação também dispare a abertura do modal
     if (event.target.tagName === 'BUTTON' || event.target.closest('button')) return;
     const conta = contas.find(x => String(x.id) === String(id));
     if (conta) {
@@ -659,4 +646,3 @@ window.handleRowClick = function(event, id) {
         showToast('Conta não encontrada', 'error');
     }
 };
-console.log('✅ Script contas a receber carregado com sucesso!');
