@@ -6,16 +6,49 @@
     <title>Vendas</title>
     <link rel="stylesheet" href="styles.css">
     <style>
-        /* ── Cores dos status ─────────────────────────────────── */
-        .badge.st-pago     { background: #22C55E20; color: #16a34a; border: 1px solid #22C55E60; }
-        .badge.st-parcela  { background: #22C55E20; color: #16a34a; border: 1px solid #22C55E60; }
-        .badge.st-entregue { background: #3B82F620; color: #2563eb; border: 1px solid #3B82F660; }
-        .badge.st-transito { background: #F9731620; color: #ea580c; border: 1px solid #F9731660; }
-        .badge.st-remessa  { background: #6B728020; color: #4b5563; border: 1px solid #6B728060; }
+        /* ── Badges de status ───────────────────────────── */
+        .badge.st-pago {
+            background: rgba(34,197,94,0.20);
+            color: #15803d;
+            border: 1px solid rgba(34,197,94,0.45);
+            font-weight: 700;
+        }
+        .badge.st-parcela {
+            background: rgba(34,197,94,0.15);
+            color: #16a34a;
+            border: 1px solid rgba(34,197,94,0.35);
+            font-weight: 700;
+        }
+        .badge.st-entregue {
+            background: rgba(59,130,246,0.20);
+            color: #1d4ed8;
+            border: 1px solid rgba(59,130,246,0.45);
+            font-weight: 700;
+        }
+        .badge.st-transito {
+            background: rgba(249,115,22,0.18);
+            color: #c2410c;
+            border: 1px solid rgba(249,115,22,0.40);
+            font-weight: 700;
+        }
+        .badge.st-remessa {
+            background: rgba(107,114,128,0.15);
+            color: #374151;
+            border: 1px solid rgba(107,114,128,0.35);
+            font-weight: 700;
+        }
 
-        /* Spin do botão de sync */
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+        /* ── Select desabilitado ─────────────────────────── */
+        select:disabled {
+            opacity: 0.7 !important;
+            cursor: not-allowed !important;
+            background: var(--input-bg) !important;
+        }
+
+        /* ── Animações ───────────────────────────────────── */
+        @keyframes spin        { to { transform: rotate(360deg); } }
+        @keyframes slideInBottom  { from { opacity:0; transform:translateY(60px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes slideOutBottom { to   { opacity:0; transform:translateY(60px); } }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
@@ -25,19 +58,23 @@
     <!-- SPLASH -->
     <div class="splash-screen" id="splashScreen"><div class="loader"></div></div>
 
-    <!-- CONTEÚDO PRINCIPAL -->
+    <!-- APP -->
     <div class="app-content" id="mainView">
         <div class="container">
 
             <!-- CABEÇALHO -->
             <div class="header">
-                <div class="header-left"><h1>Vendas</h1></div>
+                <div class="header-left">
+                    <h1>Vendas</h1>
+                    <div id="connectionStatus" class="connection-status offline">
+                        <span class="status-dot"></span>
+                    </div>
+                </div>
             </div>
 
             <!-- DASHBOARD -->
             <div class="dashboard-grid">
 
-                <!-- Pago -->
                 <div class="stat-card stat-card-success">
                     <div class="stat-icon stat-icon-success">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -50,7 +87,6 @@
                     </div>
                 </div>
 
-                <!-- A Receber (= mercadorias ENTREGUES não pagas) -->
                 <div class="stat-card stat-card-warning">
                     <div class="stat-icon stat-icon-warning">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -64,12 +100,12 @@
                     </div>
                 </div>
 
-                <!-- Qtd. Entregue -->
                 <div class="stat-card stat-card-info">
                     <div class="stat-icon stat-icon-info">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="8.5" cy="7" r="4"></circle>
+                            <polyline points="17 11 19 13 23 9"></polyline>
                         </svg>
                     </div>
                     <div class="stat-content">
@@ -78,7 +114,6 @@
                     </div>
                 </div>
 
-                <!-- Faturado -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-default">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -92,21 +127,21 @@
                     </div>
                 </div>
 
-            </div><!-- /dashboard-grid -->
+            </div>
 
             <!-- BARRA DE PESQUISA + FILTROS -->
             <div class="search-bar-wrapper">
                 <div class="search-bar">
-
                     <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path>
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.35-4.35"></path>
                     </svg>
 
                     <input type="text" id="search" placeholder="Pesquisar NF, órgão, vendedor..." oninput="filterVendas()">
 
                     <div class="search-bar-filters">
 
-                        <!-- Filtro vendedor (desabilitado para perfis não-admin via JS) -->
+                        <!-- Vendedor (desabilitado para perfis não-admin via JS) -->
                         <div class="filter-dropdown-inline">
                             <select id="filterVendedor" onchange="filterVendas()">
                                 <option value="">Todos</option>
@@ -120,7 +155,7 @@
                             </svg>
                         </div>
 
-                        <!-- Filtro status -->
+                        <!-- Status -->
                         <div class="filter-dropdown-inline">
                             <select id="filterStatus" onchange="filterVendas()">
                                 <option value="">Todos os Status</option>
@@ -136,7 +171,7 @@
                             </svg>
                         </div>
 
-                        <!-- Navegação mês -->
+                        <!-- Navegação de mês -->
                         <div class="month-navigation-inline">
                             <button onclick="changeMonth(-1)" class="month-nav-arrow" title="Mês anterior">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -151,29 +186,31 @@
                             </button>
                         </div>
 
-                    </div><!-- /search-bar-filters -->
+                    </div>
 
-                    <!-- Botão calendário -->
+                    <!-- Calendário -->
                     <button class="calendar-btn" onclick="toggleCalendar()" title="Selecionar mês">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                            <line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line>
+                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                            <line x1="8" y1="2" x2="8" y2="6"></line>
                             <line x1="3" y1="10" x2="21" y2="10"></line>
                         </svg>
                     </button>
 
-                    <!-- Botão PDF -->
-                    <button class="calendar-btn" onclick="gerarPDF()" title="Exportar PDF">
+                    <!-- PDF / Comissão -->
+                    <button class="calendar-btn" onclick="gerarPDF()" title="Relatório de Comissão">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                             <polyline points="14 2 14 8 20 8"></polyline>
-                            <line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line>
+                            <line x1="16" y1="13" x2="8" y2="13"></line>
+                            <line x1="16" y1="17" x2="8" y2="17"></line>
                             <polyline points="10 9 9 9 8 9"></polyline>
                         </svg>
                     </button>
 
-                    <!-- Botão sincronizar -->
-                    <button class="calendar-btn" onclick="syncData()" title="Sincronizar dados">
+                    <!-- Sincronizar -->
+                    <button class="calendar-btn" onclick="syncData()" title="Sincronizar">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="23 4 23 10 17 10"></polyline>
                             <polyline points="1 20 1 14 7 14"></polyline>
@@ -207,7 +244,9 @@
             <!-- TABELA -->
             <div class="card table-card">
                 <div id="vendasContainer">
-                    <div style="text-align:center;padding:2rem;color:var(--text-secondary);">Carregando...</div>
+                    <div style="text-align:center;padding:2.5rem;color:var(--text-secondary);">
+                        Carregando dados...
+                    </div>
                 </div>
             </div>
 
@@ -228,8 +267,7 @@
         </div>
     </div>
 
-    <script>setTimeout(() => { const s = document.getElementById('splashScreen'); if(s) s.style.display='none'; }, 2500);</script>
-    <script src="calendar.js"></script>
+    <script>setTimeout(() => { const s=document.getElementById('splashScreen'); if(s) s.style.display='none'; }, 2500);</script>
     <script src="script.js"></script>
 </body>
 </html>
