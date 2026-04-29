@@ -21,6 +21,19 @@ const meses = [
 console.log('✅ Contas a Receber iniciado');
 console.log('📍 API URL:', API_URL);
 
+// ════════════════════════════════════════════
+//  STATUS ESPECIAIS (nunca são contas a receber)
+// ════════════════════════════════════════════
+const SPECIAL_STATUS = [
+    'DEVOLUÇÃO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'
+];
+
+function isContaEspecial(conta) {
+    const s = (conta.status || '').trim().toUpperCase();
+    const t = (conta.tipo_nf || '').trim().toUpperCase();
+    return SPECIAL_STATUS.some(sp => s === sp || t === sp);
+}
+
 // ============================================
 // INICIALIZAÇÃO
 // ============================================
@@ -178,31 +191,22 @@ window.changeMonth = function (direction) {
 
 window.updateMonthDisplay = updateMonthDisplay;
 
-// ════════════════════════════════════════════
-//  TIPOS ESPECIAIS (não são contas a receber)
-// ════════════════════════════════════════════
-const SPECIAL_TIPOS_NF = [
-    'DEVOLUÇÃO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'
-];
-
-function isTipoNfEspecial(conta) {
-    const raw = (conta.tipo_nf || '').trim().toUpperCase();
-    return SPECIAL_TIPOS_NF.some(s => raw === s);
-}
-
 function updateDashboard() {
     const hoje = new Date().toISOString().split('T')[0];
-    // Apenas status 'A RECEBER' e tipo NF que NÃO é especial contam como vencido
+
+    // Vencido: apenas status 'A RECEBER', data vencida e NÃO especial
     const vencido = contas.filter(c =>
         c.status === 'A RECEBER' &&
-        !isTipoNfEspecial(c) &&
+        !isContaEspecial(c) &&
         c.data_vencimento &&
         c.data_vencimento < hoje
     ).length;
 
     const filtered = getContasFiltradas();
     const pago = filtered.filter(c => isStatusPago(c.status)).reduce((s, c) => s + parseFloat(c.valor || 0), 0);
-    const receber = filtered.filter(c => c.status === 'A RECEBER' && !isTipoNfEspecial(c)).reduce((s, c) => s + parseFloat(c.valor || 0), 0);
+    // A Receber exclui também as notas especiais
+    const receber = filtered.filter(c => c.status === 'A RECEBER' && !isContaEspecial(c))
+                           .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
     const faturado = pago + receber;
     const fmt = v => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const el = id => document.getElementById(id);
@@ -285,8 +289,8 @@ function renderRow(c, hoje) {
     const isParcial    = /parcela/i.test(c.status || '');
     const isPagoAlgum  = isPagoTotal || isParcial;
 
-    // Notas com tipo NF especial nunca são consideradas vencidas
-    const isNonPayment = isTipoNfEspecial(c);
+    // Nunca é vencido se for uma conta especial (status ou tipo NF)
+    const isNonPayment = isContaEspecial(c);
     const isVencido    = !isPagoAlgum && !isNonPayment && c.data_vencimento && c.data_vencimento < hoje;
 
     const parcelas = getParcelas(c);
@@ -303,18 +307,22 @@ function renderRow(c, hoje) {
 }
 
 function getStatusBadge(conta, hoje) {
-    const s = (conta.status || '').trim().toUpperCase();
+    const s = (conta.status || '').trim();
 
-    // Pagamentos
-    if (s === 'PAGO') return '<span class="badge status-pago">PAGO</span>';
-    if (/parcela/i.test(s)) return `<span class="badge status-parcela">${conta.status}</span>`;
+    // Pagamentos normais
+    if (s.toUpperCase() === 'PAGO') return '<span class="badge status-pago">PAGO</span>';
+    if (/parcela/i.test(s)) return `<span class="badge status-parcela">${s}</span>`;
 
-    // Se for um tipo NF especial, exibe como badge especial (ex.: DEVOLVIDA)
-    if (isTipoNfEspecial(conta)) {
-        return `<span class="badge status-especial">${conta.tipo_nf}</span>`;
+    // Se for uma conta especial, exibe o texto mais específico
+    if (isContaEspecial(conta)) {
+        // Prioriza o campo status se ele for especial; senão usa o tipo_nf
+        const rawStatus = s.toUpperCase();
+        const rawTipo   = (conta.tipo_nf || '').trim().toUpperCase();
+        const label = SPECIAL_STATUS.includes(rawStatus) ? s : conta.tipo_nf;
+        return `<span class="badge status-especial">${label}</span>`;
     }
 
-    // Vencido apenas para 'A RECEBER' ou outros não mapeados
+    // Vencido apenas para 'A RECEBER' (ou outros não mapeados)
     if (conta.data_vencimento && conta.data_vencimento < hoje) {
         return '<span class="badge status-vencido">VENCIDO</span>';
     }
@@ -667,7 +675,7 @@ window.showVencidosModal = function() {
     const hoje = new Date().toISOString().split('T')[0];
     vencidosModalData = contas.filter(c =>
         c.status === 'A RECEBER' &&
-        !isTipoNfEspecial(c) &&
+        !isContaEspecial(c) &&
         c.data_vencimento &&
         c.data_vencimento < hoje
     ).sort((a,b) => a.data_vencimento.localeCompare(b.data_vencimento));
