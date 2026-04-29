@@ -1,30 +1,38 @@
+// ============================================
+// CONFIGURAÇÃO
+// ============================================
 const API_URL = window.location.origin + '/api';
 
-let vendas        = [];
-let sessionToken  = null;
-let currentUser   = null;   // { username, name, is_admin }
-let currentMonth  = new Date();
+let vendas       = [];
+let sessionToken = null;
+let currentUser  = null;
+let currentMonth = new Date();
+let calendarYear = new Date().getFullYear();
 
-// Vendedores fixos por perfil (username em maiúsculo)
-const PERFIL_VENDEDOR = {
-    'MIGUEL':    'MIGUEL',
-    'ISAQUE':    'ISAQUE',
+// Mapeamento de usuário → vendedor fixo (username em maiúsculo)
+// "isaque-vendas"  e "miguel-vendas2" são os usernames do sistema
+const PERFIL_VENDEDOR_MAP = {
+    'ISAQUE':        'ISAQUE',
+    'ISAQUE-VENDAS': 'ISAQUE',
+    'MIGUEL':        'MIGUEL',
+    'MIGUEL-VENDAS2':'MIGUEL',
+    'MIGUEL-VENDAS': 'MIGUEL',
 };
-// Admins: visualizam tudo e podem filtrar livremente
 const ADMINS = ['ROBERTO', 'ROSEMEIRE'];
 
-const mesesNomes = [
+const MESES = [
     'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
     'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
 ];
 
 // ─── INICIALIZAÇÃO ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    const urlParams   = new URLSearchParams(window.location.search);
-    const tokenFromUrl = urlParams.get('sessionToken');
-    if (tokenFromUrl) {
-        sessionToken = tokenFromUrl;
-        sessionStorage.setItem('vendasSession', tokenFromUrl);
+    // Token
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromUrl   = urlParams.get('sessionToken');
+    if (fromUrl) {
+        sessionToken = fromUrl;
+        sessionStorage.setItem('vendasSession', fromUrl);
     } else {
         sessionToken = sessionStorage.getItem('vendasSession');
     }
@@ -32,23 +40,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!sessionToken) {
         document.body.innerHTML = `
             <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-                        height:100vh;background:var(--bg-primary);color:var(--text-primary);text-align:center;padding:2rem;">
-                <h1>NÃO AUTORIZADO</h1><p>Sem token de sessão.</p>
+                        height:100vh;background:var(--bg-secondary);color:var(--text-primary);
+                        text-align:center;padding:2rem;">
+                <h1>NÃO AUTORIZADO</h1><p>Acesse pelo portal.</p>
             </div>`;
         return;
     }
 
-    await resolverUsuario();
-    await inicializarApp();
+    // Resolve usuário e carrega dados em paralelo para máxima velocidade
+    const [_user] = await Promise.all([resolverUsuario()]);
+
+    configurarFiltroVendedor();
+    updateMonthDisplay();           // renderiza mês antes dos dados chegarem
+
+    // Carrega dados sem sincronizar primeiro → mais rápido para o usuário
+    await loadVendas();
+
+    // Sincroniza em background sem bloquear a UI
+    sincronizarDados().then(() => loadVendas());
+
+    setInterval(loadVendas,       20000);   // refresh tabela a cada 20s
+    setInterval(sincronizarDados, 300000);  // sync fontes a cada 5min
 });
 
-// Descobre o usuário atual via verify-session
+// ─── USUÁRIO / PERFIL ──────────────────────────────────────────────────────────
 async function resolverUsuario() {
     try {
         const r = await fetch(`${window.location.origin}/api/verify-session`, {
-            method: 'POST',
+            method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sessionToken })
+            body:    JSON.stringify({ sessionToken }),
         });
         if (r.ok) {
             const d = await r.json();
@@ -57,84 +78,72 @@ async function resolverUsuario() {
     } catch (_) {}
 }
 
-// Retorna o username em maiúsculo (para comparar com perfis)
 function getUserKey() {
-    return (currentUser?.username || currentUser?.name || '').toUpperCase();
+    return (currentUser?.username || currentUser?.name || '').toUpperCase().trim();
 }
 
-// Retorna o vendedor fixo para o usuário logado (null = admin, vê tudo)
+/** Retorna o vendedor que este usuário pode ver, ou null se admin (vê tudo). */
 function getVendedorFixo() {
     const key = getUserKey();
-    return PERFIL_VENDEDOR[key] || null;
+    return PERFIL_VENDEDOR_MAP[key] || null;
 }
 
 function isAdmin() {
     const key = getUserKey();
-    return ADMINS.includes(key) || currentUser?.is_admin;
+    return ADMINS.includes(key) || currentUser?.is_admin === true;
 }
 
-async function inicializarApp() {
-    configurarFiltroVendedor();
-    updateMonthDisplay();
-
-    await sincronizarDados();
-    await loadVendas();
-
-    setInterval(loadVendas,      15000);   // atualiza tabela a cada 15s
-    setInterval(sincronizarDados, 300000); // sincroniza fontes a cada 5min
-}
-
-// Bloqueia o select de vendedor para perfis não-admin
 function configurarFiltroVendedor() {
     const sel = document.getElementById('filterVendedor');
     if (!sel) return;
-
-    const vendedorFixo = getVendedorFixo();
-    if (vendedorFixo) {
-        // Força opção do vendedor e desabilita o select
-        sel.value    = vendedorFixo;
+    const fixo = getVendedorFixo();
+    if (fixo) {
+        sel.value    = fixo;
         sel.disabled = true;
-        // Garante que a opção existe
-        if (!sel.querySelector(`option[value="${vendedorFixo}"]`)) {
-            const opt = document.createElement('option');
-            opt.value = vendedorFixo;
-            opt.textContent = vendedorFixo.charAt(0) + vendedorFixo.slice(1).toLowerCase();
-            sel.appendChild(opt);
-            sel.value = vendedorFixo;
-        }
+        sel.style.opacity = '0.7';
+        sel.style.cursor  = 'not-allowed';
     }
 }
 
-// ─── SINCRONIZAÇÃO ──────────────────────────────────────────────────────────────
+// ─── SINCRONIZAÇÃO (background) ────────────────────────────────────────────────
 async function sincronizarDados() {
     try {
         const r = await fetch(`${API_URL}/vendas/sincronizar`, {
-            method: 'POST',
-            headers: { 'X-Session-Token': sessionToken }
+            method:  'POST',
+            headers: { 'X-Session-Token': sessionToken },
         });
         const d = await r.json();
-        if (d.success) console.log('📊 Sincronizado:', d.message);
-        else           console.warn('⚠️ Sync:', d.error);
+        if (d.success) console.log('📊 Sync:', d.message);
+        else           console.warn('⚠️  Sync falhou:', d.error);
     } catch (e) { console.error('Erro sync:', e); }
 }
 
+// ─── CARGA DE DADOS ────────────────────────────────────────────────────────────
 async function loadVendas() {
     try {
-        // Passa vendedor fixo na query se não for admin
-        const vendedorFixo = getVendedorFixo();
-        const qs = vendedorFixo ? `&vendedor=${encodeURIComponent(vendedorFixo)}` : '';
-
-        const r = await fetch(`${API_URL}/vendas?_t=${Date.now()}${qs}`, {
-            headers: { 'X-Session-Token': sessionToken, 'Accept': 'application/json' }
+        const fixo = getVendedorFixo();
+        const qs   = fixo ? `&vendedor=${encodeURIComponent(fixo)}` : '';
+        const r    = await fetch(`${API_URL}/vendas?_t=${Date.now()}${qs}`, {
+            headers: { 'X-Session-Token': sessionToken, 'Accept': 'application/json' },
         });
-        if (r.ok) {
-            vendas = await r.json();
-            if (!Array.isArray(vendas)) vendas = [];
-            console.log(`✅ ${vendas.length} vendas carregadas`);
-            updateDashboard();
-            filterVendas();
-        }
-    } catch (e) { console.error('Erro loadVendas:', e); }
+        if (!r.ok) return;
+        const data = await r.json();
+        vendas = Array.isArray(data) ? data : [];
+        console.log(`✅ ${vendas.length} vendas`);
+        updateDashboard();
+        filterVendas();
+        atualizarStatusConexao(true);
+    } catch (e) {
+        console.error('Erro loadVendas:', e);
+        atualizarStatusConexao(false);
+    }
+}
+
+function atualizarStatusConexao(online) {
+    const el = document.getElementById('connectionStatus');
+    if (!el) return;
+    el.classList.toggle('online',  online);
+    el.classList.toggle('offline', !online);
 }
 
 window.syncData = async function () {
@@ -151,57 +160,81 @@ window.syncData = async function () {
 // ─── NAVEGAÇÃO DE MÊS ──────────────────────────────────────────────────────────
 function updateMonthDisplay() {
     const el = document.getElementById('currentMonth');
-    if (el) el.textContent = `${mesesNomes[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
+    if (el) el.textContent = `${MESES[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
     updateDashboard();
     filterVendas();
 }
-window.changeMonth = d => { currentMonth.setMonth(currentMonth.getMonth() + d); updateMonthDisplay(); };
-window.selectMonth = idx => {
-    currentMonth = new Date(currentMonth.getFullYear(), idx, 1);
+
+window.changeMonth = function (d) {
+    currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + d, 1);
     updateMonthDisplay();
-    if (window.toggleCalendar) window.toggleCalendar();
 };
 
-// ─── HELPERS DE STATUS ─────────────────────────────────────────────────────────
+window.selectMonth = function (idx) {
+    currentMonth = new Date(calendarYear, idx, 1);
+    updateMonthDisplay();
+    toggleCalendar();
+};
+
+window.toggleCalendar = function () {
+    const modal = document.getElementById('calendarModal');
+    if (!modal) return;
+    if (modal.classList.contains('show')) {
+        modal.classList.remove('show');
+    } else {
+        calendarYear = currentMonth.getFullYear();
+        renderCalendarWidget();
+        modal.classList.add('show');
+    }
+};
+
+window.changeCalendarYear = function (d) {
+    calendarYear += d;
+    renderCalendarWidget();
+};
+
+function renderCalendarWidget() {
+    const y   = document.getElementById('calendarYear');
+    const box = document.getElementById('calendarMonths');
+    if (!y || !box) return;
+    y.textContent = calendarYear;
+    box.innerHTML = MESES.map((nome, i) => {
+        const ativo = calendarYear === currentMonth.getFullYear() && i === currentMonth.getMonth();
+        return `<div class="calendar-month${ativo ? ' current' : ''}" onclick="selectMonth(${i})">${nome}</div>`;
+    }).join('');
+}
+
+// ─── STATUS HELPERS ────────────────────────────────────────────────────────────
 /**
- * Retorna o status de EXIBIÇÃO de uma venda:
+ * Resolve o status visual de uma venda:
  *   PAGO            → verde
- *   Nº PARCELA x/y  → verde (parcial)
- *   ENTREGUE        → azul  (= mercadoria recebida, ainda não paga)
- *   EM TRÂNSITO     → laranja
+ *   PARCELA x/y     → verde (parcial)
+ *   ENTREGUE        → azul  (mercadoria chegou, ainda não paga → conta como A RECEBER)
  *   SIMPLES REMESSA / REMESSA DE AMOSTRA → cinza
+ *   EM TRÂNSITO     → laranja
  */
-function resolverStatusExibicao(v) {
-    const stPagto = (v.status_pagamento || '').toUpperCase();
-    const stFrete = (v.status_frete     || '').toUpperCase();
-    const tipoNF  = (v.tipo_nf          || '').toUpperCase();
+function resolverStatus(v) {
+    const sp = (v.status_pagamento || '').toUpperCase();
+    const sf = (v.status_frete     || '').toUpperCase();
+    const tn = (v.tipo_nf          || '').toUpperCase();
 
-    // 1. PAGO total
-    if (stPagto === 'PAGO') return { label: 'PAGO', classe: 'st-pago' };
+    if (sp === 'PAGO') return { label: 'PAGO', cls: 'st-pago' };
 
-    // 2. Parcelado (status_pagamento contém "PARCELA" ou há metadados de parcelas)
-    if (/parcela/i.test(stPagto)) {
-        const meta = parseMeta(v.observacoes);
-        if (meta) {
-            return {
-                label:  `PARCELA ${meta.ultima_num}/${meta.total}`,
-                classe: 'st-parcela'
-            };
-        }
-        return { label: stPagto, classe: 'st-parcela' };
+    if (/parcela/i.test(sp)) {
+        const m = parseMeta(v.observacoes);
+        const label = m ? `PARCELA ${m.ultima_num}/${m.total}` : sp;
+        return { label, cls: 'st-parcela' };
     }
 
-    // 3. Tipos de NF especiais (sem cobrança de frete/pgto normal)
-    if (tipoNF === 'SIMPLES REMESSA')    return { label: 'SIMPLES REMESSA',    classe: 'st-remessa' };
-    if (tipoNF === 'REMESSA DE AMOSTRA') return { label: 'REMESSA DE AMOSTRA', classe: 'st-remessa' };
-    if (stFrete === 'SIMPLES REMESSA')   return { label: 'SIMPLES REMESSA',    classe: 'st-remessa' };
-    if (stFrete === 'REMESSA DE AMOSTRA')return { label: 'REMESSA DE AMOSTRA', classe: 'st-remessa' };
+    if (tn.includes('SIMPLES REMESSA')    || sf.includes('SIMPLES REMESSA'))
+        return { label: 'SIMPLES REMESSA',    cls: 'st-remessa' };
+    if (tn.includes('REMESSA DE AMOSTRA') || sf.includes('REMESSA DE AMOSTRA'))
+        return { label: 'REMESSA DE AMOSTRA', cls: 'st-remessa' };
 
-    // 4. Entregue (mercadoria chegou, pagamento pendente → trata como A RECEBER)
-    if (stFrete === 'ENTREGUE') return { label: 'ENTREGUE', classe: 'st-entregue' };
+    if (sf === 'ENTREGUE')          return { label: 'ENTREGUE',    cls: 'st-entregue' };
+    if (sf === 'AGUARDANDO COLETA') return { label: sf,            cls: 'st-transito' };
 
-    // 5. Em trânsito / aguardando coleta
-    return { label: stFrete || 'EM TRÂNSITO', classe: 'st-transito' };
+    return { label: sf || 'EM TRÂNSITO', cls: 'st-transito' };
 }
 
 function parseMeta(obs) {
@@ -217,86 +250,85 @@ function parseMeta(obs) {
 function updateDashboard() {
     const mes = getVendasMes();
 
-    // PAGO = status_pagamento PAGO ou PARCELA (qualquer variação)
-    const totalPago = mes
-        .filter(v => {
-            const st = (v.status_pagamento || '').toUpperCase();
-            return st === 'PAGO' || /parcela/i.test(st);
-        })
-        .reduce((s, v) => {
-            // Para parcelas, usa valor_pago; para PAGO total, usa valor_nf
-            const st = (v.status_pagamento || '').toUpperCase();
-            if (/parcela/i.test(st)) return s + parseFloat(v.valor_pago || 0);
-            return s + parseFloat(v.valor_nf || 0);
-        }, 0);
+    let pago = 0, aReceber = 0, entregue = 0, faturado = 0;
 
-    // A RECEBER = mercadorias ENTREGUES (não pagas)
-    // Regra: status_frete ENTREGUE e status_pagamento NÃO é PAGO/PARCELA
-    const totalAReceber = mes
-        .filter(v => {
-            const stFrete = (v.status_frete     || '').toUpperCase();
-            const stPagto = (v.status_pagamento || '').toUpperCase();
-            return stFrete === 'ENTREGUE' && stPagto !== 'PAGO' && !/parcela/i.test(stPagto);
-        })
-        .reduce((s, v) => s + parseFloat(v.valor_nf || 0), 0);
+    mes.forEach(v => {
+        const sp   = (v.status_pagamento || '').toUpperCase();
+        const sf   = (v.status_frete     || '').toUpperCase();
+        const vnf  = parseFloat(v.valor_nf || 0);
 
-    const totalEntregue = mes.filter(v => (v.status_frete || '').toUpperCase() === 'ENTREGUE').length;
+        faturado += vnf;
 
-    const totalFaturado = mes.reduce((s, v) => s + parseFloat(v.valor_nf || 0), 0);
+        if (sp === 'PAGO') {
+            pago += vnf;
+        } else if (/parcela/i.test(sp)) {
+            // Parcelas: soma o que foi pago até agora
+            pago += parseFloat(v.valor_pago || 0);
+        } else if (sf === 'ENTREGUE') {
+            // Entregue mas não pago → A Receber
+            aReceber += vnf;
+        }
 
-    const fmt = n => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-    document.getElementById('totalPago').textContent     = fmt(totalPago);
-    document.getElementById('totalAReceber').textContent = fmt(totalAReceber);
-    document.getElementById('totalEntregue').textContent = totalEntregue;
-    document.getElementById('totalFaturado').textContent = fmt(totalFaturado);
+        if (sf === 'ENTREGUE') entregue++;
+    });
+
+    set('totalPago',      fmtMoeda(pago));
+    set('totalAReceber',  fmtMoeda(aReceber));
+    set('totalEntregue',  entregue);
+    set('totalFaturado',  fmtMoeda(faturado));
 }
 
-// Vendas do mês corrente (por data_emissao; fallback: data_vencimento)
+function set(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = val;
+}
+
+/** Vendas do mês corrente — data_emissao, com fallback em data_vencimento */
 function getVendasMes() {
     return vendas.filter(v => {
-        const dataStr = v.data_emissao || v.data_vencimento;
-        if (!dataStr) return false;
-        const d = new Date(dataStr + 'T00:00:00');
-        return d.getMonth() === currentMonth.getMonth() &&
+        const ds = v.data_emissao || v.data_vencimento;
+        if (!ds) return false;
+        const d = new Date(ds + 'T00:00:00');
+        return d.getMonth()    === currentMonth.getMonth() &&
                d.getFullYear() === currentMonth.getFullYear();
     });
 }
 
-// ─── FILTROS E TABELA ──────────────────────────────────────────────────────────
+// ─── FILTROS ───────────────────────────────────────────────────────────────────
 window.filterVendas = function () {
-    const s    = (document.getElementById('search')?.value || '').toLowerCase();
-    const vend = document.getElementById('filterVendedor')?.value || '';
-    const st   = document.getElementById('filterStatus')?.value  || '';
+    const busca = (document.getElementById('search')?.value || '').toLowerCase();
+    const vend  =  document.getElementById('filterVendedor')?.value || '';
+    const stFil =  document.getElementById('filterStatus')?.value  || '';
 
     let lista = getVendasMes();
 
-    // Vendedor fixo (já vem filtrado da API, mas garante no front)
-    const vendedorFixo = getVendedorFixo();
-    if (vendedorFixo) {
-        lista = lista.filter(v => (v.vendedor || '').toUpperCase() === vendedorFixo);
+    // Garante isolamento por vendedor
+    const fixo = getVendedorFixo();
+    if (fixo) {
+        lista = lista.filter(v => (v.vendedor || '').toUpperCase() === fixo);
     } else if (vend) {
         lista = lista.filter(v => (v.vendedor || '').toUpperCase() === vend.toUpperCase());
     }
 
     // Filtro de status
-    if (st) {
+    if (stFil) {
         lista = lista.filter(v => {
-            const { label } = resolverStatusExibicao(v);
-            if (st === 'PAGO')              return label === 'PAGO';
-            if (st === 'ENTREGUE')          return label === 'ENTREGUE';
-            if (st === 'EM TRÂNSITO')       return label === 'EM TRÂNSITO';
-            if (st === 'SIMPLES REMESSA')   return label === 'SIMPLES REMESSA';
-            if (st === 'REMESSA DE AMOSTRA')return label === 'REMESSA DE AMOSTRA';
-            if (st === 'PARCELA')           return label.startsWith('PARCELA');
+            const { label } = resolverStatus(v);
+            if (stFil === 'PAGO')               return label === 'PAGO';
+            if (stFil === 'PARCELA')            return label.startsWith('PARCELA');
+            if (stFil === 'ENTREGUE')           return label === 'ENTREGUE';
+            if (stFil === 'EM TRÂNSITO')        return label === 'EM TRÂNSITO';
+            if (stFil === 'SIMPLES REMESSA')    return label === 'SIMPLES REMESSA';
+            if (stFil === 'REMESSA DE AMOSTRA') return label === 'REMESSA DE AMOSTRA';
             return true;
         });
     }
 
     // Pesquisa textual
-    if (s) {
+    if (busca) {
         lista = lista.filter(v =>
             [v.numero_nf, v.nome_orgao, v.vendedor, v.transportadora, v.banco]
-                .some(x => x && x.toLowerCase().includes(s))
+                .some(x => x && x.toLowerCase().includes(busca))
         );
     }
 
@@ -304,42 +336,43 @@ window.filterVendas = function () {
     renderVendas(lista);
 };
 
+// ─── TABELA ────────────────────────────────────────────────────────────────────
 function renderVendas(lista) {
     const c = document.getElementById('vendasContainer');
     if (!c) return;
+
     if (!lista.length) {
-        c.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Nenhuma venda encontrada</div>';
+        c.innerHTML = '<div style="text-align:center;padding:2.5rem;color:var(--text-secondary);">Nenhuma venda encontrada para este período.</div>';
         return;
     }
 
     const rows = lista.map(v => {
-        const { label, classe } = resolverStatusExibicao(v);
+        const { label, cls } = resolverStatus(v);
+        const sp = (v.status_pagamento || '').toUpperCase();
 
-        // Cor da linha
-        let rowStyle = '';
-        if (classe === 'st-pago')     rowStyle = 'background:rgba(34,197,94,0.12);';
-        if (classe === 'st-entregue') rowStyle = 'background:rgba(59,130,246,0.12);';
+        // Cor de fundo da linha
+        let bg = '';
+        if (cls === 'st-pago')     bg = 'background:rgba(34,197,94,0.22);border-left:3px solid #22C55E;';
+        if (cls === 'st-parcela')  bg = 'background:rgba(34,197,94,0.13);border-left:3px solid #86efac;';
+        if (cls === 'st-entregue') bg = 'background:rgba(59,130,246,0.22);border-left:3px solid #3B82F6;';
 
-        // Valor pago: para parcelas usa valor_pago; para PAGO usa valor_nf; demais vazio
-        let valorPagoTxt = '—';
-        const stPagto = (v.status_pagamento || '').toUpperCase();
-        if (stPagto === 'PAGO') {
-            valorPagoTxt = fmtMoeda(v.valor_nf);
-        } else if (/parcela/i.test(stPagto)) {
-            // Última parcela paga
-            const meta = parseMeta(v.observacoes);
-            const vp   = meta?.ultima_valor || v.valor_pago;
-            valorPagoTxt = vp ? fmtMoeda(vp) : fmtMoeda(v.valor_pago);
+        // Valor pago
+        let vpTxt = '—';
+        if (sp === 'PAGO') {
+            vpTxt = fmtMoeda(v.valor_nf);
+        } else if (/parcela/i.test(sp)) {
+            const m = parseMeta(v.observacoes);
+            vpTxt = fmtMoeda(m?.ultima_valor || v.valor_pago || 0);
         }
 
         return `
-        <tr style="cursor:pointer;${rowStyle}" onclick="handleViewClick('${v.id}')">
+        <tr style="cursor:pointer;${bg}" onclick="handleViewClick('${v.id}')">
             <td><strong>${v.numero_nf || '—'}</strong></td>
             <td style="max-width:220px;word-wrap:break-word;white-space:normal;">${v.nome_orgao || '—'}</td>
             <td>${v.vendedor || '—'}</td>
             <td><strong>${fmtMoeda(v.valor_nf)}</strong></td>
-            <td>${valorPagoTxt}</td>
-            <td><span class="badge ${classe}">${label}</span></td>
+            <td>${vpTxt}</td>
+            <td><span class="badge ${cls}">${label}</span></td>
         </tr>`;
     }).join('');
 
@@ -348,12 +381,8 @@ function renderVendas(lista) {
             <table>
                 <thead>
                     <tr>
-                        <th>NF</th>
-                        <th>Órgão</th>
-                        <th>Vendedor</th>
-                        <th>Valor NF</th>
-                        <th>Valor Pago</th>
-                        <th>Status</th>
+                        <th>NF</th><th>Órgão</th><th>Vendedor</th>
+                        <th>Valor NF</th><th>Valor Pago</th><th>Status</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -361,28 +390,29 @@ function renderVendas(lista) {
         </div>`;
 }
 
-// ─── MODAL DE DETALHES ─────────────────────────────────────────────────────────
+// ─── MODAL DETALHES ────────────────────────────────────────────────────────────
 window.handleViewClick = function (id) {
     const v = vendas.find(x => String(x.id) === String(id));
     if (!v) return;
 
-    const stPagto = (v.status_pagamento || '').toUpperCase();
-    const isPago  = stPagto === 'PAGO' || /parcela/i.test(stPagto);
+    const sp    = (v.status_pagamento || '').toUpperCase();
+    const isPago = sp === 'PAGO' || /parcela/i.test(sp);
 
     document.getElementById('modalNumeroNF').textContent = v.numero_nf || '—';
 
     let html = '';
-
     if (!isPago) {
-        // ── Modal: dados do CONTROLE DE FRETE ──────────────────────────────
+        // Dados do controle de frete
         html = `
         <div class="info-section">
-            <h4>📦 Informações da NF</h4>
+            <h4>📦 Nota Fiscal</h4>
             <p><strong>Órgão:</strong> ${v.nome_orgao || '—'}</p>
             <p><strong>Vendedor:</strong> ${v.vendedor || '—'}</p>
             <p><strong>Tipo NF:</strong> ${v.tipo_nf || '—'}</p>
             <p><strong>Data Emissão:</strong> ${fmtData(v.data_emissao)}</p>
             <p><strong>Valor NF:</strong> ${fmtMoeda(v.valor_nf)}</p>
+            ${v.documento ? `<p><strong>Documento:</strong> ${v.documento}</p>` : ''}
+            ${v.contato_orgao ? `<p><strong>Contato:</strong> ${v.contato_orgao}</p>` : ''}
         </div>
         <div class="info-section">
             <h4>🚚 Controle de Frete</h4>
@@ -391,25 +421,24 @@ window.handleViewClick = function (id) {
             <p><strong>Data Coleta:</strong> ${fmtData(v.data_coleta)}</p>
             <p><strong>Cidade Destino:</strong> ${v.cidade_destino || '—'}</p>
             <p><strong>Previsão Entrega:</strong> ${fmtData(v.previsao_entrega)}</p>
-            <p><strong>Status:</strong> ${badgeStatus(v)}</p>
+            <p><strong>Status:</strong> <span class="badge ${resolverStatus(v).cls}">${resolverStatus(v).label}</span></p>
         </div>`;
     } else {
-        // ── Modal: dados de CONTAS A RECEBER ───────────────────────────────
+        // Dados de contas a receber
         const meta = parseMeta(v.observacoes);
-
-        let parcelasHtml = '';
+        let pgtoHtml = '';
         if (meta) {
-            parcelasHtml = `
-            <p><strong>Parcelas:</strong> ${meta.ultima_num} de ${meta.total} pagas</p>
-            <p><strong>Última Parcela:</strong> ${fmtMoeda(meta.ultima_valor)}</p>
-            <p><strong>Total Pago:</strong> ${fmtMoeda(v.valor_pago)}</p>`;
+            pgtoHtml = `
+            <p><strong>Parcelas pagas:</strong> ${meta.ultima_num} / ${meta.total}</p>
+            <p><strong>Valor última parcela:</strong> ${fmtMoeda(meta.ultima_valor)}</p>
+            <p><strong>Total pago:</strong> ${fmtMoeda(v.valor_pago)}</p>`;
         } else {
-            parcelasHtml = `<p><strong>Valor Pago:</strong> ${fmtMoeda(v.valor_pago || v.valor_nf)}</p>`;
+            pgtoHtml = `<p><strong>Valor pago:</strong> ${fmtMoeda(v.valor_pago || v.valor_nf)}</p>`;
         }
 
         html = `
         <div class="info-section">
-            <h4>📦 Informações da NF</h4>
+            <h4>📦 Nota Fiscal</h4>
             <p><strong>Órgão:</strong> ${v.nome_orgao || '—'}</p>
             <p><strong>Vendedor:</strong> ${v.vendedor || '—'}</p>
             <p><strong>Tipo NF:</strong> ${v.tipo_nf || '—'}</p>
@@ -421,8 +450,8 @@ window.handleViewClick = function (id) {
             <p><strong>Banco:</strong> ${v.banco || '—'}</p>
             <p><strong>Vencimento:</strong> ${fmtData(v.data_vencimento)}</p>
             <p><strong>Data Pagamento:</strong> ${fmtData(v.data_pagamento)}</p>
-            <p><strong>Status:</strong> ${badgeStatus(v)}</p>
-            ${parcelasHtml}
+            <p><strong>Status:</strong> <span class="badge ${resolverStatus(v).cls}">${resolverStatus(v).label}</span></p>
+            ${pgtoHtml}
         </div>`;
     }
 
@@ -430,67 +459,134 @@ window.handleViewClick = function (id) {
     document.getElementById('infoModal').style.display = 'flex';
 };
 
-window.closeInfoModal = () => { document.getElementById('infoModal').style.display = 'none'; };
+window.closeInfoModal = () => {
+    document.getElementById('infoModal').style.display = 'none';
+};
 
-function badgeStatus(v) {
-    const { label, classe } = resolverStatusExibicao(v);
-    return `<span class="badge ${classe}">${label}</span>`;
-}
-
-// ─── GERAÇÃO DE PDF ────────────────────────────────────────────────────────────
+// ─── PDF: RELATÓRIO DE COMISSÃO ────────────────────────────────────────────────
+// Mostra as NFs PAGAS no mês selecionado do vendedor atual (ou selecionado).
+// Calcula comissão de 1% sobre o total pago.
 window.gerarPDF = function () {
     const { jsPDF } = window.jspdf;
-    const doc  = new jsPDF();
-    const mes  = getVendasMes();
-    const vend = getVendedorFixo();
 
-    let titulo = `Vendas — ${mesesNomes[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
-    if (vend) titulo += ` — ${vend.charAt(0) + vend.slice(1).toLowerCase()}`;
+    // Determina o vendedor alvo
+    const fixo      = getVendedorFixo();
+    const selVend   = document.getElementById('filterVendedor')?.value || '';
+    const vendedor  = fixo || selVend;
 
-    doc.setFontSize(13);
-    doc.text(titulo, 14, 15);
+    if (!vendedor) {
+        showToast('Selecione um vendedor para gerar o relatório', 'error');
+        return;
+    }
 
-    doc.autoTable({
-        startY: 22,
-        head: [['NF','Órgão','Vendedor','Valor NF','Valor Pago','Status']],
-        body: mes.map(v => {
-            const { label } = resolverStatusExibicao(v);
-            const stPagto   = (v.status_pagamento || '').toUpperCase();
-            let vp = '—';
-            if (stPagto === 'PAGO')         vp = `R$ ${parseFloat(v.valor_nf  || 0).toFixed(2)}`;
-            else if (/parcela/i.test(stPagto)) {
-                const meta = parseMeta(v.observacoes);
-                vp = `R$ ${parseFloat(meta?.ultima_valor || v.valor_pago || 0).toFixed(2)}`;
-            }
-            return [v.numero_nf || '—', v.nome_orgao || '—', v.vendedor || '—',
-                    `R$ ${parseFloat(v.valor_nf || 0).toFixed(2)}`, vp, label];
-        }),
-        styles:      { fontSize: 8 },
-        headStyles:  { fillColor: [107,114,128] },
+    const mesTxt = `${MESES[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
+
+    // NFs pagas no mês: filtra por data_pagamento (não data_emissao)
+    // pois o enunciado pede "notas pagas do mês em questão"
+    const pagas = vendas.filter(v => {
+        if ((v.vendedor || '').toUpperCase() !== vendedor.toUpperCase()) return false;
+
+        const sp = (v.status_pagamento || '').toUpperCase();
+        if (sp !== 'PAGO' && !/parcela/i.test(sp)) return false;
+
+        // Usa data_pagamento para determinar o mês do recebimento
+        const dp = v.data_pagamento || v.data_emissao;
+        if (!dp) return false;
+        const d = new Date(dp + 'T00:00:00');
+        return d.getMonth()    === currentMonth.getMonth() &&
+               d.getFullYear() === currentMonth.getFullYear();
     });
 
-    doc.save(`vendas_${mesesNomes[currentMonth.getMonth()]}_${currentMonth.getFullYear()}.pdf`);
+    if (!pagas.length) {
+        showToast('Nenhum pagamento encontrado neste mês', 'error');
+        return;
+    }
+
+    // Total recebido (valor_nf para PAGO; valor_pago para parcelas)
+    const totalRecebido = pagas.reduce((s, v) => {
+        const sp = (v.status_pagamento || '').toUpperCase();
+        return s + (/parcela/i.test(sp)
+            ? parseFloat(v.valor_pago || 0)
+            : parseFloat(v.valor_nf  || 0));
+    }, 0);
+    const comissao = totalRecebido * 0.01;
+
+    const doc = new jsPDF();
+
+    // Cabeçalho
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.text('RELATÓRIO DE COMISSÃO', 105, 20, { align: 'center' });
+
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Vendedor: ${vendedor.charAt(0) + vendedor.slice(1).toLowerCase()}`, 105, 30, { align: 'center' });
+    doc.text(`Período: ${mesTxt}`, 105, 37, { align: 'center' });
+    doc.text(`Emitido em: ${new Date().toLocaleString('pt-BR')}`, 105, 44, { align: 'center' });
+
+    // Tabela de NFs pagas
+    doc.autoTable({
+        startY: 52,
+        head: [['NF', 'Órgão', 'Emissão', 'Data Pagto', 'Valor NF', 'Valor Recebido']],
+        body: pagas.map(v => {
+            const sp  = (v.status_pagamento || '').toUpperCase();
+            const vr  = /parcela/i.test(sp)
+                ? parseFloat(v.valor_pago || 0)
+                : parseFloat(v.valor_nf  || 0);
+            return [
+                v.numero_nf  || '—',
+                v.nome_orgao || '—',
+                fmtData(v.data_emissao),
+                fmtData(v.data_pagamento),
+                `R$ ${parseFloat(v.valor_nf || 0).toFixed(2)}`,
+                `R$ ${vr.toFixed(2)}`,
+            ];
+        }),
+        theme:       'grid',
+        headStyles:  { fillColor: [100,100,100], textColor: [255,255,255], fontStyle: 'bold', halign: 'center' },
+        styles:      { fontSize: 9, cellPadding: 3 },
+        columnStyles:{
+            0: { halign: 'center' },
+            2: { halign: 'center' },
+            3: { halign: 'center' },
+            4: { halign: 'right'  },
+            5: { halign: 'right'  },
+        },
+    });
+
+    // Totais
+    const fY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(12);
+    doc.setFont(undefined, 'bold');
+    doc.text(`TOTAL RECEBIDO: R$ ${totalRecebido.toFixed(2)}`, 14, fY);
+    doc.text(`COMISSÃO (1%):  R$ ${comissao.toFixed(2)}`,      14, fY + 8);
+
+    doc.save(`comissao_${vendedor}_${MESES[currentMonth.getMonth()]}_${currentMonth.getFullYear()}.pdf`);
+    showToast('Relatório gerado!', 'success');
 };
 
 // ─── UTILITÁRIOS ───────────────────────────────────────────────────────────────
 function fmtMoeda(v) {
-    const n = parseFloat(v || 0);
-    return `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    return `R$ ${parseFloat(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 }
 function fmtData(d) {
     if (!d) return '—';
     return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
 }
-
 function showToast(msg, type = 'info') {
+    document.querySelectorAll('.floating-message').forEach(e => e.remove());
     const cores = { error: '#EF4444', success: '#22C55E', info: '#3B82F6' };
     const div   = document.createElement('div');
+    div.className   = `floating-message ${type}`;
     div.textContent = msg;
     div.style.cssText = `
         position:fixed;bottom:1.5rem;right:1.5rem;z-index:99999;
-        padding:.75rem 1.25rem;border-radius:8px;font-weight:600;font-size:.875rem;
-        background:${cores[type] || cores.info};color:#fff;
-        box-shadow:0 4px 12px rgba(0,0,0,.2);animation:fadeIn .3s ease;`;
+        padding:.8rem 1.4rem;border-radius:10px;font-weight:600;font-size:.9rem;
+        background:${cores[type]||cores.info};color:#fff;min-width:260px;
+        box-shadow:0 4px 16px rgba(0,0,0,.25);animation:slideInBottom .3s ease;`;
     document.body.appendChild(div);
-    setTimeout(() => div.remove(), 3200);
+    setTimeout(() => {
+        div.style.animation = 'slideOutBottom .3s ease forwards';
+        setTimeout(() => div.remove(), 300);
+    }, 3000);
 }
