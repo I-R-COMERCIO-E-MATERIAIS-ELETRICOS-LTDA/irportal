@@ -9,7 +9,6 @@ let currentUser  = null;
 let currentMonth = new Date();
 let calendarYear = new Date().getFullYear();
 
-// username (maiúsculo) → vendedor do banco
 const PERFIL_VENDEDOR_MAP = {
     'ISAQUE':         'ISAQUE',
     'ISAQUE-VENDAS':  'ISAQUE',
@@ -22,7 +21,7 @@ const ADMINS = ['ROBERTO', 'ROSEMEIRE'];
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
-// ─── INICIALIZAÇÃO ──────────────────────────────────────────────────────────────
+// ─── INICIALIZAÇÃO ──────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get('sessionToken');
@@ -42,23 +41,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // Resolve usuário e exibe mês imediatamente (sem esperar dados)
     await resolverUsuario();
     configurarFiltroVendedor();
     updateMonthDisplay();
 
-    // 1º: carrega dados já salvos (rápido — sem sync)
+    // Carrega dados imediatamente (rápido)
     await loadVendas();
 
-    // 2º: sincroniza fontes em background (silencioso)
+    // Sincroniza fontes em background (silencioso)
     sincronizarDados({ silencioso: true }).then(loadVendas);
 
-    // Intervalos de atualização
-    setInterval(loadVendas, 20000);                                         // refresh tabela
-    setInterval(() => sincronizarDados({ silencioso: true }).then(loadVendas), 300000); // sync fontes
+    setInterval(loadVendas, 20000);
+    setInterval(() => sincronizarDados({ silencioso: true }).then(loadVendas), 300000);
 });
 
-// ─── USUÁRIO / PERFIL ──────────────────────────────────────────────────────────
+// ─── USUÁRIO / PERFIL ──────────────────────────────────────────────────────
 async function resolverUsuario() {
     try {
         const r = await fetch(`${window.location.origin}/api/verify-session`, {
@@ -88,11 +85,7 @@ function configurarFiltroVendedor() {
     sel.style.cssText = 'opacity:.7;cursor:not-allowed;';
 }
 
-// ─── SINCRONIZAÇÃO ──────────────────────────────────────────────────────────────
-/**
- * silencioso: false → mostra "Dados sincronizados" (verde) ou "Erro ao sincronizar" (vermelho)
- * silencioso: true  → apenas loga no console
- */
+// ─── SINCRONIZAÇÃO ──────────────────────────────────────────────────────────
 async function sincronizarDados({ silencioso = false } = {}) {
     try {
         const r = await fetch(`${API_URL}/vendas/sincronizar`, {
@@ -115,7 +108,7 @@ async function sincronizarDados({ silencioso = false } = {}) {
     }
 }
 
-// ─── CARGA DE DADOS ─────────────────────────────────────────────────────────────
+// ─── CARGA DE DADOS ─────────────────────────────────────────────────────────
 async function loadVendas() {
     try {
         const fixo = getVendedorFixo();
@@ -128,21 +121,11 @@ async function loadVendas() {
         vendas = Array.isArray(data) ? data : [];
         updateDashboard();
         filterVendas();
-        atualizarConexao(true);
     } catch (e) {
         console.error('Erro loadVendas:', e);
-        atualizarConexao(false);
     }
 }
 
-function atualizarConexao(ok) {
-    const el = document.getElementById('connectionStatus');
-    if (!el) return;
-    el.classList.toggle('online',  ok);
-    el.classList.toggle('offline', !ok);
-}
-
-// Botão manual — sincroniza E depois recarrega; mostra toast
 window.syncData = async function () {
     const btn = document.querySelector('button[onclick="syncData()"]');
     const svg = btn?.querySelector('svg');
@@ -152,7 +135,7 @@ window.syncData = async function () {
     if (svg) svg.style.animation = '';
 };
 
-// ─── NAVEGAÇÃO DE MÊS ──────────────────────────────────────────────────────────
+// ─── NAVEGAÇÃO DE MÊS ──────────────────────────────────────────────────────
 function updateMonthDisplay() {
     const el = document.getElementById('currentMonth');
     if (el) el.textContent = `${MESES[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
@@ -188,15 +171,7 @@ function renderCalendarWidget() {
     }).join('');
 }
 
-// ─── STATUS ─────────────────────────────────────────────────────────────────────
-/**
- * Regras de status (em ordem de prioridade):
- * 1. PAGO                      → verde
- * 2. Contém "PARCELA"          → verde (parcial)
- * 3. tipo_nf ou status_frete = SIMPLES REMESSA / REMESSA DE AMOSTRA → cinza
- * 4. status_frete = ENTREGUE   → azul (mercadoria chegou, pgto pendente → A Receber)
- * 5. demais                    → laranja (EM TRÂNSITO / AGUARDANDO COLETA)
- */
+// ─── STATUS ─────────────────────────────────────────────────────────────────
 function resolverStatus(v) {
     const sp = (v.status_pagamento || '').toUpperCase().trim();
     const sf = (v.status_frete     || '').toUpperCase().trim();
@@ -230,7 +205,7 @@ function parseMeta(obs) {
     return null;
 }
 
-// ─── DASHBOARD ──────────────────────────────────────────────────────────────────
+// ─── DASHBOARD ──────────────────────────────────────────────────────────────
 function updateDashboard() {
     const mes = getVendasMes();
     let pago = 0, aReceber = 0, entregue = 0, faturado = 0;
@@ -247,7 +222,7 @@ function updateDashboard() {
         } else if (/parcela/i.test(sp)) {
             pago += parseFloat(v.valor_pago || 0);
         } else if (sf === 'ENTREGUE') {
-            aReceber += vnf;   // entregue mas não pago → A Receber
+            aReceber += vnf;
         }
 
         if (sf === 'ENTREGUE') entregue++;
@@ -258,9 +233,7 @@ function updateDashboard() {
     setEl('totalEntregue', entregue);
     setEl('totalFaturado', fmtMoeda(faturado));
 }
-
 function setEl(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }
-
 function getVendasMes() {
     return vendas.filter(v => {
         const ds = v.data_emissao || v.data_vencimento;
@@ -271,7 +244,7 @@ function getVendasMes() {
     });
 }
 
-// ─── FILTROS ────────────────────────────────────────────────────────────────────
+// ─── FILTROS ────────────────────────────────────────────────────────────────
 window.filterVendas = function () {
     const busca  = (document.getElementById('search')?.value        || '').toLowerCase();
     const vend   =  document.getElementById('filterVendedor')?.value || '';
@@ -279,7 +252,6 @@ window.filterVendas = function () {
 
     let lista = getVendasMes();
 
-    // Isolamento por vendedor
     const fixo = getVendedorFixo();
     if (fixo) {
         lista = lista.filter(v => (v.vendedor || '').toUpperCase() === fixo);
@@ -287,7 +259,6 @@ window.filterVendas = function () {
         lista = lista.filter(v => (v.vendedor || '').toUpperCase() === vend.toUpperCase());
     }
 
-    // Filtro de status
     if (stFil) {
         lista = lista.filter(v => {
             const { label } = resolverStatus(v);
@@ -301,7 +272,6 @@ window.filterVendas = function () {
         });
     }
 
-    // Pesquisa textual
     if (busca) {
         lista = lista.filter(v =>
             [v.numero_nf, v.nome_orgao, v.vendedor, v.transportadora, v.banco]
@@ -313,7 +283,7 @@ window.filterVendas = function () {
     renderVendas(lista);
 };
 
-// ─── TABELA ─────────────────────────────────────────────────────────────────────
+// ─── TABELA ─────────────────────────────────────────────────────────────────
 function renderVendas(lista) {
     const c = document.getElementById('vendasContainer');
     if (!c) return;
@@ -327,13 +297,11 @@ function renderVendas(lista) {
         const { label, cls } = resolverStatus(v);
         const sp = (v.status_pagamento || '').toUpperCase();
 
-        // Fundo da linha
-        let bg = '';
-        if (cls === 'st-pago')     bg = 'background:rgba(34,197,94,0.22);border-left:3px solid #22C55E;';
-        if (cls === 'st-parcela')  bg = 'background:rgba(34,197,94,0.14);border-left:3px solid #86efac;';
-        if (cls === 'st-entregue') bg = 'background:rgba(59,130,246,0.22);border-left:3px solid #3B82F6;';
+        let rowStyle = '';
+        if (cls === 'st-pago')     rowStyle = 'background:rgba(34,197,94,0.28);border-left:4px solid #15803d;';
+        if (cls === 'st-parcela')  rowStyle = 'background:rgba(34,197,94,0.18);border-left:4px solid #16a34a;';
+        if (cls === 'st-entregue') rowStyle = 'background:rgba(59,130,246,0.28);border-left:4px solid #1d4ed8;';
 
-        // Valor pago
         let vpTxt = '—';
         if (sp === 'PAGO') {
             vpTxt = fmtMoeda(v.valor_nf);
@@ -343,7 +311,7 @@ function renderVendas(lista) {
         }
 
         return `
-        <tr style="cursor:pointer;${bg}" onclick="handleViewClick('${v.id}')">
+        <tr style="cursor:pointer;${rowStyle}" onclick="handleViewClick('${v.id}')">
             <td><strong>${v.numero_nf || '—'}</strong></td>
             <td style="max-width:220px;word-wrap:break-word;white-space:normal;">${v.nome_orgao || '—'}</td>
             <td>${v.vendedor || '—'}</td>
@@ -367,7 +335,7 @@ function renderVendas(lista) {
         </div>`;
 }
 
-// ─── MODAL — dados unificados ────────────────────────────────────────────────────
+// ─── MODAL ──────────────────────────────────────────────────────────────────
 window.handleViewClick = function (id) {
     const v = vendas.find(x => String(x.id) === String(id));
     if (!v) return;
@@ -377,16 +345,13 @@ window.handleViewClick = function (id) {
     const { label, cls } = resolverStatus(v);
     const meta = parseMeta(v.observacoes);
 
-    // Bloco de parcelas (apenas se existir)
     let parcelasHtml = '';
     if (meta) {
         parcelasHtml = `
         <tr><td colspan="2" style="padding-top:.5rem;">
             <div style="background:rgba(34,197,94,0.10);border:1px solid rgba(34,197,94,0.30);
                         border-radius:8px;padding:.75rem 1rem;">
-                <p style="margin:0 0 .35rem;font-weight:700;color:#16a34a;font-size:.95rem;">
-                    Parcelas
-                </p>
+                <p style="margin:0 0 .35rem;font-weight:700;color:#16a34a;font-size:.95rem;">Parcelas</p>
                 <p style="margin:.2rem 0;"><strong>Pagas:</strong> ${meta.ultima_num} de ${meta.total}</p>
                 <p style="margin:.2rem 0;"><strong>Valor da última parcela:</strong> ${fmtMoeda(meta.ultima_valor)}</p>
                 <p style="margin:.2rem 0;"><strong>Total pago até agora:</strong> ${fmtMoeda(v.valor_pago)}</p>
@@ -394,7 +359,6 @@ window.handleViewClick = function (id) {
         </td></tr>`;
     }
 
-    // Linha auxiliar: valor pago quando não há parcelas mas há pagamento
     const valorPagoHtml = (!meta && parseFloat(v.valor_pago) > 0)
         ? `<tr><td><strong>Valor Pago</strong></td><td>${fmtMoeda(v.valor_pago)}</td></tr>`
         : '';
@@ -403,7 +367,6 @@ window.handleViewClick = function (id) {
         <table style="width:100%;border-collapse:collapse;">
             <colgroup><col style="width:42%"><col style="width:58%"></colgroup>
             <tbody>
-                <!-- Geral -->
                 <tr><td colspan="2" style="padding:.5rem 0 .3rem;font-weight:700;color:var(--primary);
                     font-size:1rem;border-bottom:2px solid var(--border-color);">Nota Fiscal</td></tr>
                 <tr><td><strong>Órgão</strong></td><td>${v.nome_orgao || '—'}</td></tr>
@@ -415,7 +378,6 @@ window.handleViewClick = function (id) {
                 ${v.contato_orgao? `<tr><td><strong>Contato</strong></td><td>${v.contato_orgao}</td></tr>` : ''}
                 <tr><td><strong>Status</strong></td><td><span class="badge ${cls}">${label}</span></td></tr>
 
-                <!-- Frete -->
                 <tr><td colspan="2" style="padding:.8rem 0 .3rem;font-weight:700;color:var(--primary);
                     font-size:1rem;border-bottom:2px solid var(--border-color);">Frete</td></tr>
                 <tr><td><strong>Transportadora</strong></td><td>${v.transportadora || '—'}</td></tr>
@@ -424,7 +386,6 @@ window.handleViewClick = function (id) {
                 <tr><td><strong>Cidade Destino</strong></td><td>${v.cidade_destino || '—'}</td></tr>
                 <tr><td><strong>Previsão Entrega</strong></td><td>${fmtData(v.previsao_entrega)}</td></tr>
 
-                <!-- Pagamento -->
                 <tr><td colspan="2" style="padding:.8rem 0 .3rem;font-weight:700;color:var(--primary);
                     font-size:1rem;border-bottom:2px solid var(--border-color);">Pagamento</td></tr>
                 <tr><td><strong>Banco</strong></td><td>${v.banco || '—'}</td></tr>
@@ -440,7 +401,7 @@ window.handleViewClick = function (id) {
 
 window.closeInfoModal = () => { document.getElementById('infoModal').style.display = 'none'; };
 
-// ─── PDF: RELATÓRIO DE COMISSÃO ──────────────────────────────────────────────────
+// ─── PDF: RELATÓRIO DE COMISSÃO ──────────────────────────────────────────────
 window.gerarPDF = function () {
     const { jsPDF } = window.jspdf;
     const fixo     = getVendedorFixo();
@@ -449,7 +410,6 @@ window.gerarPDF = function () {
 
     if (!vendedor) { showToast('Selecione um vendedor', 'error'); return; }
 
-    // NFs pagas no mês (por data_pagamento)
     const pagas = vendas.filter(v => {
         if ((v.vendedor || '').toUpperCase() !== vendedor.toUpperCase()) return false;
         const sp = (v.status_pagamento || '').toUpperCase();
@@ -510,7 +470,7 @@ window.gerarPDF = function () {
     showToast('Relatório gerado!', 'success');
 };
 
-// ─── UTILITÁRIOS ─────────────────────────────────────────────────────────────────
+// ─── UTILITÁRIOS ─────────────────────────────────────────────────────────────
 function fmtMoeda(v) {
     return `R$ ${parseFloat(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
 }
