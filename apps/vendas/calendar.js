@@ -1,23 +1,67 @@
+// ============================================
+// CALENDAR.JS - MODAL DE CALENDÁRIO (VENDAS)
+// ============================================
+
 let calendarYear = new Date().getFullYear();
-const mesesCal = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-window.toggleCalendar = function () {
-    const m = document.getElementById('calendarModal');
-    if (!m) return;
-    if (m.classList.contains('show')) m.classList.remove('show');
-    else { calendarYear = currentMonth.getFullYear(); renderCalendar(); m.classList.add('show'); }
+
+const mesesNomes = [
+    'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+    'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
+
+window.toggleCalendar = function() {
+    const modal = document.getElementById('calendarModal');
+    if (!modal) return;
+    if (modal.classList.contains('show')) {
+        modal.classList.remove('show');
+    } else {
+        calendarYear = currentYear;
+        document.getElementById('calendarYear').textContent = calendarYear;
+        renderCalendarMonths();
+        modal.classList.add('show');
+    }
 };
-window.changeCalendarYear = d => { calendarYear += d; document.getElementById('calendarYear').textContent = calendarYear; renderCalendar(); };
-function renderCalendar() {
-    const y = document.getElementById('calendarYear'), mc = document.getElementById('calendarMonths');
-    if (!y || !mc) return;
-    y.textContent = calendarYear; mc.innerHTML = '';
-    mesesCal.forEach((n, i) => {
-        const b = document.createElement('div'); b.className = 'calendar-month'; b.textContent = n;
-        if (calendarYear === currentMonth.getFullYear() && i === currentMonth.getMonth()) b.classList.add('current');
-        b.onclick = () => { currentMonth = new Date(calendarYear, i, 1); window.updateDisplay?.(); window.toggleCalendar(); };
-        mc.appendChild(b);
+
+window.changeCalendarYear = function(direction) {
+    calendarYear += direction;
+    document.getElementById('calendarYear').textContent = calendarYear;
+    renderCalendarMonths();
+};
+
+function renderCalendarMonths() {
+    const container = document.getElementById('calendarMonths');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const isAllMonthsActive = typeof showAllMonths !== 'undefined' && showAllMonths && currentYear === calendarYear;
+
+    const todosDiv = document.createElement('div');
+    todosDiv.className = 'calendar-month todos' + (isAllMonthsActive ? ' current' : '');
+    todosDiv.textContent = 'Todos';
+    todosDiv.onclick = () => selectAllMonths();
+    container.appendChild(todosDiv);
+
+    mesesNomes.forEach((nome, idx) => {
+        const div = document.createElement('div');
+        const isCurrentMonth = !showAllMonths && idx === currentMonth && calendarYear === currentYear;
+        div.className = 'calendar-month' + (isCurrentMonth ? ' current' : '');
+        div.textContent = nome;
+        div.onclick = () => selectCalendarMonth(idx, calendarYear);
+        container.appendChild(div);
     });
 }
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('calendarModal')?.addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.remove('show'); });
-});
+
+function selectCalendarMonth(month, year) {
+    showAllMonths = false;
+    currentMonth = month;
+    currentYear = year;
+    updateMonthDisplay();
+    toggleCalendar();
+}
+
+function selectAllMonths() {
+    currentYear = calendarYear;
+    showAllMonths = true;
+    updateMonthDisplay();
+    toggleCalendar();
+}
