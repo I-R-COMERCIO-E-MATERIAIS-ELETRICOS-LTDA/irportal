@@ -305,3 +305,11 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
     tr.row-pago { background: #064E3B !important; }
     tr.row-pago:hover { background: #065F46 !important; }
 }
+
+/* Linha clicável da tabela */
+tr[data-conta-id] {
+    cursor: pointer;
+}
+tr[data-conta-id]:hover {
+    background: var(--table-hover) !important;
+}
