@@ -50,8 +50,36 @@ setInterval(() => {
     }
 }, 3600000);
 
+// ─── HEALTH CHECKS (públicos, antes da autenticação) ─────────────────────────
+app.get('/health', async (req, res) => {
+    try {
+        const { error } = await supabase.from('users').select('count', { count: 'exact', head: true });
+        res.json({
+            status: error ? 'unhealthy' : 'healthy',
+            database: error ? 'disconnected' : 'connected',
+            timestamp: new Date().toISOString()
+        });
+    } catch {
+        res.json({ status: 'unhealthy', timestamp: new Date().toISOString() });
+    }
+});
+
+// 🔧 ROTA ADICIONADA: /api/health – usada pelo front-end do módulo Vendas
+app.get('/api/health', async (req, res) => {
+    try {
+        const { error } = await supabase.from('users').select('count', { count: 'exact', head: true });
+        res.json({
+            status: error ? 'unhealthy' : 'healthy',
+            database: error ? 'disconnected' : 'connected',
+            timestamp: new Date().toISOString()
+        });
+    } catch {
+        res.json({ status: 'unhealthy', timestamp: new Date().toISOString() });
+    }
+});
+
 // ─── AUTENTICAÇÃO CENTRAL ─────────────────────────────────────────────────────
-const PUBLIC_PATHS = ['/', '/health', '/app', '/portal', '/portal/', '/api/supabase-config'];
+const PUBLIC_PATHS = ['/', '/health', '/api/health', '/app', '/portal', '/portal/', '/api/supabase-config'];
 const STATIC_EXTENSIONS = /\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf)$/i;
 
 async function verificarAutenticacao(req, res, next) {
@@ -96,20 +124,6 @@ async function verificarAutenticacao(req, res, next) {
         return res.status(500).json({ error: 'Erro ao verificar autenticação' });
     }
 }
-
-// ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
-app.get('/health', async (req, res) => {
-    try {
-        const { error } = await supabase.from('users').select('count', { count: 'exact', head: true });
-        res.json({
-            status: error ? 'unhealthy' : 'healthy',
-            database: error ? 'disconnected' : 'connected',
-            timestamp: new Date().toISOString()
-        });
-    } catch {
-        res.json({ status: 'unhealthy', timestamp: new Date().toISOString() });
-    }
-});
 
 // ─── CONFIGURAÇÃO DO SUPABASE PARA FRONTEND ──────────────────────────────────
 app.get('/api/supabase-config', (req, res) => {
@@ -231,10 +245,9 @@ app.use('/api/vendas', vendasRoutes(supabase));
 const lucroRoutes = require('./apps/lucro/routes');
 app.use('/api', lucroRoutes(supabase));
 
-// 🚨🚨 NOVO – API DE CONTAS A PAGAR 🚨🚨
+// 🚨 API DE CONTAS A PAGAR
 const contasPagarRoutes = require('./apps/pagar/routes');
 app.use('/api', contasPagarRoutes(supabase));
-// 🚨🚨 FIM DA ADIÇÃO 🚨🚨
 
 // ─── ROTA DE ESTOQUE ──────────────────────────────────────────────────────────
 app.get('/api/estoque', async (req, res) => {
@@ -288,18 +301,20 @@ app.listen(PORT, '0.0.0.0', () => {
     });
     console.log(`\n📝 Logs salvos em: acessos.log\n`);
     console.log('📡 Rotas de API registradas:');
-    console.log('  POST /api/portal/...         → Portal (auth)');
-    console.log('  POST /api/notifications      → Notificações globais');
-    console.log('  GET  /api/transportadoras    → Transportadoras');
-    console.log('  GET  /api/cotacoes           → Cotações de Frete');
-    console.log('  GET  /api/pedidos            → Pedidos de Faturamento');
-    console.log('  GET  /api/estoque            → Estoque');
-    console.log('  GET  /api/precos             → Preços');
-    console.log('  GET  /api/ordens             → Compras');
-    console.log('  CRUD /api/fretes             → Controle de Frete');
-    console.log('  CRUD /api/receber            → Contas a Receber');
-    console.log('  CRUD /api/vendas             → Vendas');
-    console.log('  CRUD /api/lucro-real         → Lucro Real');
-    console.log('  POST /api/custo-fixo         → Custo Fixo Mensal');
-    console.log('  CRUD /api/contas             → Contas a Pagar\n');  // 🚨 NOVO
+    console.log('  GET  /health               → Health check (sem prefixo)');
+    console.log('  GET  /api/health           → Health check (com prefixo)');
+    console.log('  POST /api/portal/...       → Portal (auth)');
+    console.log('  POST /api/notifications    → Notificações globais');
+    console.log('  GET  /api/transportadoras  → Transportadoras');
+    console.log('  GET  /api/cotacoes         → Cotações de Frete');
+    console.log('  GET  /api/pedidos          → Pedidos de Faturamento');
+    console.log('  GET  /api/estoque          → Estoque');
+    console.log('  GET  /api/precos           → Preços');
+    console.log('  GET  /api/ordens           → Compras');
+    console.log('  CRUD /api/fretes           → Controle de Frete');
+    console.log('  CRUD /api/receber          → Contas a Receber');
+    console.log('  CRUD /api/vendas           → Vendas');
+    console.log('  CRUD /api/lucro-real       → Lucro Real');
+    console.log('  POST /api/custo-fixo       → Custo Fixo Mensal');
+    console.log('  CRUD /api/contas           → Contas a Pagar\n');
 });
