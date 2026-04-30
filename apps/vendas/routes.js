@@ -99,7 +99,6 @@ module.exports = function (supabase) {
     // GET /api/vendas/:id
     router.get('/:id', async (req, res) => {
         if (req.params.id === 'sincronizar') return res.status(405).json({ error: 'Use POST' });
-        if (req.params.id === 'parcelas-pagas') return next(); // não interfere
         try {
             const { data, error } = await supabase.from('vendas').select('*').eq('id', req.params.id).single();
             if (error) return res.status(500).json({ error: error.message });
@@ -110,7 +109,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // NOVA ROTA: /api/vendas/parcelas-pagas
+    // ─── NOVA ROTA: /api/vendas/parcelas-pagas (usa tabela parcelas_receber) ───
     router.get('/parcelas-pagas', async (req, res) => {
         try {
             const { mes, ano, vendedor } = req.query;
@@ -119,91 +118,58 @@ module.exports = function (supabase) {
             }
             const mesNum = parseInt(mes);
             const anoNum = parseInt(ano);
-            const inicio = new Date(anoNum, mesNum - 1, 1);
-            const fim = new Date(anoNum, mesNum, 0);
+            const inicio = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
+            const ultimoDia = new Date(anoNum, mesNum, 0).getDate();
+            const fim = `${anoNum}-${String(mesNum).padStart(2, '0')}-${ultimoDia}`;
 
-            // Buscar todas as contas a receber (sem filtro de tipo, pois já filtraremos)
-            const { data: contas, error } = await supabase
-                .from('contas_receber')
-                .select('*');
-            if (error) throw error;
+            let query = supabase
+                .from('parcelas_receber')
+                .select(`
+                    id,
+                    numero,
+                    valor,
+                    data_pagamento,
+                    contas_receber!inner (
+                        numero_nf,
+                        vendedor,
+                        orgao,
+                        tipo_nf
+                    )
+                `)
+                .gte('data_pagamento', inicio)
+                .lte('data_pagamento', fim);
 
-            const parcelasPagas = [];
-
-            for (const conta of contas) {
-                // Pular tipos de NF excluídos
-                if (isExcludedTipoNF(conta.tipo_nf)) continue;
-                // Filtrar vendedor se fornecido
-                if (vendedor && conta.vendedor !== vendedor) continue;
-
-                // Tenta extrair parcelas do campo observacoes
-                let parcelasArray = [];
-                try {
-                    const obs = conta.observacoes;
-                    if (obs) {
-                        const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
-                        if (Array.isArray(parsed?.parcelas) && parsed.parcelas.length) {
-                            parcelasArray = parsed.parcelas;
-                        } else if (Array.isArray(parsed) && parsed.length && parsed[0]?.valor !== undefined) {
-                            parcelasArray = parsed;
-                        }
-                    }
-                } catch (e) {
-                    console.warn('[parcelas-pagas] Erro ao parsear observações:', e.message);
-                }
-
-                if (parcelasArray.length === 0) {
-                    // Nota sem parcelamento: considerar valor único
-                    const dataPgto = conta.data_pagamento;
-                    if (dataPgto) {
-                        const data = new Date(dataPgto + 'T00:00:00');
-                        if (data >= inicio && data <= fim) {
-                            parcelasPagas.push({
-                                numero_nf: conta.numero_nf,
-                                vendedor: conta.vendedor,
-                                orgao: conta.orgao,
-                                data_pagamento: dataPgto,
-                                valor_parcela: parseFloat(conta.valor_pago) || parseFloat(conta.valor) || 0,
-                                parcela_numero: 1,
-                                parcela_total: 1,
-                                observacoes: conta.observacoes
-                            });
-                        }
-                    }
-                } else {
-                    // Processar cada parcela
-                    for (let idx = 0; idx < parcelasArray.length; idx++) {
-                        const parcela = parcelasArray[idx];
-                        const dataPgto = parcela.data_pagamento || parcela.data;
-                        if (!dataPgto) continue;
-                        const data = new Date(dataPgto + 'T00:00:00');
-                        if (data >= inicio && data <= fim) {
-                            const valor = parseFloat(parcela.valor_parcela || parcela.valor || 0);
-                            if (valor > 0) {
-                                parcelasPagas.push({
-                                    numero_nf: conta.numero_nf,
-                                    vendedor: conta.vendedor,
-                                    orgao: conta.orgao,
-                                    data_pagamento: dataPgto,
-                                    valor_parcela: valor,
-                                    parcela_numero: idx + 1,
-                                    parcela_total: parcelasArray.length,
-                                    observacoes: conta.observacoes
-                                });
-                            }
-                        }
-                    }
-                }
+            if (vendedor) {
+                query = query.eq('contas_receber.vendedor', vendedor);
             }
 
-            res.json(parcelasPagas);
+            const { data: parcelas, error } = await query;
+            if (error) throw error;
+
+            // Filtrar tipos de NF excluídos
+            const filtered = parcelas.filter(p => {
+                const tipo = p.contas_receber?.tipo_nf || '';
+                return !isExcludedTipoNF(tipo);
+            });
+
+            const result = filtered.map(p => ({
+                numero_nf: p.contas_receber.numero_nf,
+                vendedor: p.contas_receber.vendedor,
+                orgao: p.contas_receber.orgao,
+                data_pagamento: p.data_pagamento,
+                valor_parcela: p.valor,
+                parcela_numero: p.numero,
+                parcela_total: null
+            }));
+
+            res.json(result);
         } catch (err) {
             console.error('[vendas] GET /parcelas-pagas erro:', err.message);
             res.status(500).json({ error: err.message });
         }
     });
 
-    // POST /api/vendas/sincronizar (igual ao anterior, sem alterações)
+    // POST /api/vendas/sincronizar (igual ao anterior)
     router.post('/sincronizar', async (req, res) => {
         try {
             console.log('[vendas] 🔄 Sincronização iniciada...');
