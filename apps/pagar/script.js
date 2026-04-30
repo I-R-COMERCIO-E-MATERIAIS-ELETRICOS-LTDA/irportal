@@ -106,37 +106,43 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM carregado');
     
     document.addEventListener('click', function(e) {
+        // Botões com data-action (toggle, edit, delete, new-conta)
         const btn = e.target.closest('[data-action]');
-        if (!btn) return;
-        
-        const action = btn.dataset.action;
-        const id = btn.dataset.id;
-        
-        console.log(`🎯 Event delegation - Ação: ${action}, ID: ${id}`);
-        
-        if (!id && action !== 'new-conta') {
-            console.error('❌ ID não encontrado no botão');
+        if (btn) {
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            console.log(`🎯 Event delegation - Ação: ${action}, ID: ${id}`);
+            if (!id && action !== 'new-conta') {
+                console.error('❌ ID não encontrado no botão');
+                return;
+            }
+            switch(action) {
+                case 'view':
+                    window.viewConta(id);
+                    break;
+                case 'edit':
+                    window.editConta(id);
+                    break;
+                case 'delete':
+                    window.deleteConta(id);
+                    break;
+                case 'toggle':
+                    window.togglePago(id);
+                    break;
+                case 'new-conta':
+                    window.showFormModal(null);
+                    break;
+                default:
+                    console.warn('Ação desconhecida:', action);
+            }
             return;
         }
         
-        switch(action) {
-            case 'view':
-                window.viewConta(id);
-                break;
-            case 'edit':
-                window.editConta(id);
-                break;
-            case 'delete':
-                window.deleteConta(id);
-                break;
-            case 'toggle':
-                window.togglePago(id);
-                break;
-            case 'new-conta':
-                window.showFormModal(null);
-                break;
-            default:
-                console.warn('Ação desconhecida:', action);
+        // Clique na linha da tabela (para abrir visualização)
+        const row = e.target.closest('tr[data-conta-id]');
+        if (row && !e.target.closest('.action-btn') && !e.target.closest('.check-btn')) {
+            const contaId = row.dataset.contaId;
+            if (contaId) window.viewConta(contaId);
         }
     });
     
@@ -249,7 +255,7 @@ function inicializarApp() {
 }
 
 // ============================================
-// CONEXÃO E STATUS (indicador removido)
+// CONEXÃO E STATUS
 // ============================================
 async function checkServerStatus() {
     if (!sessionToken) {
@@ -435,7 +441,7 @@ window.showVencidoModal = function() {
         body.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr></thead><tbody>${contasVencidas.map(c => {
             const dataVenc = new Date(c.data_vencimento + 'T00:00:00');
             const diasAtraso = Math.floor((hoje - dataVenc) / (1000 * 60 * 60 * 24));
-            return `<tr><td>${c.descricao}</td><td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td><td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td></tr>`;
+            return `<tr><td style="word-break:break-word;">${c.descricao}</td><td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td><td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td></tr>`;
         }).join('')}</tbody></table></div>`;
     }
     
@@ -451,6 +457,129 @@ window.closeVencidoModal = function() {
 };
 
 // ============================================
+// PDF - GERAR RELATÓRIO (dados visíveis)
+// ============================================
+window.gerarPDF = function() {
+    // Coletar dados exibidos atualmente (filtrados)
+    const filtrados = getDadosFiltrados();
+    if (!filtrados.length) {
+        showMessage('Não há dados para gerar o PDF', 'warning');
+        return;
+    }
+    
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    
+    // Título
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.text('RELATÓRIO DE CONTAS A PAGAR', 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    const mesAno = `${meses[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
+    doc.text(`Período: ${mesAno}`, 14, 28);
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 34);
+    
+    // Filtros aplicados (resumo)
+    const filtroBanco = document.getElementById('filterBanco').value;
+    const filtroPagamento = document.getElementById('filterPagamento').value;
+    const filtroStatus = document.getElementById('filterStatus').value;
+    let filtrosTexto = [];
+    if (filtroBanco) filtrosTexto.push(`Banco: ${filtroBanco}`);
+    if (filtroPagamento) filtrosTexto.push(`Pagamento: ${filtroPagamento}`);
+    if (filtroStatus) filtrosTexto.push(`Status: ${filtroStatus}`);
+    if (filtrosTexto.length) {
+        doc.text(`Filtros: ${filtrosTexto.join(' | ')}`, 14, 40);
+    }
+    
+    // Preparar dados da tabela
+    const tableData = filtrados.map(c => [
+        c.descricao,
+        `R$ ${parseFloat(c.valor).toFixed(2)}`,
+        formatDate(c.data_vencimento),
+        c.banco || '-',
+        c.data_pagamento ? formatDate(c.data_pagamento) : '-',
+        getStatusDinamico(c)
+    ]);
+    
+    // Configurar colunas e quebra automática
+    doc.autoTable({
+        startY: 48,
+        head: [['Descrição', 'Valor (R$)', 'Vencimento', 'Banco', 'Data Pagamento', 'Status']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        styles: { fontSize: 9, cellPadding: 3, valign: 'middle' },
+        columnStyles: {
+            0: { cellWidth: 'auto', lineWidth: 0.2 },
+            1: { halign: 'right', cellWidth: 25 },
+            2: { halign: 'center', cellWidth: 22 },
+            3: { halign: 'left', cellWidth: 28 },
+            4: { halign: 'center', cellWidth: 25 },
+            5: { halign: 'center', cellWidth: 25 }
+        },
+        margin: { left: 14, right: 14 }
+    });
+    
+    // Totais
+    const totalPago = filtrados.filter(c => c.status === 'PAGO').reduce((s, c) => s + parseFloat(c.valor), 0);
+    const totalPendente = filtrados.filter(c => c.status !== 'PAGO').reduce((s, c) => s + parseFloat(c.valor), 0);
+    const totalGeral = totalPago + totalPendente;
+    const finalY = doc.lastAutoTable.finalY + 10;
+    
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.text(`Total Pago: R$ ${totalPago.toFixed(2)}`, 14, finalY);
+    doc.text(`Total Pendente: R$ ${totalPendente.toFixed(2)}`, 80, finalY);
+    doc.text(`Total Geral: R$ ${totalGeral.toFixed(2)}`, 160, finalY);
+    
+    // Salvar
+    const nomeArquivo = `contas_pagar_${mesAno.replace(' ', '_')}.pdf`;
+    doc.save(nomeArquivo);
+    showMessage('PDF gerado com sucesso', 'success');
+};
+
+// Função auxiliar para obter dados exibidos (usando a mesma lógica de filterContas)
+function getDadosFiltrados() {
+    const search = (document.getElementById('search')?.value || '').toLowerCase();
+    const banco = document.getElementById('filterBanco')?.value || '';
+    const status = document.getElementById('filterStatus')?.value || '';
+    const pagamento = document.getElementById('filterPagamento')?.value || '';
+    let filtered = contas.filter(c => {
+        const dataVenc = new Date(c.data_vencimento + 'T00:00:00');
+        return dataVenc.getMonth() === currentMonth.getMonth() && dataVenc.getFullYear() === currentMonth.getFullYear();
+    });
+    if (banco) filtered = filtered.filter(c => c.banco === banco);
+    if (pagamento) filtered = filtered.filter(c => c.forma_pagamento === pagamento);
+    if (status) {
+        const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        filtered = filtered.filter(c => {
+            if (status === 'PAGO') return c.status === 'PAGO';
+            if (status === 'VENCIDO') {
+                if (c.status === 'PAGO') return false;
+                const dataVenc = new Date(c.data_vencimento + 'T00:00:00'); dataVenc.setHours(0, 0, 0, 0);
+                return dataVenc <= hoje;
+            }
+            if (status === 'PENDENTE') {
+                if (c.status === 'PAGO') return false;
+                const dataVenc = new Date(c.data_vencimento + 'T00:00:00'); dataVenc.setHours(0, 0, 0, 0);
+                return dataVenc > hoje;
+            }
+            return true;
+        });
+    }
+    if (search) {
+        filtered = filtered.filter(c => (c.descricao || '').toLowerCase().includes(search) ||
+            (c.banco || '').toLowerCase().includes(search) ||
+            (c.forma_pagamento || '').toLowerCase().includes(search) ||
+            (c.observacoes || '').toLowerCase().includes(search));
+    }
+    filtered.sort((a, b) => new Date(a.data_vencimento) - new Date(b.data_vencimento));
+    return filtered;
+}
+
+// ============================================
 // SINCRONIZAÇÃO
 // ============================================
 window.sincronizarDados = async function() {
@@ -460,11 +589,9 @@ window.sincronizarDados = async function() {
 };
 
 // ============================================
-// FORMULÁRIO
+// FORMULÁRIO (mesmo código original)
 // ============================================
-window.toggleForm = function() {
-    window.showFormModal(null);
-};
+window.toggleForm = function() { window.showFormModal(null); };
 
 window.showFormModal = async function(editingId = null) {
     console.log('📝 showFormModal chamado com editingId:', editingId);
@@ -619,9 +746,7 @@ function renderEditFormComParcelas(conta) {
     `;
 }
 
-// ============================================
-// FUNÇÕES DE OBSERVAÇÕES
-// ============================================
+// Funções de observações
 window.switchFormTab = function(index) {
     document.querySelectorAll('#formModal .tab-btn').forEach((btn, i) => { btn.classList.toggle('active', i === index); });
     document.querySelectorAll('#formModal .tab-content').forEach((content, i) => { content.classList.toggle('active', i === index); });
@@ -660,9 +785,7 @@ function atualizarListaObservacoes() {
     }
 }
 
-// ============================================
-// FUNÇÕES DO FORMULÁRIO
-// ============================================
+// Formulário submissão
 window.selectFormType = function(type) {
     formType = type;
     const buttons = document.querySelectorAll('.form-type-btn');
@@ -966,7 +1089,7 @@ window.deleteConta = async function(id) {
 };
 
 // ============================================
-// VISUALIZAÇÃO
+// VISUALIZAÇÃO (modal)
 // ============================================
 window.viewConta = function(id) {
     const idStr = String(id);
@@ -974,16 +1097,34 @@ window.viewConta = function(id) {
     if (!conta) { showMessage('Conta não encontrada!', 'error'); return; }
     const parcelaInfo = conta.parcela_numero && conta.parcela_total ? `<div class="info-item"><span class="info-label">Parcela:</span><span class="info-value">${conta.parcela_numero}ª de ${conta.parcela_total}</span></div>` : '';
     const documentoInfo = conta.documento ? `<div class="info-item"><span class="info-label">Documento:</span><span class="info-value">${conta.documento}</span></div>` : '';
-    const observacoesInfo = conta.observacoes ? `<div class="info-item info-item-full"><span class="info-label">Observações:</span><span class="info-value">${conta.observacoes}</span></div>` : '';
+    let observacoesInfo = '';
+    if (conta.observacoes) {
+        try {
+            const obsArray = typeof conta.observacoes === 'string' ? JSON.parse(conta.observacoes) : conta.observacoes;
+            if (obsArray.length > 0) {
+                observacoesInfo = `<div class="info-item info-item-full"><span class="info-label">Observações:</span><div class="info-value">${obsArray.map(o => `<div style="margin-bottom:8px;"><small>${new Date(o.timestamp).toLocaleString('pt-BR')}</small><br>${o.texto}</div>`).join('')}</div></div>`;
+            }
+        } catch(e) {
+            observacoesInfo = `<div class="info-item info-item-full"><span class="info-label">Observações:</span><span class="info-value">${conta.observacoes}</span></div>`;
+        }
+    }
     const modal = `<div class="modal-overlay" id="viewModal"><div class="modal-content modal-view"><button class="modal-close-x" onclick="window.closeViewModal()" title="Fechar">✕</button><div class="modal-header"><h3 class="modal-title">Detalhes da Conta</h3></div><div class="info-grid">${documentoInfo}<div class="info-item info-item-full"><span class="info-label">Descrição:</span><span class="info-value">${conta.descricao}</span></div>${parcelaInfo}<div class="info-item"><span class="info-label">Valor:</span><span class="info-value info-highlight">R$ ${parseFloat(conta.valor).toFixed(2)}</span></div><div class="info-item"><span class="info-label">Vencimento:</span><span class="info-value">${formatDate(conta.data_vencimento)}</span></div><div class="info-item"><span class="info-label">Forma de Pagamento:</span><span class="info-value">${conta.forma_pagamento}</span></div><div class="info-item"><span class="info-label">Banco:</span><span class="info-value">${conta.banco}</span></div><div class="info-item"><span class="info-label">${conta.data_pagamento ? 'Data do Pagamento:' : 'Status:'}</span><span class="info-value">${conta.data_pagamento ? formatDate(conta.data_pagamento) : 'Não pago'}</span></div>${observacoesInfo}</div><div class="modal-actions"><button class="secondary" onclick="window.closeViewModal()">Fechar</button></div></div></div>`;
     document.body.insertAdjacentHTML('beforeend', modal);
-    document.getElementById('viewModal').style.display = 'flex';
+    const modalEl = document.getElementById('viewModal');
+    modalEl.style.display = 'flex';
+    setTimeout(() => modalEl.classList.add('show'), 10);
 };
 
-window.closeViewModal = function() { const modal = document.getElementById('viewModal'); if (modal) { modal.style.animation = 'fadeOut 0.2s ease forwards'; setTimeout(() => modal.remove(), 200); } };
+window.closeViewModal = function() { 
+    const modal = document.getElementById('viewModal'); 
+    if (modal) { 
+        modal.classList.remove('show');
+        setTimeout(() => modal.remove(), 300); 
+    } 
+};
 
 // ============================================
-// FILTROS
+// FILTROS E RENDERIZAÇÃO DA TABELA (sem botão Ver)
 // ============================================
 function updateAllFilters() {
     const bancos = new Set();
@@ -1014,19 +1155,16 @@ function filterContas() {
     renderContas(filtered);
 }
 
-// ============================================
-// RENDERIZAÇÃO
-// ============================================
 function renderContas(lista) {
     const container = document.getElementById('contasContainer');
     if (!container) return;
     if (!lista || lista.length === 0) { container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary)">Nenhuma conta encontrada para este período</div>'; return; }
-    const table = `<table><thead><tr><th style="text-align:center;width:60px;"><span style="font-size:1.1rem;">✓</span></th><th>Descrição</th><th>Valor</th><th>Vencimento</th><th style="text-align:center;">Nº Parcelas</th><th>Banco</th><th>Data Pagamento</th><th>Status</th><th style="text-align:center;">Ações</th></tr></thead><tbody>${lista.map(c => { const numParcelas = c.parcela_numero && c.parcela_total ? `${c.parcela_numero}/${c.parcela_total}` : '-'; const syncIndicator = !c.synced && c.tempId ? '<span style="color:orange;font-size:0.8em;" title="Sincronizando...">⟳</span> ' : ''; const isPago = c.status === 'PAGO'; const contaId = c.id || c.tempId; return `<tr class="${isPago ? 'row-pago' : ''}"><td style="text-align:center;padding:8px;"><button class="check-btn ${isPago ? 'checked' : ''}" data-action="toggle" data-id="${contaId}" title="${isPago ? 'Marcar como pendente' : 'Marcar como pago'}"></button></td><td>${syncIndicator}${c.descricao}</td><td><strong>R$ ${parseFloat(c.valor).toFixed(2)}</strong></td><td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td><td style="text-align:center;">${numParcelas}</td><td>${c.banco || '-'}</td><td style="white-space:nowrap;">${c.data_pagamento ? formatDate(c.data_pagamento) : '-'}</td><td>${getStatusBadge(getStatusDinamico(c))}</td><td class="actions-cell" style="text-align:center;"><button class="action-btn view" data-action="view" data-id="${contaId}">Ver</button><button class="action-btn edit" data-action="edit" data-id="${contaId}">Editar</button><button class="action-btn delete" data-action="delete" data-id="${contaId}">Excluir</button></td></tr>` }).join('')}</tbody></table>`;
+    const table = `<table><thead><tr><th style="text-align:center;width:60px;"><span style="font-size:1.1rem;">✓</span></th><th>Descrição</th><th>Valor</th><th>Vencimento</th><th style="text-align:center;">Nº Parcelas</th><th>Banco</th><th>Data Pagamento</th><th>Status</th><th style="text-align:center;">Ações</th></tr></thead><tbody>${lista.map(c => { const numParcelas = c.parcela_numero && c.parcela_total ? `${c.parcela_numero}/${c.parcela_total}` : '-'; const syncIndicator = !c.synced && c.tempId ? '<span style="color:orange;font-size:0.8em;" title="Sincronizando...">⟳</span> ' : ''; const isPago = c.status === 'PAGO'; const contaId = c.id || c.tempId; return `<tr data-conta-id="${contaId}" style="cursor:pointer;" class="${isPago ? 'row-pago' : ''}"><td style="text-align:center;padding:8px;"><button class="check-btn ${isPago ? 'checked' : ''}" data-action="toggle" data-id="${contaId}" title="${isPago ? 'Marcar como pendente' : 'Marcar como pago'}" onclick="event.stopPropagation();"></button></td><td>${syncIndicator}${c.descricao}</td><td><strong>R$ ${parseFloat(c.valor).toFixed(2)}</strong></td><td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td><td style="text-align:center;">${numParcelas}</td><td>${c.banco || '-'}</td><td style="white-space:nowrap;">${c.data_pagamento ? formatDate(c.data_pagamento) : '-'}</td><td>${getStatusBadge(getStatusDinamico(c))}</td><td class="actions-cell" style="text-align:center;"><button class="action-btn edit" data-action="edit" data-id="${contaId}" onclick="event.stopPropagation();">Editar</button><button class="action-btn delete" data-action="delete" data-id="${contaId}" onclick="event.stopPropagation();">Excluir</button></td></tr>` }).join('')}</tbody></table>`;
     container.innerHTML = table;
 }
 
 // ============================================
-// UTILITÁRIOS
+// UTILITÁRIOS (mantidos)
 // ============================================
 function formatDate(dateString) { if (!dateString) return '-'; return new Date(dateString + 'T00:00:00').toLocaleDateString('pt-BR'); }
 function getStatusDinamico(conta) { if (conta.status === 'PAGO') return 'PAGO'; const hoje = new Date(); hoje.setHours(0, 0, 0, 0); const dataVenc = new Date(conta.data_vencimento + 'T00:00:00'); dataVenc.setHours(0, 0, 0, 0); if (dataVenc <= hoje) return 'VENCIDO'; return 'PENDENTE'; }
