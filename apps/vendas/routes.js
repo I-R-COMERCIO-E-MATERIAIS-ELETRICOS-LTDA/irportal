@@ -109,7 +109,8 @@ module.exports = function (supabase) {
         }
     });
 
-    router.get('/parcelas-pagas', async (req, res) => {
+    // GET /api/vendas/parcelas-pagas
+router.get('/parcelas-pagas', async (req, res) => {
     try {
         const { mes, ano, vendedor } = req.query;
         if (!mes || !ano) {
@@ -121,57 +122,54 @@ module.exports = function (supabase) {
         const ultimoDia = new Date(anoNum, mesNum, 0).getDate();
         const fim = `${anoNum}-${String(mesNum).padStart(2, '0')}-${ultimoDia}`;
 
-        // Primeiro, verificar se a tabela parcelas_receber existe
-        const { error: tableCheck } = await supabase
-            .from('parcelas_receber')
-            .select('id')
-            .limit(1);
-        if (tableCheck) {
-            console.error('[vendas] Tabela parcelas_receber não encontrada:', tableCheck.message);
-            return res.status(500).json({ error: 'Tabela parcelas_receber não configurada' });
-        }
-
-        let query = supabase
+        // Consulta parcelas com join manual (mais confiável)
+        const { data: parcelas, error } = await supabase
             .from('parcelas_receber')
             .select(`
+                id,
                 numero,
                 valor,
                 data_pagamento,
-                contas_receber!inner (
-                    numero_nf,
-                    vendedor,
-                    orgao,
-                    tipo_nf
-                )
+                conta_id
             `)
             .gte('data_pagamento', inicio)
             .lte('data_pagamento', fim);
 
-        if (vendedor) {
-            query = query.eq('contas_receber.vendedor', vendedor);
+        if (error) throw error;
+
+        if (!parcelas || parcelas.length === 0) {
+            return res.json([]);
         }
 
-        const { data: parcelas, error } = await query;
-        if (error) {
-            console.error('[vendas] Erro na consulta parcelas:', error);
-            throw error;
+        // Buscar as contas relacionadas
+        const contaIds = [...new Set(parcelas.map(p => p.conta_id))];
+        const { data: contas, error: errContas } = await supabase
+            .from('contas_receber')
+            .select('id, numero_nf, vendedor, orgao, tipo_nf')
+            .in('id', contaIds);
+        if (errContas) throw errContas;
+
+        const contasMap = new Map(contas.map(c => [c.id, c]));
+
+        // Montar resultado
+        const result = [];
+        for (const parcela of parcelas) {
+            const conta = contasMap.get(parcela.conta_id);
+            if (!conta) continue;
+            // Filtrar tipos excluídos
+            if (isExcludedTipoNF(conta.tipo_nf)) continue;
+            // Filtrar vendedor se informado
+            if (vendedor && conta.vendedor !== vendedor) continue;
+            result.push({
+                numero_nf: conta.numero_nf,
+                vendedor: conta.vendedor,
+                orgao: conta.orgao,
+                data_pagamento: parcela.data_pagamento,
+                valor_parcela: parcela.valor,
+                parcela_numero: parcela.numero,
+                parcela_total: null
+            });
         }
-
-        // Filtrar tipos excluídos
-        const filtered = parcelas.filter(p => {
-            const tipo = p.contas_receber?.tipo_nf || '';
-            return !isExcludedTipoNF(tipo);
-        });
-
-        const result = filtered.map(p => ({
-            numero_nf: p.contas_receber.numero_nf,
-            vendedor: p.contas_receber.vendedor,
-            orgao: p.contas_receber.orgao,
-            data_pagamento: p.data_pagamento,
-            valor_parcela: p.valor,
-            parcela_numero: p.numero,
-            parcela_total: null
-        }));
 
         res.json(result);
     } catch (err) {
