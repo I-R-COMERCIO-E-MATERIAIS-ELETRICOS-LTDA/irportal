@@ -106,7 +106,6 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM carregado');
     
     document.addEventListener('click', function(e) {
-        // Botões com data-action (toggle, edit, delete, new-conta)
         const btn = e.target.closest('[data-action]');
         if (btn) {
             const action = btn.dataset.action;
@@ -138,7 +137,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Clique na linha da tabela (para abrir visualização)
         const row = e.target.closest('tr[data-conta-id]');
         if (row && !e.target.closest('.action-btn') && !e.target.closest('.check-btn')) {
             const contaId = row.dataset.contaId;
@@ -438,7 +436,7 @@ window.showVencidoModal = function() {
     if (contasVencidas.length === 0) {
         body.innerHTML = `<div style="text-align:center;padding:3rem;color:var(--text-secondary);"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.3;margin-bottom:1rem;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8l0 4"></path><path d="M12 16l.01 0"></path></svg><p style="font-size:1.1rem;font-weight:600;margin:0;">Nenhuma conta vencida</p><p style="font-size:0.9rem;margin-top:0.5rem;">Todas as contas estão dentro do prazo ou foram pagas</p></div>`;
     } else {
-        body.innerHTML = `<div style="overflow-x:auto;"><tr><thead><tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr></thead><tbody>${contasVencidas.map(c => {
+        body.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr></thead><tbody>${contasVencidas.map(c => {
             const dataVenc = new Date(c.data_vencimento + 'T00:00:00');
             const diasAtraso = Math.floor((hoje - dataVenc) / (1000 * 60 * 60 * 24));
             return `<tr>
@@ -446,7 +444,7 @@ window.showVencidoModal = function() {
                         <td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td>
                         <td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                         <td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td>
-                    </tr>`;
+                     </tr>`;
         }).join('')}</tbody></table></div>`;
     }
     
@@ -462,10 +460,9 @@ window.closeVencidoModal = function() {
 };
 
 // ============================================
-// PDF - GERAR RELATÓRIO (sem coluna Status)
+// PDF - GERAR RELATÓRIO (com coluna Parcela)
 // ============================================
 window.gerarPDF = function() {
-    // Coletar dados exibidos atualmente (filtrados)
     const filtrados = getDadosFiltrados();
     if (!filtrados.length) {
         showMessage('Não há dados para gerar o PDF', 'warning');
@@ -475,7 +472,6 @@ window.gerarPDF = function() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     
-    // Título
     doc.setFontSize(16);
     doc.setFont(undefined, 'bold');
     doc.text('RELATÓRIO DE CONTAS A PAGAR', 14, 20);
@@ -486,7 +482,6 @@ window.gerarPDF = function() {
     doc.text(`Período: ${mesAno}`, 14, 28);
     doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 14, 34);
     
-    // Filtros aplicados (resumo)
     const filtroBanco = document.getElementById('filterBanco').value;
     const filtroPagamento = document.getElementById('filterPagamento').value;
     const filtroStatus = document.getElementById('filterStatus').value;
@@ -498,34 +493,40 @@ window.gerarPDF = function() {
         doc.text(`Filtros: ${filtrosTexto.join(' | ')}`, 14, 40);
     }
     
-    // Preparar dados da tabela (sem coluna Status)
-    const tableData = filtrados.map(c => [
-        c.descricao,
-        `R$ ${parseFloat(c.valor).toFixed(2)}`,
-        formatDate(c.data_vencimento),
-        c.banco || '-',
-        c.data_pagamento ? formatDate(c.data_pagamento) : '-'
-    ]);
+    // Prepara dados com informação de parcela
+    const tableData = filtrados.map(c => {
+        let parcelaDisplay = '-';
+        if (c.parcela_numero && c.parcela_total) {
+            parcelaDisplay = `${c.parcela_numero}/${c.parcela_total}`;
+        }
+        return [
+            c.descricao,
+            parcelaDisplay,
+            `R$ ${parseFloat(c.valor).toFixed(2)}`,
+            formatDate(c.data_vencimento),
+            c.banco || '-',
+            c.data_pagamento ? formatDate(c.data_pagamento) : '-'
+        ];
+    });
     
-    // Configurar colunas e quebra automática (status removido)
     doc.autoTable({
         startY: 48,
-        head: [['Descrição', 'Valor (R$)', 'Vencimento', 'Banco', 'Data Pagamento']],
+        head: [['Descrição', 'Parcela', 'Valor (R$)', 'Vencimento', 'Banco', 'Data Pagamento']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
         styles: { fontSize: 9, cellPadding: 3, valign: 'middle' },
         columnStyles: {
-            0: { cellWidth: 'auto', lineWidth: 0.2 },
-            1: { halign: 'right', cellWidth: 25 },
-            2: { halign: 'center', cellWidth: 22 },
-            3: { halign: 'left', cellWidth: 28 },
-            4: { halign: 'center', cellWidth: 25 }
+            0: { cellWidth: 'auto', lineWidth: 0.2 },   // Descrição
+            1: { halign: 'center', cellWidth: 20 },     // Parcela
+            2: { halign: 'right', cellWidth: 25 },      // Valor
+            3: { halign: 'center', cellWidth: 22 },     // Vencimento
+            4: { halign: 'left', cellWidth: 28 },       // Banco
+            5: { halign: 'center', cellWidth: 25 }      // Data Pagamento
         },
         margin: { left: 14, right: 14 }
     });
     
-    // Totais (baseado nos mesmos dados filtrados)
     const totalPago = filtrados.filter(c => c.status === 'PAGO').reduce((s, c) => s + parseFloat(c.valor), 0);
     const totalPendente = filtrados.filter(c => c.status !== 'PAGO').reduce((s, c) => s + parseFloat(c.valor), 0);
     const totalGeral = totalPago + totalPendente;
@@ -537,13 +538,11 @@ window.gerarPDF = function() {
     doc.text(`Total Pendente: R$ ${totalPendente.toFixed(2)}`, 80, finalY);
     doc.text(`Total Geral: R$ ${totalGeral.toFixed(2)}`, 160, finalY);
     
-    // Salvar
     const nomeArquivo = `contas_pagar_${mesAno.replace(' ', '_')}.pdf`;
     doc.save(nomeArquivo);
     showMessage('PDF gerado com sucesso', 'success');
 };
 
-// Função auxiliar para obter dados exibidos (usando a mesma lógica de filterContas)
 function getDadosFiltrados() {
     const search = (document.getElementById('search')?.value || '').toLowerCase();
     const banco = document.getElementById('filterBanco')?.value || '';
@@ -749,7 +748,6 @@ function renderEditFormComParcelas(conta) {
     `;
 }
 
-// Funções de observações
 window.switchFormTab = function(index) {
     document.querySelectorAll('#formModal .tab-btn').forEach((btn, i) => { btn.classList.toggle('active', i === index); });
     document.querySelectorAll('#formModal .tab-content').forEach((content, i) => { content.classList.toggle('active', i === index); });
@@ -788,7 +786,6 @@ function atualizarListaObservacoes() {
     }
 }
 
-// Formulário submissão
 window.selectFormType = function(type) {
     formType = type;
     const buttons = document.querySelectorAll('.form-type-btn');
@@ -1127,7 +1124,7 @@ window.closeViewModal = function() {
 };
 
 // ============================================
-// FILTROS E RENDERIZAÇÃO DA TABELA (sem botão Ver)
+// FILTROS E RENDERIZAÇÃO DA TABELA
 // ============================================
 function updateAllFilters() {
     const bancos = new Set();
@@ -1203,7 +1200,7 @@ function renderContas(lista) {
 }
 
 // ============================================
-// UTILITÁRIOS (mantidos)
+// UTILITÁRIOS
 // ============================================
 function formatDate(dateString) { if (!dateString) return '-'; return new Date(dateString + 'T00:00:00').toLocaleDateString('pt-BR'); }
 function getStatusDinamico(conta) { if (conta.status === 'PAGO') return 'PAGO'; const hoje = new Date(); hoje.setHours(0, 0, 0, 0); const dataVenc = new Date(conta.data_vencimento + 'T00:00:00'); dataVenc.setHours(0, 0, 0, 0); if (dataVenc <= hoje) return 'VENCIDO'; return 'PENDENTE'; }
