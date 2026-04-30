@@ -25,7 +25,7 @@ console.log('📍 API URL:', API_URL);
 //  STATUS ESPECIAIS (nunca são contas a receber)
 // ════════════════════════════════════════════
 const SPECIAL_STATUS = [
-    'DEVOLUCAO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA'
+    'DEVOLUCAO', 'DEVOLVIDA', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA', 'CANCELADA', 'ESPECIAL'
 ];
 
 /**
@@ -37,14 +37,28 @@ function normalizarTexto(str) {
     return str
         .trim()
         .toUpperCase()
-        .replace(/_/g, ' ')                         // underscores -> espaço
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // remove acentos/cedilha
+        .replace(/_/g, ' ')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+/**
+ * Retorna true se a conta for de natureza especial (não é uma conta financeira normal).
+ * PRIORIDADE: tipo_nf especial sempre prevalece, independente do status.
+ */
 function isContaEspecial(conta) {
-    const s = normalizarTexto(conta.status || '');
     const t = normalizarTexto(conta.tipo_nf || '');
-    return SPECIAL_STATUS.some(sp => s === sp || t === sp);
+    const s = normalizarTexto(conta.status || '');
+    return SPECIAL_STATUS.some(sp => t === sp || s === sp);
+}
+
+/**
+ * Retorna o label de exibição para uma conta especial.
+ * Prioriza tipo_nf quando ele for especial, pois é mais descritivo.
+ */
+function getLabelEspecial(conta) {
+    const t = normalizarTexto(conta.tipo_nf || '');
+    if (SPECIAL_STATUS.some(sp => t === sp)) return conta.tipo_nf;
+    return conta.status;
 }
 
 // ============================================
@@ -204,29 +218,44 @@ window.changeMonth = function (direction) {
 
 window.updateMonthDisplay = updateMonthDisplay;
 
+// ============================================
+// DASHBOARD — totais do mês selecionado
+// O card "Vencido" é universal (todos os meses)
+// ============================================
 function updateDashboard() {
     const hoje = new Date().toISOString().split('T')[0];
 
-    // Vencido: apenas status 'A RECEBER', data vencida e NÃO especial
+    // VENCIDO: universal, todos os meses, apenas status 'A RECEBER', não especial
     const vencido = contas.filter(c =>
-        c.status === 'A RECEBER' &&
         !isContaEspecial(c) &&
+        c.status === 'A RECEBER' &&
         c.data_vencimento &&
         c.data_vencimento < hoje
     ).length;
 
+    // Demais cards: apenas contas do mês/ano selecionado
     const filtered = getContasFiltradas();
-    const pago = filtered.filter(c => isStatusPago(c.status)).reduce((s, c) => s + parseFloat(c.valor || 0), 0);
-    // A Receber exclui também as notas especiais
-    const receber = filtered.filter(c => c.status === 'A RECEBER' && !isContaEspecial(c))
-                           .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
+
+    // PAGO: status PAGO ou parcela, excluindo especiais
+    const pago = filtered
+        .filter(c => !isContaEspecial(c) && isStatusPago(c.status))
+        .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
+
+    // A RECEBER: somente 'A RECEBER', excluindo especiais
+    const receber = filtered
+        .filter(c => !isContaEspecial(c) && c.status === 'A RECEBER')
+        .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
+
+    // FATURADO: pago + a receber (exclui especiais)
     const faturado = pago + receber;
+
     const fmt = v => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const el = id => document.getElementById(id);
     if (el('statPago'))     el('statPago').textContent     = fmt(pago);
     if (el('statReceber'))  el('statReceber').textContent  = fmt(receber);
     if (el('statFaturado')) el('statFaturado').textContent = fmt(faturado);
     if (el('statVencido'))  el('statVencido').textContent  = vencido;
+
     const cardVencido = el('cardVencido');
     if (cardVencido) cardVencido.classList.toggle('has-alert', vencido > 0);
     const badge = document.getElementById('pulseBadgeVencido');
@@ -294,17 +323,15 @@ function renderContas(lista) {
         return;
     }
     const hoje = new Date().toISOString().split('T')[0];
-    container.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th style="width:50px;text-align:center;">✓</th><th>NF</th><th>Órgão</th><th>Vendedor</th><th>Banco</th><th>Valor</th><th>Valor Pago</th><th>Vencimento</th><th>Dt. Pagamento</th><th>Status</th><th style="text-align:center;">Ações</th></tr></thead><tbody>${lista.map(c => renderRow(c, hoje)).join('')}</tbody>}</div>`;
+    container.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th style="width:50px;text-align:center;">✓</th><th>NF</th><th>Órgão</th><th>Vendedor</th><th>Banco</th><th>Valor</th><th>Valor Pago</th><th>Vencimento</th><th>Dt. Pagamento</th><th>Status</th><th style="text-align:center;">Ações</th></tr></thead><tbody>${lista.map(c => renderRow(c, hoje)).join('')}</tbody></table></div>`;
 }
 
 function renderRow(c, hoje) {
-    const isPagoTotal  = c.status === 'PAGO';
-    const isParcial    = /parcela/i.test(c.status || '');
+    const especial     = isContaEspecial(c);
+    const isPagoTotal  = !especial && c.status === 'PAGO';
+    const isParcial    = !especial && /parcela/i.test(c.status || '');
     const isPagoAlgum  = isPagoTotal || isParcial;
-
-    // Nunca é vencido se for uma conta especial (status ou tipo NF)
-    const isNonPayment = isContaEspecial(c);
-    const isVencido    = !isPagoAlgum && !isNonPayment && c.data_vencimento && c.data_vencimento < hoje;
+    const isVencido    = !especial && !isPagoAlgum && c.data_vencimento && c.data_vencimento < hoje;
 
     const parcelas = getParcelas(c);
     const valorPagoTotal = parcelas.length > 0 ? parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0) : parseFloat(c.valor_pago || 0);
@@ -316,29 +343,44 @@ function renderRow(c, hoje) {
         dataPgto = formatDate(c.data_pagamento);
     }
     const rowClass = isPagoTotal ? 'row-pago' : '';
-    return `<tr class="${rowClass} row-clickable" data-id="${c.id}" onclick="handleRowClick(event, '${c.id}')"><td style="text-align:center;"><div class="checkbox-wrapper"><input type="checkbox" class="styled-checkbox" id="chk-${c.id}" ${isPagoTotal?'checked':''} onchange="togglePagamento('${c.id}', this.checked)" onclick="event.stopPropagation()"><label for="chk-${c.id}" class="checkbox-label-styled" onclick="event.stopPropagation()"></label></div></td><td><strong>${c.numero_nf||'-'}</strong></td><td style="max-width:200px;word-wrap:break-word;white-space:normal;">${c.orgao||'-'}</td><td>${c.vendedor||'-'}</td><td>${c.banco||'-'}</td><td><strong>R$ ${parseFloat(c.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></td><td>${valorPagoTotal>0?'R$ '+valorPagoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'-'}</td><td style="white-space:nowrap;${isVencido?'color:#EF4444;font-weight:600;':''}">${c.data_vencimento?formatDate(c.data_vencimento):'-'}</td><td style="white-space:nowrap;">${dataPgto}</td><td>${getStatusBadge(c, hoje)}</td><td class="actions-cell" style="text-align:center;white-space:nowrap;"><button class="action-btn edit" onclick="event.stopPropagation();handleEditClick('${c.id}')" title="Editar">Editar</button><button class="action-btn delete" onclick="event.stopPropagation();handleDeleteClick('${c.id}')" title="Excluir">Excluir</button></td></tr>`;
+    return `<tr class="${rowClass} row-clickable" data-id="${c.id}" onclick="handleRowClick(event, '${c.id}')">` +
+        `<td style="text-align:center;"><div class="checkbox-wrapper"><input type="checkbox" class="styled-checkbox" id="chk-${c.id}" ${isPagoTotal?'checked':''} onchange="togglePagamento('${c.id}', this.checked)" onclick="event.stopPropagation()"><label for="chk-${c.id}" class="checkbox-label-styled" onclick="event.stopPropagation()"></label></div></td>` +
+        `<td><strong>${c.numero_nf||'-'}</strong></td>` +
+        `<td style="max-width:200px;word-wrap:break-word;white-space:normal;">${c.orgao||'-'}</td>` +
+        `<td>${c.vendedor||'-'}</td>` +
+        `<td>${c.banco||'-'}</td>` +
+        `<td><strong>R$ ${parseFloat(c.valor||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}</strong></td>` +
+        `<td>${valorPagoTotal>0?'R$ '+valorPagoTotal.toLocaleString('pt-BR',{minimumFractionDigits:2}):'-'}</td>` +
+        `<td style="white-space:nowrap;${isVencido?'color:#EF4444;font-weight:600;':''}">${c.data_vencimento?formatDate(c.data_vencimento):'-'}</td>` +
+        `<td style="white-space:nowrap;">${dataPgto}</td>` +
+        `<td>${getStatusBadge(c, hoje)}</td>` +
+        `<td class="actions-cell" style="text-align:center;white-space:nowrap;"><button class="action-btn edit" onclick="event.stopPropagation();handleEditClick('${c.id}')" title="Editar">Editar</button><button class="action-btn delete" onclick="event.stopPropagation();handleDeleteClick('${c.id}')" title="Excluir">Excluir</button></td>` +
+        `</tr>`;
 }
 
+// ============================================
+// STATUS BADGE — lógica corrigida
+// tipo_nf especial SEMPRE prevalece sobre status
+// ============================================
 function getStatusBadge(conta, hoje) {
-    const s = (conta.status || '').trim();
-
-    // Pagamentos normais
-    if (s.toUpperCase() === 'PAGO') return '<span class="badge status-pago">PAGO</span>';
-    if (/parcela/i.test(s)) return `<span class="badge status-parcela">${s}</span>`;
-
-    // Se for uma conta especial, exibe o texto mais específico
+    // 1. Verificar tipo_nf especial PRIMEIRO — tem prioridade absoluta
     if (isContaEspecial(conta)) {
-        // Prioriza o campo status se ele for especial; senão usa o tipo_nf
-        const rawStatus = normalizarTexto(conta.status || '');
-        const rawTipo   = normalizarTexto(conta.tipo_nf || '');
-        const label = SPECIAL_STATUS.includes(rawStatus) ? conta.status : conta.tipo_nf;
+        const label = getLabelEspecial(conta);
         return `<span class="badge status-especial">${label}</span>`;
     }
 
-    // Vencido apenas para 'A RECEBER' (ou outros não mapeados)
+    const s = (conta.status || '').trim().toUpperCase();
+
+    // 2. Pagamentos normais
+    if (s === 'PAGO') return '<span class="badge status-pago">PAGO</span>';
+    if (/parcela/i.test(s)) return `<span class="badge status-parcela">${conta.status}</span>`;
+
+    // 3. Vencido
     if (conta.data_vencimento && conta.data_vencimento < hoje) {
         return '<span class="badge status-vencido">VENCIDO</span>';
     }
+
+    // 4. A Receber (padrão)
     return '<span class="badge status-a-receber">A RECEBER</span>';
 }
 
@@ -358,6 +400,8 @@ function getObservacoesTexto(conta) {
         if (!obs) return [];
         const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
         if (parsed && Array.isArray(parsed.notas)) return parsed.notas;
+        // Suporte ao formato legado: array direto de objetos com {data, texto}
+        if (Array.isArray(parsed)) return parsed.filter(n => n.texto);
         return [];
     } catch { return []; }
 }
@@ -512,7 +556,7 @@ async function salvarConta(id, data, silencioso = false) {
 }
 
 // ============================================
-// TOGGLE PAGAMENTO (com confirmação customizada)
+// TOGGLE PAGAMENTO
 // ============================================
 window.togglePagamento = async function(id, checked) {
     const conta = contas.find(x => String(x.id) === String(id));
@@ -549,11 +593,11 @@ window.togglePagamento = async function(id, checked) {
 };
 
 // ============================================
-// MODAL DE CONFIRMAÇÃO GENÉRICO (Sim verde / Cancelar vermelho)
+// MODAL DE CONFIRMAÇÃO GENÉRICO
 // ============================================
 function showConfirm(message, options = {}) {
     return new Promise((resolve) => {
-        const { confirmText = 'Sim', cancelText = 'Cancelar', type = 'danger' } = options;
+        const { confirmText = 'Sim', cancelText = 'Cancelar' } = options;
         const modalHTML = `
             <div class="modal-overlay" id="confirmModal" style="display: flex !important; z-index: 10001 !important;">
                 <div class="modal-content confirm-modal-content" style="max-width: 450px !important;">
@@ -591,7 +635,7 @@ function showConfirm(message, options = {}) {
 }
 
 // ============================================
-// EXCLUSÃO (Sim verde / Cancelar vermelho)
+// EXCLUSÃO
 // ============================================
 function showDeleteConfirmation(message, onConfirm) {
     const modalHTML = `
@@ -638,7 +682,7 @@ window.handleDeleteClick = async function(id) {
 };
 
 // ============================================
-// CONFIRMAÇÃO DE PAGAMENTO (Sim verde / Não vermelho / Cancelar cinza)
+// CONFIRMAÇÃO DE PAGAMENTO
 // ============================================
 function showConfirmacaoPagamentoModal(id, conta) {
     document.getElementById('confirmPagModal')?.remove();
@@ -687,8 +731,8 @@ let vencidosModalData = [];
 window.showVencidosModal = function() {
     const hoje = new Date().toISOString().split('T')[0];
     vencidosModalData = contas.filter(c =>
-        c.status === 'A RECEBER' &&
         !isContaEspecial(c) &&
+        c.status === 'A RECEBER' &&
         c.data_vencimento &&
         c.data_vencimento < hoje
     ).sort((a,b) => a.data_vencimento.localeCompare(b.data_vencimento));
