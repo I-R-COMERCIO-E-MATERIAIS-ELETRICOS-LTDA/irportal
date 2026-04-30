@@ -97,6 +97,9 @@ function selectMonth(monthIndex) {
 // ============================================
 // GERAR PDF (comissão baseada em parcelas pagas)
 // ============================================
+// ============================================
+// GERAR PDF (comissão baseada em parcelas pagas)
+// ============================================
 window.gerarPDF = async function () {
     const filterVendedor = document.getElementById('filterVendedor');
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
@@ -140,7 +143,7 @@ window.gerarPDF = async function () {
         const tableData = parcelasPagas.map(p => [
             p.numero_nf,
             p.orgao || '-',
-            `${p.parcela_numero}/${p.parcela_total}`,
+            `${p.parcela_numero}ª`,
             formatDate(p.data_pagamento),
             formatCurrency(p.valor_parcela)
         ]);
@@ -177,7 +180,6 @@ window.gerarPDF = async function () {
         showToast('Erro ao gerar relatório', 'error');
     }
 };
-
 // ============================================
 // SINCRONIZAÇÃO E CARREGAMENTO
 // ============================================
@@ -265,7 +267,7 @@ function updateDisplay() {
 }
 
 // ============================================
-// DASHBOARD (PAGO agora soma valor_pago)
+// DASHBOARD (PAGO usando soma de parcelas)
 // ============================================
 async function loadDashboard() {
     const currentYear = currentMonth.getFullYear();
@@ -278,7 +280,7 @@ async function loadDashboard() {
     let totalEntregue = 0;
     let totalFaturado = 0;
 
-    // Para o card PAGO, buscamos as parcelas pagas no mês via API (mais preciso)
+    // Buscar parcelas pagas no mês
     try {
         const url = `${API_URL}/vendas/parcelas-pagas?mes=${mes}&ano=${ano}`;
         const response = await fetch(url, { headers: { 'X-Session-Token': sessionToken } });
@@ -299,10 +301,9 @@ async function loadDashboard() {
         }
     }
 
-    // Demais cards continuam baseados em allVendas (data_emissao e status_frete)
+    // Demais cards (baseados em allVendas)
     for (const v of allVendas) {
         const valor = parseFloat(v.valor_nf) || 0;
-
         // FATURADO
         if (v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
@@ -310,7 +311,6 @@ async function loadDashboard() {
                 totalFaturado += valor;
             }
         }
-
         // ENTREGUE
         if (v.status_frete === 'ENTREGUE' && v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
@@ -318,7 +318,6 @@ async function loadDashboard() {
                 totalEntregue++;
             }
         }
-
         // A RECEBER (entregues não pagos)
         const isEntregue = (v.status_frete === 'ENTREGUE');
         const isPago = (v.data_pagamento !== null && v.data_pagamento !== undefined);
