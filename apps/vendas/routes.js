@@ -6,7 +6,8 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── GET /api/vendas ─────────────────────────────────────────────────────
+    // ─── GET /api/vendas ──────────────────────────────────────────────────────
+    // ✅ FIX 1: Rota principal de listagem (corrigida no frontend de /vendas-consolidadas → /vendas)
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor } = req.query;
@@ -32,8 +33,11 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── GET /api/vendas/:id ─────────────────────────────────────────────────
+    // ─── GET /api/vendas/:id ──────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
+        // Evita conflito com a rota /sincronizar
+        if (req.params.id === 'sincronizar') return res.status(405).json({ error: 'Use POST para sincronizar' });
+
         try {
             const { data, error } = await supabase
                 .from('vendas')
@@ -48,7 +52,8 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── POST /api/vendas/sincronizar ────────────────────────────────────────
+    // ─── POST /api/vendas/sincronizar ─────────────────────────────────────────
+    // ✅ FIX 2: Rota corretamente mapeada e chamada pelo frontend via syncData()
     router.post('/sincronizar', async (req, res) => {
 
         // Normaliza status de frete
@@ -66,8 +71,6 @@ module.exports = function (supabase) {
             `${(nf   || '').trim()}||${(vend || '').toUpperCase().trim()}`;
 
         // ── Processa observacoes de contas_receber ────────────────────────────
-        // Retorna { status_pagamento, valor_pago, data_pagamento, observacoes }
-        // onde observacoes é o JSON original preservado.
         function processarConta(c) {
             let status        = c.status || 'A RECEBER';
             let valorPago     = parseFloat(c.valor_pago) || 0;
@@ -79,7 +82,6 @@ module.exports = function (supabase) {
                 if (raw) {
                     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
 
-                    // Formato: { notas: [...], parcelas: [...] }  ← usado pelo app contas_receber
                     const arrParcelas =
                         Array.isArray(parsed?.parcelas) && parsed.parcelas.length > 0
                             ? parsed.parcelas
@@ -89,11 +91,9 @@ module.exports = function (supabase) {
 
                     if (arrParcelas) {
                         valorPago     = arrParcelas.reduce((s, p) => s + parseFloat(p.valor || p.valor_parcela || 0), 0);
-                        // data da última parcela paga
                         const datas   = arrParcelas.map(p => p.data || p.data_pagamento).filter(Boolean).sort();
                         dataPagamento = datas.length > 0 ? datas[datas.length - 1] : dataPagamento;
 
-                        // Determina status: se soma parcelas >= valor da NF → PAGO; senão, Nª PARCELA
                         const valorNF = parseFloat(c.valor) || 0;
                         if (valorNF > 0 && valorPago >= valorNF) {
                             status = 'PAGO';
@@ -102,7 +102,6 @@ module.exports = function (supabase) {
                         }
                     }
 
-                    // Preserva observacoes originais (inclui notas + parcelas completas)
                     obsOriginal = typeof raw === 'string' ? raw : JSON.stringify(raw);
                 }
             } catch (_) { /* mantém valores originais */ }
@@ -111,6 +110,8 @@ module.exports = function (supabase) {
         }
 
         try {
+            console.log('[vendas] Iniciando sincronização...');
+
             // ── 1. Busca as duas fontes em paralelo ───────────────────────────
             const [fretesRes, contasRes] = await Promise.all([
                 supabase
@@ -122,7 +123,9 @@ module.exports = function (supabase) {
                     .select('*'),
             ]);
 
+            // ✅ FIX 2: Trata erro de contas_receber também (antes só tratava fretes)
             if (fretesRes.error) throw new Error('controle_frete: ' + fretesRes.error.message);
+            if (contasRes.error) throw new Error('contas_receber: ' + contasRes.error.message);
 
             const fretes = fretesRes.data || [];
             const contas = contasRes.data || [];
@@ -149,7 +152,6 @@ module.exports = function (supabase) {
                     previsao_entrega:  f.previsao_entrega || null,
                     status_frete:      normFrete(f.status),
                     id_controle_frete: (!isNaN(Number(f.id)) && String(f.id).length < 15) ? Number(f.id) : null,
-                    // Campos de pagamento — sobrescritos se houver conta_receber
                     status_pagamento:  null,
                     banco:             null,
                     data_vencimento:   null,
@@ -167,7 +169,6 @@ module.exports = function (supabase) {
                 const k    = chave(c.numero_nf, c.vendedor);
                 const idCR = (!isNaN(Number(c.id)) && String(c.id).length < 15) ? Number(c.id) : null;
 
-                // Processa pagamento/parcelas da conta
                 const pgto = processarConta(c);
 
                 const paymentFields = {
@@ -176,7 +177,7 @@ module.exports = function (supabase) {
                     data_vencimento:   c.data_vencimento  || null,
                     data_pagamento:    pgto.data_pagamento,
                     valor_pago:        pgto.valor_pago,
-                    observacoes:       pgto.observacoes,   // JSON completo (notas + parcelas)
+                    observacoes:       pgto.observacoes,
                     id_contas_receber: idCR,
                 };
 
@@ -205,7 +206,7 @@ module.exports = function (supabase) {
 
             const registros = Object.values(mapaFinal);
             if (!registros.length) {
-                return res.json({ success: true, message: '0 registros sincronizados' });
+                return res.json({ success: true, message: '0 registros sincronizados', total: 0 });
             }
 
             // ── 4. Upsert em lotes de 200 ─────────────────────────────────────
