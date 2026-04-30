@@ -6,7 +6,7 @@ module.exports = function (supabase) {
     const EXCLUDED_NF_TYPES = [
         'DEVOLUÇÃO', 'DEVOLUCAO', 'DEVOLUÇÃO DE MERCADORIA',
         'SIMPLES REMESSA', 'SIMPLES_REMESSA',
-        'REMESSA DE AMOSTRA', 'REMESSA_AMOSTRA'
+        'REMESSA DE AMOSTRA', 'REMESSA_AMOSTRA', 'DEVOLVIDA'
     ];
 
     function isExcludedTipoNF(tipo) {
@@ -15,8 +15,18 @@ module.exports = function (supabase) {
         return EXCLUDED_NF_TYPES.some(ex => normalized.includes(ex.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
     }
 
+    // 🔧 NORMALIZAÇÃO ROBUSTA DO NÚMERO DA NF (remove zeros à esquerda)
+    function normalizeNF(numeroNF) {
+        if (!numeroNF) return '';
+        let str = String(numeroNF).trim();
+        str = str.replace(/^0+/, '');      // remove zeros à esquerda
+        return str || '0';
+    }
+
     function makeKey(numeroNF, vendedor) {
-        return `${(numeroNF || '').trim()}||${(vendedor || '').toUpperCase().trim()}`;
+        const nf = normalizeNF(numeroNF);
+        const vendedorNorm = (vendedor || '').toUpperCase().trim();
+        return `${nf}||${vendedorNorm}`;
     }
 
     router.get('/', async (req, res) => {
@@ -65,14 +75,14 @@ module.exports = function (supabase) {
             let fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
             let contas = (contasRaw || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
 
-            console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
+            console.log(`[vendas] Fretes (após excluir tipos): ${fretes.length} | Contas (após excluir tipos): ${contas.length}`);
             const mapa = {};
 
             // Adiciona fretes
             for (const frete of fretes) {
                 const key = makeKey(frete.numero_nf, frete.vendedor);
                 mapa[key] = {
-                    numero_nf: (frete.numero_nf || '').trim(),
+                    numero_nf: normalizeNF(frete.numero_nf),
                     origem: 'CONTROLE_FRETE',
                     data_emissao: frete.data_emissao || null,
                     valor_nf: parseFloat(frete.valor_nf) || 0,
@@ -98,6 +108,7 @@ module.exports = function (supabase) {
                 };
             }
 
+            let unmatchedContas = 0;
             // Mescla contas a receber
             for (const conta of contas) {
                 const key = makeKey(conta.numero_nf, conta.vendedor);
@@ -113,9 +124,18 @@ module.exports = function (supabase) {
                 if (mapa[key]) {
                     Object.assign(mapa[key], campos);
                     mapa[key].origem = conta.status === 'PAGO' ? 'PAGO (Frete+Conta)' : 'MISTO';
+                    // Se a conta trouxer data de emissão e o frete não tiver, aproveita
+                    if (conta.data_emissao && !mapa[key].data_emissao) {
+                        mapa[key].data_emissao = conta.data_emissao;
+                    }
+                    // Se a conta trouxer valor NF e o frete não tiver (caso raro)
+                    if (conta.valor && (!mapa[key].valor_nf || mapa[key].valor_nf === 0)) {
+                        mapa[key].valor_nf = parseFloat(conta.valor) || 0;
+                    }
                 } else {
+                    unmatchedContas++;
                     mapa[key] = {
-                        numero_nf: (conta.numero_nf || '').trim(),
+                        numero_nf: normalizeNF(conta.numero_nf),
                         origem: 'CONTAS_RECEBER',
                         data_emissao: conta.data_emissao || null,
                         valor_nf: parseFloat(conta.valor) || 0,
@@ -128,6 +148,7 @@ module.exports = function (supabase) {
                     };
                 }
             }
+            console.log(`[vendas] Contas sem frete correspondente (novos registros): ${unmatchedContas}`);
 
             const registros = Object.values(mapa);
             if (!registros.length) return res.json({ success: true, message: 'Nenhum registro', total: 0 });
@@ -146,7 +167,7 @@ module.exports = function (supabase) {
                     console.error(`[vendas] Erro lote ${i}:`, upsertError.message);
                     erros++;
                 } else {
-                    console.log(`[vendas] Lote ${i} ok`);
+                    console.log(`[vendas] Lote ${i} ok (${chunk.length} registros)`);
                 }
             }
 
