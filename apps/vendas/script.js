@@ -15,6 +15,7 @@ let calendarYear = new Date().getFullYear();
 console.log('🚀 Vendas Consolidada iniciada');
 console.log('📍 API URL:', API_URL);
 
+// Inicialização
 document.addEventListener('DOMContentLoaded', () => {
     if (DEVELOPMENT_MODE) {
         sessionToken = 'dev-mode';
@@ -37,7 +38,7 @@ function inicializarApp() {
 
 function updateMonthDisplay() {
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-                        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
     const monthStr = `${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
     const elem = document.getElementById('currentMonth');
     if (elem) elem.textContent = monthStr;
@@ -72,7 +73,7 @@ function renderCalendar() {
     if (!yearElement || !monthsContainer) return;
     yearElement.textContent = calendarYear;
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-                        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
     monthsContainer.innerHTML = '';
     monthNames.forEach((name, index) => {
         const monthButton = document.createElement('div');
@@ -94,9 +95,9 @@ function selectMonth(monthIndex) {
 }
 
 // ============================================
-// GERAR PDF
+// GERAR PDF (comissão)
 // ============================================
-window.gerarPDF = function() {
+window.gerarPDF = function () {
     const filterVendedor = document.getElementById('filterVendedor');
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
     if (!vendedorSelecionado) {
@@ -104,15 +105,15 @@ window.gerarPDF = function() {
         return;
     }
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-                        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-    // Pagamentos no mês atual (independente da emissão)
+    // Pagamentos no mês atual (baseado em data_pagamento)
     const vendasPagas = allVendas.filter(v => {
         if (v.origem !== 'CONTAS_RECEBER' || !v.data_pagamento) return false;
         if (v.vendedor !== vendedorSelecionado) return false;
         const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
         return dataPagamento.getMonth() === currentMonth.getMonth() &&
-               dataPagamento.getFullYear() === currentMonth.getFullYear();
+            dataPagamento.getFullYear() === currentMonth.getFullYear();
     });
 
     if (vendasPagas.length === 0) {
@@ -260,7 +261,7 @@ function loadDashboard() {
     for (const v of allVendas) {
         const valor = parseFloat(v.valor_nf) || 0;
 
-        // --- FATURADO (emissão no mês) ---
+        // FATURADO (emissão no mês)
         if (v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
             if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
@@ -268,7 +269,7 @@ function loadDashboard() {
             }
         }
 
-        // --- ENTREGUE (entregas no mês, consideramos status_frete = ENTREGUE E emissão no mês) ---
+        // ENTREGUE (entregas no mês, via data_emissao + status_frete)
         if (v.status_frete === 'ENTREGUE' && v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
             if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
@@ -276,7 +277,7 @@ function loadDashboard() {
             }
         }
 
-        // --- PAGO (data_pagamento no mês) ---
+        // PAGO (data_pagamento no mês)
         if (v.data_pagamento) {
             const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
             if (dataPagamento.getMonth() === currentMonthIndex && dataPagamento.getFullYear() === currentYear) {
@@ -284,7 +285,7 @@ function loadDashboard() {
             }
         }
 
-        // --- A RECEBER (entregues E não pagos) ---
+        // A RECEBER (entregues E não pagos)
         const isEntregue = (v.status_frete === 'ENTREGUE');
         const isPago = (v.data_pagamento !== null && v.data_pagamento !== undefined);
         if (isEntregue && !isPago) {
@@ -292,7 +293,6 @@ function loadDashboard() {
         }
     }
 
-    // Atualizar elementos HTML
     document.getElementById('totalPago').textContent = formatCurrency(totalPago);
     document.getElementById('totalAReceber').textContent = formatCurrency(totalAReceber);
     document.getElementById('totalEntregue').textContent = totalEntregue;
@@ -300,7 +300,7 @@ function loadDashboard() {
 }
 
 // ============================================
-// RENDERIZAÇÃO DA TABELA (sem alterações relevantes)
+// RENDERIZAÇÃO DA TABELA (CORRIGIDA)
 // ============================================
 function updateTable() {
     const container = document.getElementById('vendasContainer');
@@ -309,11 +309,21 @@ function updateTable() {
     const filterVendedor = document.getElementById('filterVendedor');
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
 
+    // 🔁 Filtro de mês: CONTROLE_FRETE usa data_emissao; CONTAS_RECEBER usa data_pagamento (fallback data_emissao)
     let monthVendas = allVendas.filter(v => {
-        if (!v.data_emissao) return false;
-        const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
-        return dataEmissao.getMonth() === currentMonth.getMonth() &&
-               dataEmissao.getFullYear() === currentMonth.getFullYear();
+        let referenceDate = null;
+        if (v.origem === 'CONTROLE_FRETE') {
+            if (!v.data_emissao) return false;
+            referenceDate = new Date(v.data_emissao + 'T00:00:00');
+        } else if (v.origem === 'CONTAS_RECEBER') {
+            const dateToUse = v.data_pagamento || v.data_emissao;
+            if (!dateToUse) return false;
+            referenceDate = new Date(dateToUse + 'T00:00:00');
+        } else {
+            return false;
+        }
+        return referenceDate.getMonth() === currentMonth.getMonth() &&
+            referenceDate.getFullYear() === currentMonth.getFullYear();
     });
 
     let filteredVendas = [...monthVendas];
