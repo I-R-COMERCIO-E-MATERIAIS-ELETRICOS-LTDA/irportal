@@ -1,12 +1,25 @@
 // ============================================
-// RECEBER ROUTES — /api/receber (corrigido)
+// CONTAS A RECEBER - ROUTES (COMPLETO)
 // ============================================
 const express = require('express');
 
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // GET / - listar contas (todas, sem filtro)
+    // Lista de tipos de NF que NÃO devem ir para o Vendas (mas permanecem no Contas a Receber)
+    const EXCLUDED_FOR_VENDAS = [
+        'DEVOLUÇÃO', 'DEVOLUCAO', 'DEVOLUÇÃO DE MERCADORIA',
+        'SIMPLES REMESSA', 'SIMPLES_REMESSA',
+        'REMESSA DE AMOSTRA', 'REMESSA_AMOSTRA'
+    ];
+
+    function isExcludedForVendas(tipo) {
+        if (!tipo) return false;
+        const normalized = tipo.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return EXCLUDED_FOR_VENDAS.some(ex => normalized.includes(ex.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+    }
+
+    // GET / - listar todas as contas (incluindo especiais)
     router.get('/', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -16,7 +29,7 @@ module.exports = function (supabase) {
             if (error) throw error;
             res.json(data);
         } catch (err) {
-            console.error('Erro ao listar:', err.message);
+            console.error('Erro ao listar contas:', err.message);
             res.status(500).json({ error: 'Erro ao listar contas' });
         }
     });
@@ -33,17 +46,17 @@ module.exports = function (supabase) {
             if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
             res.json(data);
         } catch (err) {
-            console.error('Erro ao buscar:', err.message);
+            console.error('Erro ao buscar conta:', err.message);
             res.status(500).json({ error: 'Erro ao buscar conta' });
         }
     });
 
-    // POST / - criar conta
+    // POST / - criar nova conta
     router.post('/', async (req, res) => {
         try {
             const { parcelas, ...dados } = req.body;
 
-            // Se houver parcelas, monta observacoes
+            // Construir objeto observacoes com parcelas (se houver)
             let observacoes = null;
             if (parcelas && Array.isArray(parcelas) && parcelas.length > 0) {
                 observacoes = JSON.stringify({
@@ -65,7 +78,7 @@ module.exports = function (supabase) {
                 data_emissao: dados.data_emissao,
                 data_vencimento: dados.data_vencimento || null,
                 tipo_nf: dados.tipo_nf || 'ENVIO',
-                status: dados.status || 'A RECEBER', // preserva o status original
+                status: dados.status || 'A RECEBER', // preserva o status enviado (ex: "DEVOLUÇÃO")
                 observacoes: observacoes,
                 valor_pago: parseFloat(dados.valor_pago) || 0,
                 data_pagamento: dados.data_pagamento || null
@@ -78,8 +91,8 @@ module.exports = function (supabase) {
                 .single();
             if (error) throw error;
 
-            // Sincronizar com Vendas (apenas se não for nota especial)
-            if (!isExcludedTipoNF(novaConta.tipo_nf)) {
+            // Sincronizar com Vendas apenas se não for nota especial excluída
+            if (!isExcludedForVendas(novaConta.tipo_nf)) {
                 sincronizarVendas(supabase, novaConta).catch(console.error);
             }
 
@@ -90,7 +103,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // PUT /:id - atualizar conta
+    // PUT /:id - atualizar conta completa
     router.put('/:id', async (req, res) => {
         try {
             const { id } = req.params;
@@ -133,7 +146,7 @@ module.exports = function (supabase) {
             if (error) throw error;
             if (!contaAtualizada) return res.status(404).json({ error: 'Conta não encontrada' });
 
-            if (!isExcludedTipoNF(contaAtualizada.tipo_nf)) {
+            if (!isExcludedForVendas(contaAtualizada.tipo_nf)) {
                 sincronizarVendas(supabase, contaAtualizada).catch(console.error);
             }
 
@@ -157,7 +170,7 @@ module.exports = function (supabase) {
             if (error) throw error;
             if (!contaAtualizada) return res.status(404).json({ error: 'Conta não encontrada' });
 
-            if (!isExcludedTipoNF(contaAtualizada.tipo_nf)) {
+            if (!isExcludedForVendas(contaAtualizada.tipo_nf)) {
                 sincronizarVendas(supabase, contaAtualizada).catch(console.error);
             }
 
@@ -178,7 +191,7 @@ module.exports = function (supabase) {
             if (error) throw error;
             res.json({ success: true });
         } catch (err) {
-            console.error('Erro ao deletar:', err.message);
+            console.error('Erro ao deletar conta:', err.message);
             res.status(500).json({ error: 'Erro ao deletar conta' });
         }
     });
@@ -186,23 +199,12 @@ module.exports = function (supabase) {
     return router;
 };
 
-// Função auxiliar para identificar tipos excluídos do Vendas (mesma lógica usada no módulo Vendas)
-const EXCLUDED_NF_TYPES = [
-    'DEVOLUÇÃO', 'DEVOLUCAO', 'DEVOLUÇÃO DE MERCADORIA',
-    'SIMPLES REMESSA', 'SIMPLES_REMESSA',
-    'REMESSA DE AMOSTRA', 'REMESSA_AMOSTRA'
-];
-
-function isExcludedTipoNF(tipo) {
-    if (!tipo) return false;
-    const normalized = tipo.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    return EXCLUDED_NF_TYPES.some(ex => normalized.includes(ex.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
-}
-
 // Sincronização com Vendas (apenas para notas não excluídas)
 async function sincronizarVendas(supabase, conta) {
     if (!conta || !conta.numero_nf || !conta.vendedor) return;
-    if (isExcludedTipoNF(conta.tipo_nf)) return; // não sincroniza notas especiais
+    const EXCLUDED_FOR_VENDAS = ['DEVOLUÇÃO', 'DEVOLUCAO', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA'];
+    const isExcluded = EXCLUDED_FOR_VENDAS.some(ex => conta.tipo_nf?.toUpperCase().includes(ex));
+    if (isExcluded) return;
 
     const payload = {
         numero_nf: conta.numero_nf,
