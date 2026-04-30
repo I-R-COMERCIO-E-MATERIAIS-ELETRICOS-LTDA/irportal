@@ -109,65 +109,77 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── NOVA ROTA: /api/vendas/parcelas-pagas (usa tabela parcelas_receber) ───
     router.get('/parcelas-pagas', async (req, res) => {
-        try {
-            const { mes, ano, vendedor } = req.query;
-            if (!mes || !ano) {
-                return res.status(400).json({ error: 'Parâmetros mes e ano são obrigatórios' });
-            }
-            const mesNum = parseInt(mes);
-            const anoNum = parseInt(ano);
-            const inicio = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
-            const ultimoDia = new Date(anoNum, mesNum, 0).getDate();
-            const fim = `${anoNum}-${String(mesNum).padStart(2, '0')}-${ultimoDia}`;
-
-            let query = supabase
-                .from('parcelas_receber')
-                .select(`
-                    id,
-                    numero,
-                    valor,
-                    data_pagamento,
-                    contas_receber!inner (
-                        numero_nf,
-                        vendedor,
-                        orgao,
-                        tipo_nf
-                    )
-                `)
-                .gte('data_pagamento', inicio)
-                .lte('data_pagamento', fim);
-
-            if (vendedor) {
-                query = query.eq('contas_receber.vendedor', vendedor);
-            }
-
-            const { data: parcelas, error } = await query;
-            if (error) throw error;
-
-            // Filtrar tipos de NF excluídos
-            const filtered = parcelas.filter(p => {
-                const tipo = p.contas_receber?.tipo_nf || '';
-                return !isExcludedTipoNF(tipo);
-            });
-
-            const result = filtered.map(p => ({
-                numero_nf: p.contas_receber.numero_nf,
-                vendedor: p.contas_receber.vendedor,
-                orgao: p.contas_receber.orgao,
-                data_pagamento: p.data_pagamento,
-                valor_parcela: p.valor,
-                parcela_numero: p.numero,
-                parcela_total: null
-            }));
-
-            res.json(result);
-        } catch (err) {
-            console.error('[vendas] GET /parcelas-pagas erro:', err.message);
-            res.status(500).json({ error: err.message });
+    try {
+        const { mes, ano, vendedor } = req.query;
+        if (!mes || !ano) {
+            return res.status(400).json({ error: 'Parâmetros mes e ano são obrigatórios' });
         }
-    });
+        const mesNum = parseInt(mes);
+        const anoNum = parseInt(ano);
+        const inicio = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
+        const ultimoDia = new Date(anoNum, mesNum, 0).getDate();
+        const fim = `${anoNum}-${String(mesNum).padStart(2, '0')}-${ultimoDia}`;
+
+        // Primeiro, verificar se a tabela parcelas_receber existe
+        const { error: tableCheck } = await supabase
+            .from('parcelas_receber')
+            .select('id')
+            .limit(1);
+        if (tableCheck) {
+            console.error('[vendas] Tabela parcelas_receber não encontrada:', tableCheck.message);
+            return res.status(500).json({ error: 'Tabela parcelas_receber não configurada' });
+        }
+
+        let query = supabase
+            .from('parcelas_receber')
+            .select(`
+                numero,
+                valor,
+                data_pagamento,
+                contas_receber!inner (
+                    numero_nf,
+                    vendedor,
+                    orgao,
+                    tipo_nf
+                )
+            `)
+            .gte('data_pagamento', inicio)
+            .lte('data_pagamento', fim);
+
+        if (vendedor) {
+            query = query.eq('contas_receber.vendedor', vendedor);
+        }
+
+        const { data: parcelas, error } = await query;
+        if (error) {
+            console.error('[vendas] Erro na consulta parcelas:', error);
+            throw error;
+        }
+
+        // Filtrar tipos excluídos
+        const filtered = parcelas.filter(p => {
+            const tipo = p.contas_receber?.tipo_nf || '';
+            return !isExcludedTipoNF(tipo);
+        });
+
+        const result = filtered.map(p => ({
+            numero_nf: p.contas_receber.numero_nf,
+            vendedor: p.contas_receber.vendedor,
+            orgao: p.contas_receber.orgao,
+            data_pagamento: p.data_pagamento,
+            valor_parcela: p.valor,
+            parcela_numero: p.numero,
+            parcela_total: null
+        }));
+
+        res.json(result);
+    } catch (err) {
+        console.error('[vendas] GET /parcelas-pagas erro:', err.message);
+        console.error('[vendas] Detalhes:', err);
+        res.status(500).json({ error: err.message, details: err.details || '' });
+    }
+});
 
     // POST /api/vendas/sincronizar (igual ao anterior)
     router.post('/sincronizar', async (req, res) => {
