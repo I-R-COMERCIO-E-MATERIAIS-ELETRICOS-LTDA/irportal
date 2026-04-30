@@ -111,7 +111,6 @@ module.exports = function (supabase) {
         try {
             console.log('[vendas] 🔄 Sincronização iniciada...');
 
-            // Buscar dados brutos
             const { data: fretesRaw, error: errFretes } = await supabase
                 .from('controle_frete')
                 .select('*')
@@ -123,7 +122,6 @@ module.exports = function (supabase) {
                 .select('*');
             if (errContas) throw new Error(`Contas: ${errContas.message}`);
 
-            // Aplicar filtro de tipo excluído
             let fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
             let contas = (contasRaw || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
 
@@ -131,7 +129,6 @@ module.exports = function (supabase) {
 
             const mapa = {};
 
-            // 1. Inserir todos os fretes
             for (const frete of fretes) {
                 const key = makeKey(frete.numero_nf, frete.vendedor);
                 mapa[key] = {
@@ -161,7 +158,6 @@ module.exports = function (supabase) {
                 };
             }
 
-            // 2. Mesclar contas (pagamentos)
             for (const conta of contas) {
                 const key = makeKey(conta.numero_nf, conta.vendedor);
                 const pgto = processarConta(conta);
@@ -179,7 +175,7 @@ module.exports = function (supabase) {
 
                 if (mapa[key]) {
                     Object.assign(mapa[key], camposPagamento);
-                    mapa[key].origem = pgto.statusPagamento === 'PAGO' ? 'PAGO (Frete + Conta)' : 'PARCIAL (Frete + Conta)';
+                    mapa[key].origem = pgto.statusPagamento === 'PAGO' ? 'PAGO (Frete+Conta)' : 'PARCIAL (Frete+Conta)';
                 } else {
                     mapa[key] = {
                         numero_nf: (conta.numero_nf || '').trim(),
@@ -197,16 +193,14 @@ module.exports = function (supabase) {
             }
 
             const registros = Object.values(mapa);
-            console.log(`[vendas] Total de registros a sincronizar: ${registros.length}`);
+            console.log(`[vendas] Total a sincronizar: ${registros.length}`);
             if (registros.length === 0) {
                 return res.json({ success: true, message: 'Nenhum registro após filtros', total: 0 });
             }
 
-            // Log da nota mais recente (para debug)
             const ultimaNF = Math.max(...registros.map(r => parseInt(r.numero_nf) || 0));
             console.log(`[vendas] Última NF no lote: ${ultimaNF}`);
 
-            // Upsert em lotes
             const CHUNK = 200;
             let erros = 0;
             for (let i = 0; i < registros.length; i += CHUNK) {
@@ -215,10 +209,10 @@ module.exports = function (supabase) {
                     .from('vendas')
                     .upsert(chunk, { onConflict: 'numero_nf, vendedor', ignoreDuplicates: false });
                 if (upsertError) {
-                    console.error(`[vendas] Erro no lote ${i}:`, upsertError.message);
+                    console.error(`[vendas] Erro lote ${i}:`, upsertError.message);
                     erros++;
                 } else {
-                    console.log(`[vendas] Lote ${i} inserido/atualizado com sucesso.`);
+                    console.log(`[vendas] Lote ${i} ok`);
                 }
             }
 
