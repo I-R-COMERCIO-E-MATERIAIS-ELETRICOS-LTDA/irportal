@@ -100,6 +100,9 @@ function selectMonth(monthIndex) {
 // ============================================
 // GERAR PDF (comissão baseada em parcelas pagas)
 // ============================================
+// ============================================
+// GERAR PDF (comissão baseada em parcelas pagas)
+// ============================================
 window.gerarPDF = async function () {
     const filterVendedor = document.getElementById('filterVendedor');
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
@@ -120,7 +123,11 @@ window.gerarPDF = async function () {
             method: 'GET',
             headers: { 'X-Session-Token': sessionToken }
         });
-        if (!response.ok) throw new Error('Erro ao buscar parcelas');
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error('Erro na resposta:', errText);
+            throw new Error(`Erro ${response.status}: ${errText}`);
+        }
         const parcelasPagas = await response.json();
 
         if (parcelasPagas.length === 0) {
@@ -177,9 +184,10 @@ window.gerarPDF = async function () {
         showToast('Relatório gerado com sucesso', 'success');
     } catch (error) {
         console.error('Erro ao gerar PDF:', error);
-        showToast('Erro ao gerar relatório', 'error');
+        showToast('Erro ao gerar relatório: ' + error.message, 'error');
     }
 };
+
 // ============================================
 // SINCRONIZAÇÃO E CARREGAMENTO
 // ============================================
@@ -267,7 +275,7 @@ function updateDisplay() {
 }
 
 // ============================================
-// DASHBOARD (PAGO usando soma de parcelas)
+// DASHBOARD (PAGO via parcelas)
 // ============================================
 async function loadDashboard() {
     const currentYear = currentMonth.getFullYear();
@@ -287,6 +295,8 @@ async function loadDashboard() {
         if (response.ok) {
             const parcelas = await response.json();
             totalPago = parcelas.reduce((sum, p) => sum + p.valor_parcela, 0);
+        } else {
+            console.warn('Falha ao buscar parcelas pagas, status:', response.status);
         }
     } catch (e) {
         console.warn('Erro ao buscar parcelas pagas para dashboard:', e);
