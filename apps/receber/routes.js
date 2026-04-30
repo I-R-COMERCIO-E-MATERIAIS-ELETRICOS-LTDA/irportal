@@ -6,7 +6,7 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── LISTAR CONTAS (com parcelas) ─────────────────────────────────────────
+    // GET / - listar contas com suas parcelas
     router.get('/', async (req, res) => {
         try {
             const { data: contas, error } = await supabase
@@ -15,23 +15,29 @@ module.exports = function (supabase) {
                 .order('data_emissao', { ascending: false });
             if (error) throw error;
 
-            const contasComParcelas = await Promise.all(contas.map(async (conta) => {
-                const { data: parcelas, error: errParc } = await supabase
-                    .from('parcelas_receber')
-                    .select('*')
-                    .eq('conta_id', conta.id)
-                    .order('numero', { ascending: true });
-                if (errParc) console.error('Erro parcelas:', errParc);
-                return { ...conta, parcelas: parcelas || [] };
-            }));
+            // Buscar parcelas para cada conta em paralelo
+            const contasComParcelas = await Promise.all(
+                contas.map(async (conta) => {
+                    const { data: parcelas, error: errParc } = await supabase
+                        .from('parcelas_receber')
+                        .select('*')
+                        .eq('conta_id', conta.id)
+                        .order('numero', { ascending: true });
+                    if (errParc) {
+                        console.error(`Erro ao buscar parcelas para conta ${conta.id}:`, errParc);
+                        return { ...conta, parcelas: [] };
+                    }
+                    return { ...conta, parcelas: parcelas || [] };
+                })
+            );
             res.json(contasComParcelas);
         } catch (err) {
-            console.error('Erro ao listar:', err.message);
+            console.error('Erro ao listar contas:', err.message);
             res.status(500).json({ error: 'Erro ao listar contas' });
         }
     });
 
-    // ─── BUSCAR CONTA POR ID (com parcelas) ───────────────────────────────────
+    // GET /:id - buscar conta específica com parcelas
     router.get('/:id', async (req, res) => {
         try {
             const { data: conta, error } = await supabase
@@ -54,14 +60,17 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── CRIAR CONTA (com parcelas) ───────────────────────────────────────────
+    // POST / - criar nova conta (com parcelas opcionais)
     router.post('/', async (req, res) => {
         try {
             const { parcelas, ...dadosConta } = req.body;
+
+            // Validação obrigatória
             if (!dadosConta.numero_nf || !dadosConta.orgao || !dadosConta.vendedor || !dadosConta.data_emissao) {
-                return res.status(400).json({ error: 'Campos obrigatórios faltando' });
+                return res.status(400).json({ error: 'Campos obrigatórios: numero_nf, orgao, vendedor, data_emissao' });
             }
 
+            // Inserir conta principal
             const payloadConta = {
                 numero_nf: dadosConta.numero_nf.toUpperCase().trim(),
                 orgao: dadosConta.orgao.toUpperCase().trim(),
@@ -73,8 +82,8 @@ module.exports = function (supabase) {
                 data_pagamento: dadosConta.data_pagamento || null,
                 status: dadosConta.status || 'A RECEBER',
                 tipo_nf: dadosConta.tipo_nf || 'ENVIO',
-                observacoes: null,
-                valor_pago: 0
+                observacoes: null,  // não usamos mais observacoes para parcelas
+                valor_pago: 0       // será calculado a partir das parcelas
             };
 
             const { data: novaConta, error: errConta } = await supabase
@@ -84,9 +93,10 @@ module.exports = function (supabase) {
                 .single();
             if (errConta) throw errConta;
 
+            // Inserir parcelas se existirem
             let parcelasInseridas = [];
             if (parcelas && Array.isArray(parcelas) && parcelas.length > 0) {
-                const parcelasInsert = parcelas.map(p => ({
+                const parcelasParaInsert = parcelas.map(p => ({
                     conta_id: novaConta.id,
                     numero: p.numero,
                     valor: parseFloat(p.valor) || 0,
@@ -96,26 +106,38 @@ module.exports = function (supabase) {
                 }));
                 const { data: inserted, error: errParc } = await supabase
                     .from('parcelas_receber')
-                    .insert(parcelasInsert)
+                    .insert(parcelasParaInsert)
                     .select();
-                if (!errParc) parcelasInseridas = inserted;
-                else console.error('Erro ao inserir parcelas:', errParc);
+                if (errParc) console.error('Erro ao inserir parcelas:', errParc);
+                else parcelasInseridas = inserted;
             }
 
-            sincronizarVendas(supabase, novaConta, parcelasInseridas).catch(console.error);
-            res.status(201).json({ ...novaConta, parcelas: parcelasInseridas });
+            // Atualizar status e data_pagamento da conta baseado nas parcelas
+            await atualizarStatusConta(supabase, novaConta.id, parcelasInseridas);
+
+            const { data: contaFinal } = await supabase
+                .from('contas_receber')
+                .select('*')
+                .eq('id', novaConta.id)
+                .single();
+
+            // Sincronizar com Vendas (assíncrono)
+            sincronizarVendas(supabase, contaFinal, parcelasInseridas).catch(console.error);
+
+            res.status(201).json({ ...contaFinal, parcelas: parcelasInseridas });
         } catch (err) {
             console.error('Erro ao criar conta:', err.message);
             res.status(500).json({ error: 'Erro ao criar conta', details: err.message });
         }
     });
 
-    // ─── ATUALIZAR CONTA (PUT completo) ───────────────────────────────────────
+    // PUT /:id - atualizar conta completa (com parcelas)
     router.put('/:id', async (req, res) => {
         try {
             const { id } = req.params;
             const { parcelas, ...dadosConta } = req.body;
 
+            // Atualizar conta principal
             const payloadConta = {
                 numero_nf: dadosConta.numero_nf?.toUpperCase().trim(),
                 orgao: dadosConta.orgao?.toUpperCase().trim(),
@@ -127,7 +149,6 @@ module.exports = function (supabase) {
                 data_pagamento: dadosConta.data_pagamento || null,
                 status: dadosConta.status || 'A RECEBER',
                 tipo_nf: dadosConta.tipo_nf || 'ENVIO',
-                observacoes: null,
                 updated_at: new Date().toISOString()
             };
 
@@ -140,7 +161,7 @@ module.exports = function (supabase) {
             if (errConta) throw errConta;
             if (!contaAtualizada) return res.status(404).json({ error: 'Conta não encontrada' });
 
-            // Remove parcelas antigas e insere novas
+            // Substituir parcelas (delete + insert)
             await supabase.from('parcelas_receber').delete().eq('conta_id', id);
             let parcelasAtualizadas = [];
             if (parcelas && Array.isArray(parcelas) && parcelas.length > 0) {
@@ -156,18 +177,28 @@ module.exports = function (supabase) {
                     .from('parcelas_receber')
                     .insert(parcelasInsert)
                     .select();
-                if (!errParc) parcelasAtualizadas = inserted;
+                if (errParc) console.error('Erro ao atualizar parcelas:', errParc);
+                else parcelasAtualizadas = inserted;
             }
 
-            sincronizarVendas(supabase, contaAtualizada, parcelasAtualizadas).catch(console.error);
-            res.json({ ...contaAtualizada, parcelas: parcelasAtualizadas });
+            // Recalcular status e data_pagamento da conta
+            await atualizarStatusConta(supabase, id, parcelasAtualizadas);
+
+            const { data: contaFinal } = await supabase
+                .from('contas_receber')
+                .select('*')
+                .eq('id', id)
+                .single();
+
+            sincronizarVendas(supabase, contaFinal, parcelasAtualizadas).catch(console.error);
+            res.json({ ...contaFinal, parcelas: parcelasAtualizadas });
         } catch (err) {
             console.error('Erro ao atualizar conta:', err.message);
             res.status(500).json({ error: 'Erro ao atualizar conta' });
         }
     });
 
-    // ─── PATCH (atualização parcial) ──────────────────────────────────────────
+    // PATCH /:id - atualização parcial (sem mexer em parcelas)
     router.patch('/:id', async (req, res) => {
         try {
             const updates = { ...req.body, updated_at: new Date().toISOString() };
@@ -192,7 +223,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── DELETAR CONTA ─────────────────────────────────────────────────────────
+    // DELETE /:id
     router.delete('/:id', async (req, res) => {
         try {
             const { error } = await supabase
@@ -210,10 +241,22 @@ module.exports = function (supabase) {
     return router;
 };
 
-// ─── FUNÇÃO DE SINCRONIZAÇÃO COM VENDAS (usa parcelas_receber) ────────────────
+// Função auxiliar para atualizar status e data_pagamento da conta baseado nas parcelas
+async function atualizarStatusConta(supabase, contaId, parcelas) {
+    if (!parcelas || parcelas.length === 0) return;
+    const pagas = parcelas.filter(p => p.data_pagamento);
+    const totalPago = pagas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
+    const valorTotal = parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
+    const status = totalPago >= valorTotal ? 'PAGO' : (totalPago > 0 ? `${parcelas.length}ª PARCELA` : 'A RECEBER');
+    const dataUltimoPagamento = pagas.map(p => p.data_pagamento).filter(Boolean).sort().pop();
+    await supabase
+        .from('contas_receber')
+        .update({ status, data_pagamento: dataUltimoPagamento || null, valor_pago: totalPago })
+        .eq('id', contaId);
+}
+
 async function sincronizarVendas(supabase, conta, parcelas) {
     if (!conta || !conta.numero_nf || !conta.vendedor) return;
-
     let valorPago = 0;
     let dataUltimoPagamento = null;
     if (parcelas && parcelas.length) {
@@ -225,10 +268,8 @@ async function sincronizarVendas(supabase, conta, parcelas) {
         valorPago = parseFloat(conta.valor_pago) || 0;
         dataUltimoPagamento = conta.data_pagamento;
     }
-
     const statusPagamento = (valorPago >= (parseFloat(conta.valor) || 0)) ? 'PAGO'
                            : (parcelas && parcelas.length ? `${parcelas.length}ª PARCELA` : conta.status);
-
     const payload = {
         numero_nf: conta.numero_nf,
         origem: 'CONTAS_RECEBER',
@@ -245,13 +286,11 @@ async function sincronizarVendas(supabase, conta, parcelas) {
         id_contas_receber: conta.id,
         updated_at: new Date().toISOString()
     };
-
     const { data: existente } = await supabase
         .from('vendas')
         .select('id')
         .eq('id_contas_receber', conta.id)
         .single();
-
     if (existente) {
         await supabase.from('vendas').update(payload).eq('id', existente.id);
     } else {
