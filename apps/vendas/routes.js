@@ -3,11 +3,23 @@
 // ============================================
 const express = require('express');
 
+// Lista de tipos de NF que NÃO devem ser incluídos no módulo Vendas
+const EXCLUDED_NF_TYPES = [
+    'DEVOLUÇÃO', 'DEVOLUCAO', 'DEVOLUÇÃO DE MERCADORIA',
+    'SIMPLES REMESSA', 'SIMPLES_REMESSA',
+    'REMESSA DE AMOSTRA', 'REMESSA_AMOSTRA'
+];
+
+function isExcludedTipoNF(tipo) {
+    if (!tipo) return false;
+    const upperTipo = tipo.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    return EXCLUDED_NF_TYPES.some(ex => upperTipo.includes(ex.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()));
+}
+
 module.exports = function (supabase) {
     const router = express.Router();
 
     // ─── GET /api/vendas ──────────────────────────────────────────────────────
-    // ✅ FIX 1: Rota principal de listagem (corrigida no frontend de /vendas-consolidadas → /vendas)
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor } = req.query;
@@ -35,9 +47,7 @@ module.exports = function (supabase) {
 
     // ─── GET /api/vendas/:id ──────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
-        // Evita conflito com a rota /sincronizar
         if (req.params.id === 'sincronizar') return res.status(405).json({ error: 'Use POST para sincronizar' });
-
         try {
             const { data, error } = await supabase
                 .from('vendas')
@@ -53,10 +63,7 @@ module.exports = function (supabase) {
     });
 
     // ─── POST /api/vendas/sincronizar ─────────────────────────────────────────
-    // ✅ FIX 2: Rota corretamente mapeada e chamada pelo frontend via syncData()
     router.post('/sincronizar', async (req, res) => {
-
-        // Normaliza status de frete
         const normFrete = s => ({
             'EM_TRANSITO':       'EM TRÂNSITO',
             'EM TRANSITO':       'EM TRÂNSITO',
@@ -66,11 +73,8 @@ module.exports = function (supabase) {
             'EXTRAVIADO':        'EM TRÂNSITO',
         }[s] || s || 'EM TRÂNSITO');
 
-        // Chave única de merge
-        const chave = (nf, vend) =>
-            `${(nf   || '').trim()}||${(vend || '').toUpperCase().trim()}`;
+        const chave = (nf, vend) => `${(nf || '').trim()}||${(vend || '').toUpperCase().trim()}`;
 
-        // ── Processa observacoes de contas_receber ────────────────────────────
         function processarConta(c) {
             let status        = c.status || 'A RECEBER';
             let valorPago     = parseFloat(c.valor_pago) || 0;
@@ -81,30 +85,23 @@ module.exports = function (supabase) {
                 const raw = c.observacoes;
                 if (raw) {
                     const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-
-                    const arrParcelas =
-                        Array.isArray(parsed?.parcelas) && parsed.parcelas.length > 0
-                            ? parsed.parcelas
-                            : Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.valor !== undefined
-                            ? parsed
-                            : null;
+                    const arrParcelas = Array.isArray(parsed?.parcelas) && parsed.parcelas.length > 0
+                        ? parsed.parcelas
+                        : Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.valor !== undefined
+                        ? parsed
+                        : null;
 
                     if (arrParcelas) {
-                        valorPago     = arrParcelas.reduce((s, p) => s + parseFloat(p.valor || p.valor_parcela || 0), 0);
-                        const datas   = arrParcelas.map(p => p.data || p.data_pagamento).filter(Boolean).sort();
+                        valorPago = arrParcelas.reduce((s, p) => s + parseFloat(p.valor || p.valor_parcela || 0), 0);
+                        const datas = arrParcelas.map(p => p.data || p.data_pagamento).filter(Boolean).sort();
                         dataPagamento = datas.length > 0 ? datas[datas.length - 1] : dataPagamento;
-
                         const valorNF = parseFloat(c.valor) || 0;
-                        if (valorNF > 0 && valorPago >= valorNF) {
-                            status = 'PAGO';
-                        } else if (arrParcelas.length > 0) {
-                            status = `${arrParcelas.length}ª PARCELA`;
-                        }
+                        if (valorNF > 0 && valorPago >= valorNF) status = 'PAGO';
+                        else if (arrParcelas.length > 0) status = `${arrParcelas.length}ª PARCELA`;
                     }
-
                     obsOriginal = typeof raw === 'string' ? raw : JSON.stringify(raw);
                 }
-            } catch (_) { /* mantém valores originais */ }
+            } catch (_) {}
 
             return { status_pagamento: status, valor_pago: valorPago, data_pagamento: dataPagamento, observacoes: obsOriginal };
         }
@@ -112,27 +109,30 @@ module.exports = function (supabase) {
         try {
             console.log('[vendas] Iniciando sincronização...');
 
-            // ── 1. Busca as duas fontes em paralelo ───────────────────────────
-            const [fretesRes, contasRes] = await Promise.all([
-                supabase
-                    .from('controle_frete')
-                    .select('*')
-                    .not('status', 'in', '("DEVOLVIDO","DEVOLUCAO","devolvido","devolucao","DEVOLUÇÃO","DEVOLUÇAO")'),
-                supabase
-                    .from('contas_receber')
-                    .select('*'),
-            ]);
+            // 1. Buscar fretes e contas, já excluindo tipos de NF não desejados
+            let fretesQuery = supabase
+                .from('controle_frete')
+                .select('*')
+                .not('status', 'in', '("DEVOLVIDO","DEVOLUCAO","devolvido","devolucao","DEVOLUÇÃO","DEVOLUÇAO")');
 
-            // ✅ FIX 2: Trata erro de contas_receber também (antes só tratava fretes)
+            let contasQuery = supabase.from('contas_receber').select('*');
+
+            // Filtro adicional por tipo_nf (excluir os tipos indesejados)
+            // Nota: O Supabase não suporta "not in" com array de strings diretamente no JS client,
+            // por isso fazemos o filtro no código após a consulta.
+            const [fretesRes, contasRes] = await Promise.all([fretesQuery, contasQuery]);
+
             if (fretesRes.error) throw new Error('controle_frete: ' + fretesRes.error.message);
             if (contasRes.error) throw new Error('contas_receber: ' + contasRes.error.message);
 
-            const fretes = fretesRes.data || [];
-            const contas = contasRes.data || [];
-            console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
+            let fretes = (fretesRes.data || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
+            let contas = (contasRes.data || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
 
-            // ── 2. Mapa base a partir do controle_frete ───────────────────────
+            console.log(`[vendas] Fretes (após filtro): ${fretes.length} | Contas (após filtro): ${contas.length}`);
+
             const mapaFinal = {};
+
+            // 2. Base a partir do controle_frete
             for (const f of fretes) {
                 const k = chave(f.numero_nf, f.vendedor);
                 mapaFinal[k] = {
@@ -164,11 +164,10 @@ module.exports = function (supabase) {
                 };
             }
 
-            // ── 3. Aplica dados de contas_receber (inclui parcelas) ───────────
+            // 3. Aplicar dados de contas_receber (pagamentos)
             for (const c of contas) {
-                const k    = chave(c.numero_nf, c.vendedor);
+                const k = chave(c.numero_nf, c.vendedor);
                 const idCR = (!isNaN(Number(c.id)) && String(c.id).length < 15) ? Number(c.id) : null;
-
                 const pgto = processarConta(c);
 
                 const paymentFields = {
@@ -182,11 +181,10 @@ module.exports = function (supabase) {
                 };
 
                 if (mapaFinal[k]) {
-                    // Merge: enriquece registro de frete com dados de pagamento
                     Object.assign(mapaFinal[k], paymentFields);
                     mapaFinal[k].updated_at = new Date().toISOString();
                 } else {
-                    // Registro exclusivo de contas_receber (sem frete associado)
+                    // Registro exclusivo de contas_receber (sem frete)
                     mapaFinal[k] = {
                         numero_nf:    (c.numero_nf || '').trim(),
                         origem:       'CONTAS_RECEBER',
@@ -206,12 +204,12 @@ module.exports = function (supabase) {
 
             const registros = Object.values(mapaFinal);
             if (!registros.length) {
-                return res.json({ success: true, message: '0 registros sincronizados', total: 0 });
+                return res.json({ success: true, message: '0 registros sincronizados (após exclusão de tipos)', total: 0 });
             }
 
-            // ── 4. Upsert em lotes de 200 ─────────────────────────────────────
+            // 4. Upsert em lotes
             const CHUNK = 200;
-            let   erros = 0;
+            let erros = 0;
             for (let i = 0; i < registros.length; i += CHUNK) {
                 const chunk = registros.slice(i, i + CHUNK);
                 const { error: uErr } = await supabase
