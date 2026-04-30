@@ -15,23 +15,15 @@ let calendarYear = new Date().getFullYear();
 console.log('🚀 Vendas Consolidada iniciada');
 console.log('📍 API URL:', API_URL);
 
-// Inicialização
 document.addEventListener('DOMContentLoaded', () => {
     if (DEVELOPMENT_MODE) {
         sessionToken = 'dev-mode';
     } else {
         const urlParams = new URLSearchParams(window.location.search);
         sessionToken = urlParams.get('sessionToken') || sessionStorage.getItem('vendasSession');
-
-        if (!sessionToken) {
-            sessionToken = 'no-auth';
-        }
-
-        if (urlParams.get('sessionToken')) {
-            sessionStorage.setItem('vendasSession', sessionToken);
-        }
+        if (!sessionToken) sessionToken = 'no-auth';
+        if (urlParams.get('sessionToken')) sessionStorage.setItem('vendasSession', sessionToken);
     }
-
     inicializarApp();
 });
 
@@ -60,7 +52,6 @@ function changeMonth(direction) {
 function toggleCalendar() {
     const modal = document.getElementById('calendarModal');
     if (!modal) return;
-
     if (modal.classList.contains('show')) {
         modal.classList.remove('show');
     } else {
@@ -78,25 +69,18 @@ function changeCalendarYear(direction) {
 function renderCalendar() {
     const yearElement = document.getElementById('calendarYear');
     const monthsContainer = document.getElementById('calendarMonths');
-
     if (!yearElement || !monthsContainer) return;
-
     yearElement.textContent = calendarYear;
-
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-
     monthsContainer.innerHTML = '';
-
     monthNames.forEach((name, index) => {
         const monthButton = document.createElement('div');
         monthButton.className = 'calendar-month';
         monthButton.textContent = name;
-
         if (calendarYear === currentMonth.getFullYear() && index === currentMonth.getMonth()) {
             monthButton.classList.add('current');
         }
-
         monthButton.onclick = () => selectMonth(index);
         monthsContainer.appendChild(monthButton);
     });
@@ -115,20 +99,17 @@ function selectMonth(monthIndex) {
 window.gerarPDF = function() {
     const filterVendedor = document.getElementById('filterVendedor');
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
-
     if (!vendedorSelecionado) {
         showToast('Selecione um Vendedor', 'error');
         return;
     }
-
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-    // Filtrar vendas pagas do vendedor selecionado no mês atual
+    // Pagamentos no mês atual (independente da emissão)
     const vendasPagas = allVendas.filter(v => {
         if (v.origem !== 'CONTAS_RECEBER' || !v.data_pagamento) return false;
         if (v.vendedor !== vendedorSelecionado) return false;
-
         const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
         return dataPagamento.getMonth() === currentMonth.getMonth() &&
                dataPagamento.getFullYear() === currentMonth.getFullYear();
@@ -139,22 +120,17 @@ window.gerarPDF = function() {
         return;
     }
 
-    // Criar PDF
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-
-    // Título
     doc.setFontSize(18);
     doc.setFont(undefined, 'bold');
     doc.text('RELATÓRIO DE COMISSÃO', 105, 20, { align: 'center' });
-
     doc.setFontSize(12);
     doc.setFont(undefined, 'normal');
     doc.text(`Vendedor: ${vendedorSelecionado}`, 105, 30, { align: 'center' });
     doc.text(`Período: ${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`, 105, 37, { align: 'center' });
     doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 105, 44, { align: 'center' });
 
-    // Preparar dados da tabela
     const tableData = vendasPagas.map(v => [
         v.numero_nf,
         formatDate(v.data_emissao),
@@ -162,62 +138,36 @@ window.gerarPDF = function() {
         formatCurrency(v.valor_nf)
     ]);
 
-    // Calcular total e comissão
     const totalPago = vendasPagas.reduce((sum, v) => sum + (parseFloat(v.valor_nf) || 0), 0);
     const comissao = totalPago * 0.01;
 
-    // Adicionar tabela
     doc.autoTable({
         startY: 55,
         head: [['NF', 'Emissão', 'Data Pagamento', 'Valor']],
         body: tableData,
         theme: 'grid',
-        headStyles: {
-            fillColor: [100, 100, 100],
-            textColor: [255, 255, 255],
-            fontStyle: 'bold',
-            halign: 'center'
-        },
-        styles: {
-            fontSize: 10,
-            cellPadding: 3
-        },
-        columnStyles: {
-            0: { halign: 'center' },
-            1: { halign: 'center' },
-            2: { halign: 'center' },
-            3: { halign: 'right' }
-        }
+        headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        styles: { fontSize: 10, cellPadding: 3 },
+        columnStyles: { 0: { halign: 'center' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' } }
     });
 
-    // Adicionar totais após a tabela
     const finalY = doc.lastAutoTable.finalY + 10;
-
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
     doc.text(`TOTAL: ${formatCurrency(totalPago)}`, 14, finalY);
-    doc.text(`A RECEBER: ${formatCurrency(comissao)}`, 14, finalY + 7);
-
-    // Salvar PDF
-    const fileName = `RELATÓRIO DE COMISSÃO-${vendedorSelecionado}.pdf`;
-    doc.save(fileName);
-
+    doc.text(`COMISSÃO (1%): ${formatCurrency(comissao)}`, 14, finalY + 7);
+    doc.save(`RELATÓRIO DE COMISSÃO-${vendedorSelecionado}.pdf`);
     showToast('Relatório gerado com sucesso', 'success');
 };
 
 // ============================================
-// FUNÇÕES DE SINCRONIZAÇÃO E CARREGAMENTO
+// SINCRONIZAÇÃO E CARREGAMENTO
 // ============================================
 async function checkServerStatus() {
     try {
-        const response = await fetch(`${API_URL}/health`, {
-            method: 'GET',
-            mode: 'cors'
-        });
-
+        const response = await fetch(`${API_URL}/health`, { method: 'GET', mode: 'cors' });
         const wasOffline = !isOnline;
         isOnline = response.ok;
-
         const statusElem = document.getElementById('connectionStatus');
         if (statusElem) {
             if (isOnline) {
@@ -228,7 +178,6 @@ async function checkServerStatus() {
                 statusElem.classList.add('offline');
             }
         }
-
         if (wasOffline && isOnline) {
             console.log('✅ Conexão restaurada');
             await loadVendas();
@@ -244,29 +193,18 @@ async function checkServerStatus() {
     }
 }
 
-// ✅ FIX 1: URL corrigida de /vendas-consolidadas para /vendas
 async function loadVendas() {
     try {
         console.log('🔄 Carregando vendas...');
-
         const response = await fetch(`${API_URL}/vendas`, {
             method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Session-Token': sessionToken
-            },
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
             mode: 'cors'
         });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const data = await response.json();
         console.log(`✅ ${data.length} vendas carregadas`);
-
         const newHash = JSON.stringify(data.map(v => v.id));
-
         if (newHash !== lastDataHash) {
             allVendas = data;
             lastDataHash = newHash;
@@ -278,29 +216,19 @@ async function loadVendas() {
     }
 }
 
-// ✅ FIX 2: syncData agora chama POST /sincronizar antes de recarregar os dados
 async function syncData() {
     showToast('Sincronizando dados...', 'success');
     try {
         const response = await fetch(`${API_URL}/vendas/sincronizar`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Session-Token': sessionToken
-            },
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
             mode: 'cors'
         });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         console.log('✅ Sincronização:', result);
-
         if (result.success) {
             showToast(`✅ ${result.message}`, 'success');
-            // Força recarregamento mesmo que o hash seja igual
             lastDataHash = '';
             await loadVendas();
         } else {
@@ -317,37 +245,54 @@ function updateDisplay() {
     updateTable();
 }
 
+// ============================================
+// DASHBOARD CORRIGIDO
+// ============================================
 function loadDashboard() {
-    // CONTABILIZAÇÃO UNIVERSAL - TODOS OS MESES
-    let totalPago = 0;
-    let totalAReceber = 0;
-    let totalEntregue = 0;
-    let totalFaturado = 0;
+    const currentYear = currentMonth.getFullYear();
+    const currentMonthIndex = currentMonth.getMonth();
 
-    allVendas.forEach(v => {
+    let totalPago = 0;      // Pagamentos realizados no mês (data_pagamento)
+    let totalAReceber = 0;  // Entregues mas não pagos (qualquer mês)
+    let totalEntregue = 0;   // Entregas no mês (baseado na data_emissão)
+    let totalFaturado = 0;   // Faturamento no mês (data_emissão)
+
+    for (const v of allVendas) {
         const valor = parseFloat(v.valor_nf) || 0;
-        const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
 
-        // Verifica se é do ano atual
-        if (dataEmissao.getFullYear() === currentMonth.getFullYear()) {
-            totalFaturado += valor;
-
-            if (v.origem === 'CONTROLE_FRETE' && v.status_frete === 'ENTREGUE') {
-                totalAReceber += valor;
-                totalEntregue++;
-            } else if (v.origem === 'CONTAS_RECEBER' && v.data_pagamento) {
-                totalPago += valor;
-                totalAReceber -= valor;
-                totalEntregue++;
-            } else if (v.origem === 'CONTAS_RECEBER' && !v.data_pagamento) {
-                totalAReceber += valor;
+        // --- FATURADO (emissão no mês) ---
+        if (v.data_emissao) {
+            const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
+            if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
+                totalFaturado += valor;
             }
         }
-    });
 
-    // Garante que A Receber não fique negativo
-    totalAReceber = Math.max(0, totalAReceber);
+        // --- ENTREGUE (entregas no mês, consideramos status_frete = ENTREGUE E emissão no mês) ---
+        if (v.status_frete === 'ENTREGUE' && v.data_emissao) {
+            const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
+            if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
+                totalEntregue++;
+            }
+        }
 
+        // --- PAGO (data_pagamento no mês) ---
+        if (v.data_pagamento) {
+            const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
+            if (dataPagamento.getMonth() === currentMonthIndex && dataPagamento.getFullYear() === currentYear) {
+                totalPago += valor;
+            }
+        }
+
+        // --- A RECEBER (entregues E não pagos) ---
+        const isEntregue = (v.status_frete === 'ENTREGUE');
+        const isPago = (v.data_pagamento !== null && v.data_pagamento !== undefined);
+        if (isEntregue && !isPago) {
+            totalAReceber += valor;
+        }
+    }
+
+    // Atualizar elementos HTML
     document.getElementById('totalPago').textContent = formatCurrency(totalPago);
     document.getElementById('totalAReceber').textContent = formatCurrency(totalAReceber);
     document.getElementById('totalEntregue').textContent = totalEntregue;
@@ -355,7 +300,7 @@ function loadDashboard() {
 }
 
 // ============================================
-// RENDERIZAÇÃO DA TABELA
+// RENDERIZAÇÃO DA TABELA (sem alterações relevantes)
 // ============================================
 function updateTable() {
     const container = document.getElementById('vendasContainer');
@@ -365,20 +310,19 @@ function updateTable() {
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
 
     let monthVendas = allVendas.filter(v => {
+        if (!v.data_emissao) return false;
         const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
         return dataEmissao.getMonth() === currentMonth.getMonth() &&
                dataEmissao.getFullYear() === currentMonth.getFullYear();
     });
 
     let filteredVendas = [...monthVendas];
-
     if (vendedorSelecionado) {
         filteredVendas = filteredVendas.filter(v => v.vendedor === vendedorSelecionado);
     }
 
     const searchElem = document.getElementById('search');
     const filterStatusElem = document.getElementById('filterStatus');
-
     const search = searchElem ? searchElem.value.toLowerCase() : '';
     const filterStatus = filterStatusElem ? filterStatusElem.value : '';
 
@@ -389,7 +333,6 @@ function updateTable() {
         );
     }
 
-    // ✅ FIX 3: Normaliza status para comparação (underscore vs espaço, acento)
     if (filterStatus) {
         filteredVendas = filteredVendas.filter(v => {
             if (filterStatus === 'PAGO') {
@@ -404,11 +347,7 @@ function updateTable() {
         });
     }
 
-    filteredVendas.sort((a, b) => {
-        const nfA = parseInt(a.numero_nf) || 0;
-        const nfB = parseInt(b.numero_nf) || 0;
-        return nfA - nfB;
-    });
+    filteredVendas.sort((a, b) => (parseInt(a.numero_nf) || 0) - (parseInt(b.numero_nf) || 0));
 
     if (filteredVendas.length === 0) {
         container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Nenhuma venda encontrada</div>';
@@ -434,7 +373,6 @@ function updateTable() {
                         const status = getStatus(venda);
                         const statusInfo = getStatusInfo(status);
                         const rowClass = statusInfo.rowClass;
-
                         return `
                         <tr class="${rowClass}">
                             <td><strong>${venda.numero_nf}</strong></td>
@@ -452,47 +390,30 @@ function updateTable() {
             </table>
         </div>
     `;
-
     container.innerHTML = table;
 }
 
-// ✅ FIX 3 (auxiliar): Normaliza status removendo underscores, acentos e colocando em maiúsculo
 function normalizeStatus(status) {
     if (!status) return '';
-    return status
-        .toUpperCase()
-        .replace(/_/g, ' ')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, ''); // remove acentos para comparação
+    return status.toUpperCase().replace(/_/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 function getStatus(venda) {
-    if (venda.origem === 'CONTAS_RECEBER' && venda.data_pagamento) {
-        return 'PAGO';
-    }
-    if (venda.origem === 'CONTROLE_FRETE') {
-        return venda.status_frete || 'EM_TRANSITO';
-    }
+    if (venda.origem === 'CONTAS_RECEBER' && venda.data_pagamento) return 'PAGO';
+    if (venda.origem === 'CONTROLE_FRETE') return venda.status_frete || 'EM_TRANSITO';
     return 'EM_TRANSITO';
 }
 
 function getStatusInfo(status) {
-    const statusMap = {
+    const map = {
         'PAGO': { rowClass: 'row-pago' },
-        'ENTREGUE': { rowClass: 'row-entregue' },
-        'EM_TRANSITO': { rowClass: '' },
-        'EM TRÂNSITO': { rowClass: '' },
-        'AGUARDANDO_COLETA': { rowClass: '' },
-        'AGUARDANDO COLETA': { rowClass: '' },
-        'EXTRAVIADO': { rowClass: '' },
-        'DEVOLVIDO': { rowClass: '' }
+        'ENTREGUE': { rowClass: 'row-entregue' }
     };
-
-    return statusMap[status] || { rowClass: '' };
+    return map[status] || { rowClass: '' };
 }
 
 function getStatusBadge(status) {
-    const statusMap = {
+    const map = {
         'PAGO': { class: 'pago', text: 'PAGO' },
         'ENTREGUE': { class: 'entregue', text: 'ENTREGUE' },
         'EM_TRANSITO': { class: 'transito', text: 'EM TRÂNSITO' },
@@ -500,14 +421,9 @@ function getStatusBadge(status) {
         'AGUARDANDO_COLETA': { class: 'aguardando', text: 'AGUARDANDO COLETA' },
         'AGUARDANDO COLETA': { class: 'aguardando', text: 'AGUARDANDO COLETA' },
         'EXTRAVIADO': { class: 'extraviado', text: 'EXTRAVIADO' },
-        'DEVOLVIDO': { class: 'devolvido', text: 'DEVOLVIDO' },
-        'SIMPLES_REMESSA': { class: 'badge-especial', text: 'SIMPLES REMESSA' },
-        'SIMPLES REMESSA': { class: 'badge-especial', text: 'SIMPLES REMESSA' },
-        'REMESSA_AMOSTRA': { class: 'badge-especial', text: 'REMESSA DE AMOSTRA' },
-        'REMESSA DE AMOSTRA': { class: 'badge-especial', text: 'REMESSA DE AMOSTRA' }
+        'DEVOLVIDO': { class: 'devolvido', text: 'DEVOLVIDO' }
     };
-
-    const s = statusMap[status] || { class: 'transito', text: status.replace(/_/g, ' ') };
+    const s = map[status] || { class: 'transito', text: status.replace(/_/g, ' ') };
     return `<span class="badge ${s.class}">${s.text}</span>`;
 }
 
@@ -518,10 +434,8 @@ function filterVendas() {
 function viewVenda(id) {
     const venda = allVendas.find(v => v.id === id);
     if (!venda) return;
-
     const nfElem = document.getElementById('modalNumeroNF');
     if (nfElem) nfElem.textContent = venda.numero_nf;
-
     const modalBody = document.getElementById('modalBody');
     if (!modalBody) return;
 
@@ -561,7 +475,6 @@ function viewVenda(id) {
             </div>
         `;
     }
-
     const modal = document.getElementById('infoModal');
     if (modal) modal.classList.add('show');
 }
@@ -580,24 +493,16 @@ function formatDate(dateString) {
 function formatCurrency(value) {
     if (!value) return 'R$ 0,00';
     const num = parseFloat(value);
-    return num.toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    });
+    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function showToast(message, type = 'success') {
     const oldMessages = document.querySelectorAll('.floating-message');
     oldMessages.forEach(msg => msg.remove());
-
     const messageDiv = document.createElement('div');
     messageDiv.className = `floating-message ${type}`;
     messageDiv.textContent = message;
-
     document.body.appendChild(messageDiv);
-
     setTimeout(() => {
         messageDiv.style.animation = 'slideOutBottom 0.3s ease forwards';
         setTimeout(() => messageDiv.remove(), 300);
