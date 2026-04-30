@@ -6,7 +6,6 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // Lista de tipos de NF que NÃO devem ir para o Vendas (mas permanecem no Contas a Receber)
     const EXCLUDED_FOR_VENDAS = [
         'DEVOLUÇÃO', 'DEVOLUCAO', 'DEVOLUÇÃO DE MERCADORIA',
         'SIMPLES REMESSA', 'SIMPLES_REMESSA',
@@ -19,7 +18,6 @@ module.exports = function (supabase) {
         return EXCLUDED_FOR_VENDAS.some(ex => normalized.includes(ex.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
     }
 
-    // GET / - listar todas as contas (incluindo especiais)
     router.get('/', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -29,12 +27,11 @@ module.exports = function (supabase) {
             if (error) throw error;
             res.json(data);
         } catch (err) {
-            console.error('Erro ao listar contas:', err.message);
+            console.error('Erro ao listar:', err.message);
             res.status(500).json({ error: 'Erro ao listar contas' });
         }
     });
 
-    // GET /:id
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -46,17 +43,14 @@ module.exports = function (supabase) {
             if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
             res.json(data);
         } catch (err) {
-            console.error('Erro ao buscar conta:', err.message);
+            console.error('Erro ao buscar:', err.message);
             res.status(500).json({ error: 'Erro ao buscar conta' });
         }
     });
 
-    // POST / - criar nova conta
     router.post('/', async (req, res) => {
         try {
             const { parcelas, ...dados } = req.body;
-
-            // Construir objeto observacoes com parcelas (se houver)
             let observacoes = null;
             if (parcelas && Array.isArray(parcelas) && parcelas.length > 0) {
                 observacoes = JSON.stringify({
@@ -68,7 +62,6 @@ module.exports = function (supabase) {
                     }))
                 });
             }
-
             const payload = {
                 numero_nf: dados.numero_nf?.toUpperCase().trim(),
                 orgao: dados.orgao?.toUpperCase().trim(),
@@ -78,37 +71,31 @@ module.exports = function (supabase) {
                 data_emissao: dados.data_emissao,
                 data_vencimento: dados.data_vencimento || null,
                 tipo_nf: dados.tipo_nf || 'ENVIO',
-                status: dados.status || 'A RECEBER', // preserva o status enviado (ex: "DEVOLUÇÃO")
+                status: dados.status || 'A RECEBER',
                 observacoes: observacoes,
                 valor_pago: parseFloat(dados.valor_pago) || 0,
                 data_pagamento: dados.data_pagamento || null
             };
-
             const { data: novaConta, error } = await supabase
                 .from('contas_receber')
                 .insert([payload])
                 .select()
                 .single();
             if (error) throw error;
-
-            // Sincronizar com Vendas apenas se não for nota especial excluída
             if (!isExcludedForVendas(novaConta.tipo_nf)) {
                 sincronizarVendas(supabase, novaConta).catch(console.error);
             }
-
             res.status(201).json(novaConta);
         } catch (err) {
-            console.error('Erro ao criar conta:', err.message);
+            console.error('Erro ao criar:', err.message);
             res.status(500).json({ error: 'Erro ao criar conta', details: err.message });
         }
     });
 
-    // PUT /:id - atualizar conta completa
     router.put('/:id', async (req, res) => {
         try {
             const { id } = req.params;
             const { parcelas, ...dados } = req.body;
-
             let observacoes = null;
             if (parcelas && Array.isArray(parcelas) && parcelas.length > 0) {
                 observacoes = JSON.stringify({
@@ -120,7 +107,6 @@ module.exports = function (supabase) {
                     }))
                 });
             }
-
             const payload = {
                 numero_nf: dados.numero_nf?.toUpperCase().trim(),
                 orgao: dados.orgao?.toUpperCase().trim(),
@@ -136,7 +122,6 @@ module.exports = function (supabase) {
                 data_pagamento: dados.data_pagamento || null,
                 updated_at: new Date().toISOString()
             };
-
             const { data: contaAtualizada, error } = await supabase
                 .from('contas_receber')
                 .update(payload)
@@ -145,19 +130,16 @@ module.exports = function (supabase) {
                 .single();
             if (error) throw error;
             if (!contaAtualizada) return res.status(404).json({ error: 'Conta não encontrada' });
-
             if (!isExcludedForVendas(contaAtualizada.tipo_nf)) {
                 sincronizarVendas(supabase, contaAtualizada).catch(console.error);
             }
-
             res.json(contaAtualizada);
         } catch (err) {
-            console.error('Erro ao atualizar conta:', err.message);
+            console.error('Erro ao atualizar:', err.message);
             res.status(500).json({ error: 'Erro ao atualizar conta' });
         }
     });
 
-    // PATCH /:id - atualização parcial (usado para marcar pagamento)
     router.patch('/:id', async (req, res) => {
         try {
             const updates = { ...req.body, updated_at: new Date().toISOString() };
@@ -169,11 +151,9 @@ module.exports = function (supabase) {
                 .single();
             if (error) throw error;
             if (!contaAtualizada) return res.status(404).json({ error: 'Conta não encontrada' });
-
             if (!isExcludedForVendas(contaAtualizada.tipo_nf)) {
                 sincronizarVendas(supabase, contaAtualizada).catch(console.error);
             }
-
             res.json(contaAtualizada);
         } catch (err) {
             console.error('Erro no PATCH:', err.message);
@@ -181,7 +161,6 @@ module.exports = function (supabase) {
         }
     });
 
-    // DELETE /:id
     router.delete('/:id', async (req, res) => {
         try {
             const { error } = await supabase
@@ -191,7 +170,7 @@ module.exports = function (supabase) {
             if (error) throw error;
             res.json({ success: true });
         } catch (err) {
-            console.error('Erro ao deletar conta:', err.message);
+            console.error('Erro ao deletar:', err.message);
             res.status(500).json({ error: 'Erro ao deletar conta' });
         }
     });
@@ -199,13 +178,11 @@ module.exports = function (supabase) {
     return router;
 };
 
-// Sincronização com Vendas (apenas para notas não excluídas)
 async function sincronizarVendas(supabase, conta) {
     if (!conta || !conta.numero_nf || !conta.vendedor) return;
-    const EXCLUDED_FOR_VENDAS = ['DEVOLUÇÃO', 'DEVOLUCAO', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA'];
-    const isExcluded = EXCLUDED_FOR_VENDAS.some(ex => conta.tipo_nf?.toUpperCase().includes(ex));
+    const EXCLUDED_TYPES = ['DEVOLUÇÃO', 'DEVOLUCAO', 'SIMPLES REMESSA', 'REMESSA DE AMOSTRA'];
+    const isExcluded = EXCLUDED_TYPES.some(ex => conta.tipo_nf?.toUpperCase().includes(ex));
     if (isExcluded) return;
-
     const payload = {
         numero_nf: conta.numero_nf,
         origem: 'CONTAS_RECEBER',
@@ -222,13 +199,11 @@ async function sincronizarVendas(supabase, conta) {
         id_contas_receber: conta.id,
         updated_at: new Date().toISOString()
     };
-
     const { data: existente } = await supabase
         .from('vendas')
         .select('id')
         .eq('id_contas_receber', conta.id)
         .single();
-
     if (existente) {
         await supabase.from('vendas').update(payload).eq('id', existente.id);
     } else {
