@@ -22,16 +22,16 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
         const urlParams = new URLSearchParams(window.location.search);
         sessionToken = urlParams.get('sessionToken') || sessionStorage.getItem('vendasSession');
-        
+
         if (!sessionToken) {
             sessionToken = 'no-auth';
         }
-        
+
         if (urlParams.get('sessionToken')) {
             sessionStorage.setItem('vendasSession', sessionToken);
         }
     }
-    
+
     inicializarApp();
 });
 
@@ -44,7 +44,7 @@ function inicializarApp() {
 }
 
 function updateMonthDisplay() {
-    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
     const monthStr = `${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
     const elem = document.getElementById('currentMonth');
@@ -60,7 +60,7 @@ function changeMonth(direction) {
 function toggleCalendar() {
     const modal = document.getElementById('calendarModal');
     if (!modal) return;
-    
+
     if (modal.classList.contains('show')) {
         modal.classList.remove('show');
     } else {
@@ -78,25 +78,25 @@ function changeCalendarYear(direction) {
 function renderCalendar() {
     const yearElement = document.getElementById('calendarYear');
     const monthsContainer = document.getElementById('calendarMonths');
-    
+
     if (!yearElement || !monthsContainer) return;
-    
+
     yearElement.textContent = calendarYear;
-    
-    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    
+
     monthsContainer.innerHTML = '';
-    
+
     monthNames.forEach((name, index) => {
         const monthButton = document.createElement('div');
         monthButton.className = 'calendar-month';
         monthButton.textContent = name;
-        
+
         if (calendarYear === currentMonth.getFullYear() && index === currentMonth.getMonth()) {
             monthButton.classList.add('current');
         }
-        
+
         monthButton.onclick = () => selectMonth(index);
         monthsContainer.appendChild(monthButton);
     });
@@ -115,45 +115,45 @@ function selectMonth(monthIndex) {
 window.gerarPDF = function() {
     const filterVendedor = document.getElementById('filterVendedor');
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
-    
+
     if (!vendedorSelecionado) {
         showToast('Selecione um Vendedor', 'error');
         return;
     }
-    
-    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 
+
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    
+
     // Filtrar vendas pagas do vendedor selecionado no mês atual
     const vendasPagas = allVendas.filter(v => {
         if (v.origem !== 'CONTAS_RECEBER' || !v.data_pagamento) return false;
         if (v.vendedor !== vendedorSelecionado) return false;
-        
+
         const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
-        return dataPagamento.getMonth() === currentMonth.getMonth() && 
+        return dataPagamento.getMonth() === currentMonth.getMonth() &&
                dataPagamento.getFullYear() === currentMonth.getFullYear();
     });
-    
+
     if (vendasPagas.length === 0) {
         showToast('Nenhum pagamento encontrado para este vendedor', 'error');
         return;
     }
-    
+
     // Criar PDF
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    
+
     // Título
     doc.setFontSize(18);
     doc.setFont(undefined, 'bold');
     doc.text('RELATÓRIO DE COMISSÃO', 105, 20, { align: 'center' });
-    
+
     doc.setFontSize(12);
     doc.setFont(undefined, 'normal');
     doc.text(`Vendedor: ${vendedorSelecionado}`, 105, 30, { align: 'center' });
     doc.text(`Período: ${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`, 105, 37, { align: 'center' });
     doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 105, 44, { align: 'center' });
-    
+
     // Preparar dados da tabela
     const tableData = vendasPagas.map(v => [
         v.numero_nf,
@@ -161,11 +161,11 @@ window.gerarPDF = function() {
         formatDate(v.data_pagamento),
         formatCurrency(v.valor_nf)
     ]);
-    
+
     // Calcular total e comissão
     const totalPago = vendasPagas.reduce((sum, v) => sum + (parseFloat(v.valor_nf) || 0), 0);
     const comissao = totalPago * 0.01;
-    
+
     // Adicionar tabela
     doc.autoTable({
         startY: 55,
@@ -189,19 +189,19 @@ window.gerarPDF = function() {
             3: { halign: 'right' }
         }
     });
-    
+
     // Adicionar totais após a tabela
     const finalY = doc.lastAutoTable.finalY + 10;
-    
+
     doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
     doc.text(`TOTAL: ${formatCurrency(totalPago)}`, 14, finalY);
     doc.text(`A RECEBER: ${formatCurrency(comissao)}`, 14, finalY + 7);
-    
+
     // Salvar PDF
     const fileName = `RELATÓRIO DE COMISSÃO-${vendedorSelecionado}.pdf`;
     doc.save(fileName);
-    
+
     showToast('Relatório gerado com sucesso', 'success');
 };
 
@@ -210,14 +210,14 @@ window.gerarPDF = function() {
 // ============================================
 async function checkServerStatus() {
     try {
-        const response = await fetch(`${API_URL}/health`, { 
+        const response = await fetch(`${API_URL}/health`, {
             method: 'GET',
             mode: 'cors'
         });
-        
+
         const wasOffline = !isOnline;
         isOnline = response.ok;
-        
+
         const statusElem = document.getElementById('connectionStatus');
         if (statusElem) {
             if (isOnline) {
@@ -228,7 +228,7 @@ async function checkServerStatus() {
                 statusElem.classList.add('offline');
             }
         }
-        
+
         if (wasOffline && isOnline) {
             console.log('✅ Conexão restaurada');
             await loadVendas();
@@ -244,11 +244,12 @@ async function checkServerStatus() {
     }
 }
 
+// ✅ FIX 1: URL corrigida de /vendas-consolidadas para /vendas
 async function loadVendas() {
     try {
         console.log('🔄 Carregando vendas...');
-        
-        const response = await fetch(`${API_URL}/vendas-consolidadas`, {
+
+        const response = await fetch(`${API_URL}/vendas`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
@@ -256,16 +257,16 @@ async function loadVendas() {
             },
             mode: 'cors'
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const data = await response.json();
         console.log(`✅ ${data.length} vendas carregadas`);
-        
+
         const newHash = JSON.stringify(data.map(v => v.id));
-        
+
         if (newHash !== lastDataHash) {
             allVendas = data;
             lastDataHash = newHash;
@@ -277,9 +278,38 @@ async function loadVendas() {
     }
 }
 
-function syncData() {
-    loadVendas();
+// ✅ FIX 2: syncData agora chama POST /sincronizar antes de recarregar os dados
+async function syncData() {
     showToast('Sincronizando dados...', 'success');
+    try {
+        const response = await fetch(`${API_URL}/vendas/sincronizar`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Token': sessionToken
+            },
+            mode: 'cors'
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('✅ Sincronização:', result);
+
+        if (result.success) {
+            showToast(`✅ ${result.message}`, 'success');
+            // Força recarregamento mesmo que o hash seja igual
+            lastDataHash = '';
+            await loadVendas();
+        } else {
+            showToast(`Erro: ${result.message || 'Sincronização falhou'}`, 'error');
+        }
+    } catch (error) {
+        console.error('❌ Erro ao sincronizar:', error);
+        showToast('Erro ao sincronizar dados', 'error');
+    }
 }
 
 function updateDisplay() {
@@ -293,15 +323,15 @@ function loadDashboard() {
     let totalAReceber = 0;
     let totalEntregue = 0;
     let totalFaturado = 0;
-    
+
     allVendas.forEach(v => {
         const valor = parseFloat(v.valor_nf) || 0;
         const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
-        
+
         // Verifica se é do ano atual
         if (dataEmissao.getFullYear() === currentMonth.getFullYear()) {
             totalFaturado += valor;
-            
+
             if (v.origem === 'CONTROLE_FRETE' && v.status_frete === 'ENTREGUE') {
                 totalAReceber += valor;
                 totalEntregue++;
@@ -314,10 +344,10 @@ function loadDashboard() {
             }
         }
     });
-    
+
     // Garante que A Receber não fique negativo
     totalAReceber = Math.max(0, totalAReceber);
-    
+
     document.getElementById('totalPago').textContent = formatCurrency(totalPago);
     document.getElementById('totalAReceber').textContent = formatCurrency(totalAReceber);
     document.getElementById('totalEntregue').textContent = totalEntregue;
@@ -330,54 +360,61 @@ function loadDashboard() {
 function updateTable() {
     const container = document.getElementById('vendasContainer');
     if (!container) return;
-    
+
     const filterVendedor = document.getElementById('filterVendedor');
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
-    
+
     let monthVendas = allVendas.filter(v => {
         const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
-        return dataEmissao.getMonth() === currentMonth.getMonth() && 
+        return dataEmissao.getMonth() === currentMonth.getMonth() &&
                dataEmissao.getFullYear() === currentMonth.getFullYear();
     });
-    
+
     let filteredVendas = [...monthVendas];
-    
+
     if (vendedorSelecionado) {
         filteredVendas = filteredVendas.filter(v => v.vendedor === vendedorSelecionado);
     }
-    
+
     const searchElem = document.getElementById('search');
     const filterStatusElem = document.getElementById('filterStatus');
-    
+
     const search = searchElem ? searchElem.value.toLowerCase() : '';
     const filterStatus = filterStatusElem ? filterStatusElem.value : '';
-    
+
     if (search) {
-        filteredVendas = filteredVendas.filter(v => 
+        filteredVendas = filteredVendas.filter(v =>
             (v.numero_nf || '').toLowerCase().includes(search) ||
             (v.nome_orgao || '').toLowerCase().includes(search)
         );
     }
-    
+
+    // ✅ FIX 3: Normaliza status para comparação (underscore vs espaço, acento)
     if (filterStatus) {
         filteredVendas = filteredVendas.filter(v => {
-            if (filterStatus === 'PAGO') return v.origem === 'CONTAS_RECEBER' && v.data_pagamento;
-            if (v.origem === 'CONTROLE_FRETE') return v.status_frete === filterStatus;
+            if (filterStatus === 'PAGO') {
+                return v.origem === 'CONTAS_RECEBER' && v.data_pagamento;
+            }
+            if (v.origem === 'CONTROLE_FRETE') {
+                const statusNorm = normalizeStatus(v.status_frete);
+                const filterNorm = normalizeStatus(filterStatus);
+                return statusNorm === filterNorm;
+            }
             return false;
         });
     }
-    
+
     filteredVendas.sort((a, b) => {
         const nfA = parseInt(a.numero_nf) || 0;
         const nfB = parseInt(b.numero_nf) || 0;
         return nfA - nfB;
     });
-    
+
     if (filteredVendas.length === 0) {
         container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Nenhuma venda encontrada</div>';
         return;
     }
-    
+
     const table = `
         <div style="overflow-x: auto;">
             <table>
@@ -397,7 +434,7 @@ function updateTable() {
                         const status = getStatus(venda);
                         const statusInfo = getStatusInfo(status);
                         const rowClass = statusInfo.rowClass;
-                        
+
                         return `
                         <tr class="${rowClass}">
                             <td><strong>${venda.numero_nf}</strong></td>
@@ -415,8 +452,18 @@ function updateTable() {
             </table>
         </div>
     `;
-    
+
     container.innerHTML = table;
+}
+
+// ✅ FIX 3 (auxiliar): Normaliza status removendo underscores, acentos e colocando em maiúsculo
+function normalizeStatus(status) {
+    if (!status) return '';
+    return status
+        .toUpperCase()
+        .replace(/_/g, ' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, ''); // remove acentos para comparação
 }
 
 function getStatus(venda) {
@@ -434,11 +481,13 @@ function getStatusInfo(status) {
         'PAGO': { rowClass: 'row-pago' },
         'ENTREGUE': { rowClass: 'row-entregue' },
         'EM_TRANSITO': { rowClass: '' },
+        'EM TRÂNSITO': { rowClass: '' },
         'AGUARDANDO_COLETA': { rowClass: '' },
+        'AGUARDANDO COLETA': { rowClass: '' },
         'EXTRAVIADO': { rowClass: '' },
         'DEVOLVIDO': { rowClass: '' }
     };
-    
+
     return statusMap[status] || { rowClass: '' };
 }
 
@@ -447,13 +496,17 @@ function getStatusBadge(status) {
         'PAGO': { class: 'pago', text: 'PAGO' },
         'ENTREGUE': { class: 'entregue', text: 'ENTREGUE' },
         'EM_TRANSITO': { class: 'transito', text: 'EM TRÂNSITO' },
+        'EM TRÂNSITO': { class: 'transito', text: 'EM TRÂNSITO' },
         'AGUARDANDO_COLETA': { class: 'aguardando', text: 'AGUARDANDO COLETA' },
+        'AGUARDANDO COLETA': { class: 'aguardando', text: 'AGUARDANDO COLETA' },
         'EXTRAVIADO': { class: 'extraviado', text: 'EXTRAVIADO' },
         'DEVOLVIDO': { class: 'devolvido', text: 'DEVOLVIDO' },
         'SIMPLES_REMESSA': { class: 'badge-especial', text: 'SIMPLES REMESSA' },
-        'REMESSA_AMOSTRA': { class: 'badge-especial', text: 'REMESSA DE AMOSTRA' }
+        'SIMPLES REMESSA': { class: 'badge-especial', text: 'SIMPLES REMESSA' },
+        'REMESSA_AMOSTRA': { class: 'badge-especial', text: 'REMESSA DE AMOSTRA' },
+        'REMESSA DE AMOSTRA': { class: 'badge-especial', text: 'REMESSA DE AMOSTRA' }
     };
-    
+
     const s = statusMap[status] || { class: 'transito', text: status.replace(/_/g, ' ') };
     return `<span class="badge ${s.class}">${s.text}</span>`;
 }
@@ -465,13 +518,13 @@ function filterVendas() {
 function viewVenda(id) {
     const venda = allVendas.find(v => v.id === id);
     if (!venda) return;
-    
+
     const nfElem = document.getElementById('modalNumeroNF');
     if (nfElem) nfElem.textContent = venda.numero_nf;
-    
+
     const modalBody = document.getElementById('modalBody');
     if (!modalBody) return;
-    
+
     if (venda.origem === 'CONTAS_RECEBER') {
         modalBody.innerHTML = `
             <div class="info-section">
@@ -508,7 +561,7 @@ function viewVenda(id) {
             </div>
         `;
     }
-    
+
     const modal = document.getElementById('infoModal');
     if (modal) modal.classList.add('show');
 }
@@ -538,13 +591,13 @@ function formatCurrency(value) {
 function showToast(message, type = 'success') {
     const oldMessages = document.querySelectorAll('.floating-message');
     oldMessages.forEach(msg => msg.remove());
-    
+
     const messageDiv = document.createElement('div');
     messageDiv.className = `floating-message ${type}`;
     messageDiv.textContent = message;
-    
+
     document.body.appendChild(messageDiv);
-    
+
     setTimeout(() => {
         messageDiv.style.animation = 'slideOutBottom 0.3s ease forwards';
         setTimeout(() => messageDiv.remove(), 300);
