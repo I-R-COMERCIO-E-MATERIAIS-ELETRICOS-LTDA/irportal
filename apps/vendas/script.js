@@ -95,69 +95,87 @@ function selectMonth(monthIndex) {
 }
 
 // ============================================
-// GERAR PDF (comissão baseada em data_pagamento)
+// GERAR PDF (comissão baseada em parcelas pagas)
 // ============================================
-window.gerarPDF = function () {
+window.gerarPDF = async function () {
     const filterVendedor = document.getElementById('filterVendedor');
     const vendedorSelecionado = filterVendedor ? filterVendedor.value : '';
     if (!vendedorSelecionado) {
         showToast('Selecione um Vendedor', 'error');
         return;
     }
+
+    const mes = currentMonth.getMonth() + 1;
+    const ano = currentMonth.getFullYear();
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-    const vendasPagas = allVendas.filter(v => {
-        if (!v.data_pagamento) return false;
-        if (v.vendedor !== vendedorSelecionado) return false;
-        const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
-        return dataPagamento.getMonth() === currentMonth.getMonth() &&
-               dataPagamento.getFullYear() === currentMonth.getFullYear();
-    });
+    showToast('Buscando parcelas pagas...', 'info');
+    try {
+        const url = `${API_URL}/vendas/parcelas-pagas?mes=${mes}&ano=${ano}&vendedor=${encodeURIComponent(vendedorSelecionado)}`;
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: { 'X-Session-Token': sessionToken }
+        });
+        if (!response.ok) throw new Error('Erro ao buscar parcelas');
+        const parcelasPagas = await response.json();
 
-    if (vendasPagas.length === 0) {
-        showToast('Nenhum pagamento encontrado para este vendedor', 'error');
-        return;
+        if (parcelasPagas.length === 0) {
+            showToast('Nenhum pagamento encontrado para este vendedor no período', 'error');
+            return;
+        }
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+        doc.setFontSize(16);
+        doc.setFont(undefined, 'bold');
+        doc.text('RELATÓRIO DE COMISSÃO (PARCELAS PAGAS)', 105, 20, { align: 'center' });
+        doc.setFontSize(11);
+        doc.setFont(undefined, 'normal');
+        doc.text(`Vendedor: ${vendedorSelecionado}`, 105, 28, { align: 'center' });
+        doc.text(`Período (pagamentos): ${monthNames[currentMonth.getMonth()]} ${ano}`, 105, 35, { align: 'center' });
+        doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 105, 42, { align: 'center' });
+
+        const tableData = parcelasPagas.map(p => [
+            p.numero_nf,
+            p.orgao || '-',
+            `${p.parcela_numero}/${p.parcela_total}`,
+            formatDate(p.data_pagamento),
+            formatCurrency(p.valor_parcela)
+        ]);
+
+        const totalPago = parcelasPagas.reduce((sum, p) => sum + p.valor_parcela, 0);
+        const comissao = totalPago * 0.01;
+
+        doc.autoTable({
+            startY: 50,
+            head: [['NF', 'Órgão', 'Parcela', 'Data Pagamento', 'Valor Pago']],
+            body: tableData,
+            theme: 'striped',
+            headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+            styles: { fontSize: 9, cellPadding: 3 },
+            columnStyles: {
+                0: { halign: 'center', cellWidth: 25 },
+                1: { cellWidth: 'auto' },
+                2: { halign: 'center', cellWidth: 20 },
+                3: { halign: 'center', cellWidth: 25 },
+                4: { halign: 'right', cellWidth: 30 }
+            }
+        });
+
+        const finalY = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(11);
+        doc.setFont(undefined, 'bold');
+        doc.text(`TOTAL PAGO NO MÊS: ${formatCurrency(totalPago)}`, 14, finalY);
+        doc.text(`COMISSÃO (1%): ${formatCurrency(comissao)}`, 14, finalY + 7);
+
+        doc.save(`COMISSAO_${vendedorSelecionado}_${monthNames[currentMonth.getMonth()]}_${ano}.pdf`);
+        showToast('Relatório gerado com sucesso', 'success');
+    } catch (error) {
+        console.error('Erro ao gerar PDF:', error);
+        showToast('Erro ao gerar relatório', 'error');
     }
-
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    doc.setFontSize(18);
-    doc.setFont(undefined, 'bold');
-    doc.text('RELATÓRIO DE COMISSÃO', 105, 20, { align: 'center' });
-    doc.setFontSize(12);
-    doc.setFont(undefined, 'normal');
-    doc.text(`Vendedor: ${vendedorSelecionado}`, 105, 30, { align: 'center' });
-    doc.text(`Período: ${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`, 105, 37, { align: 'center' });
-    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 105, 44, { align: 'center' });
-
-    const tableData = vendasPagas.map(v => [
-        v.numero_nf,
-        formatDate(v.data_emissao),
-        formatDate(v.data_pagamento),
-        formatCurrency(v.valor_nf)
-    ]);
-
-    const totalPago = vendasPagas.reduce((sum, v) => sum + (parseFloat(v.valor_nf) || 0), 0);
-    const comissao = totalPago * 0.01;
-
-    doc.autoTable({
-        startY: 55,
-        head: [['NF', 'Emissão', 'Data Pagamento', 'Valor']],
-        body: tableData,
-        theme: 'grid',
-        headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
-        styles: { fontSize: 10, cellPadding: 3 },
-        columnStyles: { 0: { halign: 'center' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'right' } }
-    });
-
-    const finalY = doc.lastAutoTable.finalY + 10;
-    doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
-    doc.text(`TOTAL FATURADO: ${formatCurrency(totalPago)}`, 14, finalY);
-    doc.text(`COMISSÃO (1%): ${formatCurrency(comissao)}`, 14, finalY + 7);
-    doc.save(`RELATÓRIO DE COMISSÃO-${vendedorSelecionado}.pdf`);
-    showToast('Relatório gerado com sucesso', 'success');
 };
 
 // ============================================
@@ -247,20 +265,45 @@ function updateDisplay() {
 }
 
 // ============================================
-// DASHBOARD
+// DASHBOARD (PAGO agora soma valor_pago)
 // ============================================
-function loadDashboard() {
+async function loadDashboard() {
     const currentYear = currentMonth.getFullYear();
     const currentMonthIndex = currentMonth.getMonth();
+    const mes = currentMonthIndex + 1;
+    const ano = currentYear;
 
     let totalPago = 0;
     let totalAReceber = 0;
     let totalEntregue = 0;
     let totalFaturado = 0;
 
+    // Para o card PAGO, buscamos as parcelas pagas no mês via API (mais preciso)
+    try {
+        const url = `${API_URL}/vendas/parcelas-pagas?mes=${mes}&ano=${ano}`;
+        const response = await fetch(url, { headers: { 'X-Session-Token': sessionToken } });
+        if (response.ok) {
+            const parcelas = await response.json();
+            totalPago = parcelas.reduce((sum, p) => sum + p.valor_parcela, 0);
+        }
+    } catch (e) {
+        console.warn('Erro ao buscar parcelas pagas para dashboard:', e);
+        // Fallback: usar dados consolidados
+        for (const v of allVendas) {
+            if (v.data_pagamento) {
+                const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
+                if (dataPagamento.getMonth() === currentMonthIndex && dataPagamento.getFullYear() === currentYear) {
+                    totalPago += parseFloat(v.valor_pago) || 0;
+                }
+            }
+        }
+    }
+
+    // Demais cards continuam baseados em allVendas (data_emissao e status_frete)
     for (const v of allVendas) {
         const valor = parseFloat(v.valor_nf) || 0;
 
+        // FATURADO
         if (v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
             if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
@@ -268,6 +311,7 @@ function loadDashboard() {
             }
         }
 
+        // ENTREGUE
         if (v.status_frete === 'ENTREGUE' && v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
             if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
@@ -275,13 +319,7 @@ function loadDashboard() {
             }
         }
 
-        if (v.data_pagamento) {
-            const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
-            if (dataPagamento.getMonth() === currentMonthIndex && dataPagamento.getFullYear() === currentYear) {
-                totalPago += valor;
-            }
-        }
-
+        // A RECEBER (entregues não pagos)
         const isEntregue = (v.status_frete === 'ENTREGUE');
         const isPago = (v.data_pagamento !== null && v.data_pagamento !== undefined);
         if (isEntregue && !isPago) {
@@ -427,7 +465,8 @@ function viewVenda(id) {
                 <p><strong>NF:</strong> ${venda.numero_nf}</p>
                 <p><strong>Vendedor:</strong> ${venda.vendedor}</p>
                 <p><strong>Órgão:</strong> ${venda.nome_orgao}</p>
-                <p><strong>Valor:</strong> ${formatCurrency(venda.valor_nf)}</p>
+                <p><strong>Valor NF:</strong> ${formatCurrency(venda.valor_nf)}</p>
+                <p><strong>Valor Pago:</strong> ${formatCurrency(venda.valor_pago)}</p>
                 <p><strong>Emissão:</strong> ${formatDate(venda.data_emissao)}</p>
                 <p><strong>Pagamento:</strong> ${formatDate(venda.data_pagamento)}</p>
                 <p><strong>Banco:</strong> ${venda.banco || '-'}</p>
