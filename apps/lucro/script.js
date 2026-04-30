@@ -86,8 +86,6 @@ async function syncData() {
 
 // ============================================
 // CARREGAR DADOS
-// Os campos venda e frete vêm automaticamente do controle_frete via backend.
-// Custo, comissão e imposto_federal são editáveis em lucro_real.
 // ============================================
 async function loadLucroReal() {
     if (currentFetchController) currentFetchController.abort();
@@ -125,6 +123,17 @@ async function loadLucroReal() {
             return true;
         });
 
+        // Calcula imposto e comissão automaticamente para registros sem valor manual
+        lucroData.forEach(r => {
+            // Marca se o registro tem valores manuais salvos no backend
+            // Se o backend retornar imposto/comissao como 0, calculamos automaticamente
+            // O campo _imposto_manual e _comissao_manual são usados localmente
+            if (!r._impostoManualOverride) {
+                r._impostoAuto = (r.venda || 0) * (11 / 100);
+                r._comissaoAuto = (r.venda || 0) * (1.25 / 100);
+            }
+        });
+
         isOnline = true;
         lastDataHash = JSON.stringify(lucroData.map(r => r.id));
         currentFetchController = null;
@@ -139,6 +148,27 @@ async function loadLucroReal() {
         isOnline = false;
         setTimeout(() => loadLucroReal(), 5000);
     }
+}
+
+// ============================================
+// HELPERS DE CÁLCULO AUTOMÁTICO
+// ============================================
+function calcularImpostoAuto(venda) {
+    return (parseFloat(venda) || 0) * (11 / 100);
+}
+
+function calcularComissaoAuto(venda) {
+    return (parseFloat(venda) || 0) * (1.25 / 100);
+}
+
+function getImpostoEfetivo(r) {
+    // Usa o valor do campo imposto_federal do backend (que pode ter sido salvo manualmente)
+    // Para o cálculo de linha, sempre usa o auto baseado na venda
+    return calcularImpostoAuto(r.venda);
+}
+
+function getComissaoEfetiva(r) {
+    return calcularComissaoAuto(r.venda);
 }
 
 // ============================================
@@ -179,13 +209,15 @@ function closeCustoFixoModal() {
 }
 
 // ============================================
-// IMPOSTO FEDERAL TOTAL MANUAL
+// IMPOSTO FEDERAL TOTAL MANUAL (somente dashboard)
 // ============================================
 function abrirModalImpostoFixo() {
-    const value = impostoManual !== null
-        ? impostoManual
-        : lucroData.reduce((s, r) => s + (r.imposto_federal || 0), 0);
-    document.getElementById('impostoFixoInput').value = value;
+    const totalImpostoAuto = lucroData
+        .filter(r => !r._cancelada)
+        .reduce((s, r) => s + calcularImpostoAuto(r.venda), 0);
+
+    const value = impostoManual !== null ? impostoManual : totalImpostoAuto;
+    document.getElementById('impostoFixoInput').value = value.toFixed(2);
     document.getElementById('editImpostoModal').classList.add('show');
 }
 
@@ -201,23 +233,11 @@ function saveImpostoFixo() {
     showMessage('IMPOSTO FEDERAL TOTAL ATUALIZADO', 'success');
 }
 
-// ============================================
-// CONFIRMAÇÃO PARA VOLTAR AO CÁLCULO AUTOMÁTICO
-// ============================================
-function showConfirmAutoImposto() {
-    document.getElementById('confirmAutoImpostoModal').classList.add('show');
-    document.getElementById('btnSimAutoImposto').onclick = () => {
-        impostoManual = null;
-        updateDashboard();
-        closeConfirmAutoImposto();
-    };
-    document.getElementById('btnNaoAutoImposto').onclick = () => {
-        closeConfirmAutoImposto();
-    };
-}
-
-function closeConfirmAutoImposto() {
-    document.getElementById('confirmAutoImpostoModal').classList.remove('show');
+function calcularImpostoAutomatico() {
+    impostoManual = null;
+    updateDashboard();
+    closeImpostoModal();
+    showMessage('IMPOSTO VOLTOU AO CÁLCULO AUTOMÁTICO', 'success');
 }
 
 // ============================================
@@ -228,6 +248,8 @@ function changeMonth(direction) {
     currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1);
     lucroData = [];
     lastDataHash = '';
+    // Reseta o imposto manual ao trocar de mês
+    impostoManual = null;
     updateMonthDisplay();
     updateTable();
     loadLucroReal();
@@ -251,24 +273,33 @@ function updateDisplay() {
 }
 
 function updateDashboard() {
-    let totalVenda = 0, totalCusto = 0, totalFrete = 0, totalComissao = 0, totalImposto = 0, totalLucroBruto = 0;
+    // Filtra apenas registros não cancelados para o dashboard
+    const ativos = lucroData.filter(r => !r._cancelada);
 
-    lucroData.forEach(r => {
-        totalVenda      += r.venda           || 0;
-        totalCusto      += r.custo           || 0;
-        totalFrete      += r.frete           || 0;
-        totalComissao   += r.comissao        || 0;
-        totalImposto    += r.imposto_federal || 0;
-        totalLucroBruto += (r.venda || 0) - (r.custo || 0) - (r.frete || 0)
-                         - (r.comissao || 0) - (r.imposto_federal || 0);
+    let totalVenda = 0, totalCusto = 0, totalFrete = 0, totalComissao = 0, totalImposto = 0;
+
+    ativos.forEach(r => {
+        totalVenda    += r.venda  || 0;
+        totalCusto    += r.custo  || 0;
+        totalFrete    += r.frete  || 0;
+        totalComissao += calcularComissaoAuto(r.venda);
+        totalImposto  += calcularImpostoAuto(r.venda);
     });
 
     const impostoExibido = impostoManual !== null ? impostoManual : totalImposto;
 
+    const totalLucroBruto = totalVenda - totalCusto - totalFrete - totalComissao - impostoExibido;
+
     document.getElementById('totalVenda').innerHTML   = `<span class="stat-value-success">${formatarMoeda(totalVenda)}</span>`;
     document.getElementById('totalCusto').innerHTML   = `<span style="color:#EF4444;font-weight:700;">${formatarMoeda(totalCusto)}</span>`;
     document.getElementById('totalFrete').innerHTML   = `<span style="color:#3B82F6;font-weight:700;">${formatarMoeda(totalFrete)}</span>`;
-    document.getElementById('totalImposto').innerHTML = `<span style="color:#EF4444;">${formatarMoeda(impostoExibido)}</span>`;
+
+    // Indicador visual se o imposto está em modo manual
+    const impostoLabel = impostoManual !== null
+        ? '<span style="font-size:0.7rem;color:#F59E0B;font-weight:600;margin-left:4px;">MANUAL</span>'
+        : '';
+    document.getElementById('totalImposto').innerHTML =
+        `<span style="color:#EF4444;">${formatarMoeda(impostoExibido)}</span>${impostoLabel}`;
 
     const lucroBrutoEl = document.getElementById('totalLucroBruto');
     lucroBrutoEl.innerHTML   = formatarMoeda(totalLucroBruto);
@@ -338,28 +369,45 @@ function updateTable() {
 
     let html = '';
     filtered.forEach(r => {
-        const lucroReal  = (r.venda || 0) - (r.custo || 0) - (r.frete || 0)
-                         - (r.comissao || 0) - (r.imposto_federal || 0);
-        const margem     = r.venda ? (lucroReal / r.venda) * 100 : 0;
+        const cancelada = !!r._cancelada;
+
+        // Valores calculados automaticamente
+        const imposto  = calcularImpostoAuto(r.venda);
+        const comissao = calcularComissaoAuto(r.venda);
+        const lucroReal = cancelada ? 0 :
+            (r.venda || 0) - (r.custo || 0) - (r.frete || 0) - comissao - imposto;
+        const margem = (!cancelada && r.venda) ? (lucroReal / r.venda) * 100 : 0;
         const lucroClass = lucroReal >= 0 ? 'stat-value-success' : 'stat-value-danger';
 
+        // Estilo para linhas canceladas
+        const rowStyle = cancelada
+            ? 'opacity:0.35;pointer-events:none;'
+            : '';
+        const cellStyle = cancelada ? 'text-decoration:line-through;' : '';
+
+        // Botão de ação: Cancelar ou Desfazer
+        const btnAcao = cancelada
+            ? `<button onclick="desfazerCancelamento('${r.id}')"
+                       style="background:#6B7280;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;pointer-events:all;">
+                   Desfazer
+               </button>`
+            : `<button onclick="showCancelModal('${r.id}', '${(r.nf || '').toUpperCase()}')"
+                       style="background:var(--btn-delete);color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">
+                   Cancelar
+               </button>`;
+
         html += `
-        <tr>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;"><strong>${(r.nf || '-').toUpperCase()}</strong></td>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;">${(r.vendedor || '-').toUpperCase()}</td>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;">${formatarMoeda(r.venda)}</td>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;color:#EF4444;font-weight:700;">${formatarMoeda(r.custo)}</td>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;">${formatarMoeda(r.frete)}</td>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;">${formatarMoeda(r.comissao)}</td>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;color:#EF4444;font-weight:700;">${formatarMoeda(r.imposto_federal)}</td>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;font-weight:700;" class="${lucroClass}">${formatarMoeda(lucroReal)}</td>
-            <td onclick="abrirEditModal('${r.codigo}')" style="cursor:pointer;">${margem.toFixed(2)}%</td>
-            <td style="text-align:center;">
-                <button onclick="showDeleteModal('${r.id}', '${(r.nf || '').toUpperCase()}')"
-                        style="background:var(--btn-delete);color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">
-                    Excluir
-                </button>
-            </td>
+        <tr style="${rowStyle}">
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}"><strong>${(r.nf || '-').toUpperCase()}</strong></td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${(r.vendedor || '-').toUpperCase()}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${formatarMoeda(r.venda)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};color:#EF4444;font-weight:700;${cellStyle}">${formatarMoeda(r.custo)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${formatarMoeda(r.frete)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${cancelada ? '-' : formatarMoeda(comissao)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};color:#EF4444;font-weight:700;${cellStyle}">${cancelada ? '-' : formatarMoeda(imposto)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};font-weight:700;${cellStyle}" class="${cancelada ? '' : lucroClass}">${cancelada ? '-' : formatarMoeda(lucroReal)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${cancelada ? '-' : margem.toFixed(2) + '%'}</td>
+            <td style="text-align:center;">${btnAcao}</td>
         </tr>`;
     });
 
@@ -367,20 +415,20 @@ function updateTable() {
 }
 
 // ============================================
-// EXCLUSÃO — usa 'id' (UUID)
+// CANCELAMENTO DE NF (substitui exclusão)
 // ============================================
-function showDeleteModal(id, nf) {
-    const existing = document.getElementById('deleteModal');
+function showCancelModal(id, nf) {
+    const existing = document.getElementById('cancelModal');
     if (existing) existing.remove();
 
     const modalHTML = `
-        <div class="modal-overlay" id="deleteModal" style="display:flex;">
+        <div class="modal-overlay" id="cancelModal" style="display:flex;">
             <div class="modal-content modal-delete">
-                <button class="close-modal" onclick="closeDeleteModal()">✕</button>
-                <div class="modal-message-delete">Tem certeza que deseja excluir a NF <strong>${nf}</strong>?</div>
+                <button class="close-modal" onclick="closeCancelModal()">✕</button>
+                <div class="modal-message-delete">Deseja cancelar a NF <strong>${nf}</strong>?</div>
                 <div class="modal-actions modal-actions-no-border">
-                    <button type="button" onclick="confirmDelete('${id}')" class="danger">Sim</button>
-                    <button type="button" onclick="closeDeleteModal()" class="success">Cancelar</button>
+                    <button type="button" onclick="confirmCancel('${id}')" class="danger">Sim, Cancelar</button>
+                    <button type="button" onclick="closeCancelModal()" class="success">Voltar</button>
                 </div>
             </div>
         </div>`;
@@ -388,23 +436,25 @@ function showDeleteModal(id, nf) {
     document.body.insertAdjacentHTML('beforeend', modalHTML);
 }
 
-function closeDeleteModal() {
-    const modal = document.getElementById('deleteModal');
+function closeCancelModal() {
+    const modal = document.getElementById('cancelModal');
     if (modal) {
         modal.style.animation = 'fadeOut 0.2s ease forwards';
         setTimeout(() => modal.remove(), 200);
     }
 }
 
-async function confirmDelete(id) {
-    closeDeleteModal();
+async function confirmCancel(id) {
+    closeCancelModal();
     const registro = lucroData.find(r => r.id === id);
-    const nf = registro ? (registro.nf || id) : id;
+    if (!registro) return;
 
     try {
-        const response = await fetch(`${API_URL}/lucro-real/${id}`, {
-            method: 'DELETE',
-            headers: { 'X-Session-Token': sessionToken }
+        // Salva o estado de cancelamento via PATCH
+        const response = await fetch(`${API_URL}/lucro-real/${registro.codigo}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
+            body: JSON.stringify({ cancelada: true })
         });
 
         if (response.status === 401) {
@@ -412,37 +462,64 @@ async function confirmDelete(id) {
             mostrarTelaAcessoNegado('SUA SESSÃO EXPIROU');
             return;
         }
-        if (!response.ok) throw new Error('Erro ao excluir');
+        if (!response.ok) throw new Error('Erro ao cancelar');
 
-        lucroData = lucroData.filter(r => r.id !== id);
-        lastDataHash = JSON.stringify(lucroData.map(r => r.id));
+        // Aplica localmente
+        registro._cancelada = true;
         updateDisplay();
-        showMessage(`NF ${nf} EXCLUÍDA`, 'error');
+        showMessage(`NF ${registro.nf || id} CANCELADA`, 'error');
     } catch (error) {
-        showMessage('ERRO AO EXCLUIR', 'error');
+        showMessage('ERRO AO CANCELAR: ' + error.message, 'error');
+    }
+}
+
+async function desfazerCancelamento(id) {
+    const registro = lucroData.find(r => r.id === id);
+    if (!registro) return;
+
+    try {
+        const response = await fetch(`${API_URL}/lucro-real/${registro.codigo}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
+            body: JSON.stringify({ cancelada: false })
+        });
+
+        if (!response.ok) throw new Error('Erro ao desfazer cancelamento');
+
+        registro._cancelada = false;
+        updateDisplay();
+        showMessage(`NF ${registro.nf || id} REATIVADA`, 'success');
+    } catch (error) {
+        showMessage('ERRO AO DESFAZER: ' + error.message, 'error');
     }
 }
 
 // ============================================
-// MODAL DE EDIÇÃO (apenas CUSTO, COMISSÃO, IMPOSTO)
-// Venda e frete são somente leitura — vêm do controle_frete
+// MODAL DE EDIÇÃO (apenas CUSTO)
+// Imposto e comissão são calculados automaticamente:
+//   Imposto = Venda × 11%
+//   Comissão = Venda × 1,25%
 // ============================================
 let currentEditCodigo = null;
 
 function abrirEditModal(codigo) {
     const registro = lucroData.find(r => r.codigo === codigo);
-    if (!registro) return;
+    if (!registro || registro._cancelada) return;
 
     currentEditCodigo = codigo;
+
     document.getElementById('editNF').textContent    = registro.nf || '-';
-    document.getElementById('editCusto').value       = registro.custo           || 0;
-    document.getElementById('editComissao').value    = registro.comissao        || 0;
-    document.getElementById('editImposto').value     = registro.imposto_federal || 0;
+    document.getElementById('editCusto').value       = registro.custo || 0;
 
-    ['editCusto', 'editComissao', 'editImposto'].forEach(id => {
-        document.getElementById(id).addEventListener('keydown', handleEnterKey);
-    });
+    // Exibe os valores calculados automaticamente como informativos
+    const imposto  = calcularImpostoAuto(registro.venda);
+    const comissao = calcularComissaoAuto(registro.venda);
+    const el_imp  = document.getElementById('editImpostoInfo');
+    const el_com  = document.getElementById('editComissaoInfo');
+    if (el_imp)  el_imp.textContent  = formatarMoeda(imposto);
+    if (el_com)  el_com.textContent  = formatarMoeda(comissao);
 
+    document.getElementById('editCusto').addEventListener('keydown', handleEnterKey);
     document.getElementById('editModal').classList.add('show');
 }
 
@@ -451,9 +528,7 @@ function handleEnterKey(e) {
 }
 
 function closeEditModal() {
-    ['editCusto', 'editComissao', 'editImposto'].forEach(id => {
-        document.getElementById(id).removeEventListener('keydown', handleEnterKey);
-    });
+    document.getElementById('editCusto').removeEventListener('keydown', handleEnterKey);
     document.getElementById('editModal').classList.remove('show');
     currentEditCodigo = null;
 }
@@ -461,12 +536,16 @@ function closeEditModal() {
 async function saveEditModal() {
     if (!currentEditCodigo) return;
 
-    const novoCusto    = parseFloat(document.getElementById('editCusto').value)    || 0;
-    const novaComissao = parseFloat(document.getElementById('editComissao').value) || 0;
-    const novoImposto  = parseFloat(document.getElementById('editImposto').value)  || 0;
+    const novoCusto = parseFloat(document.getElementById('editCusto').value) || 0;
+
+    // Calcula automaticamente
+    const registro = lucroData.find(r => r.codigo === currentEditCodigo);
+    if (!registro) return;
+
+    const novaComissao = calcularComissaoAuto(registro.venda);
+    const novoImposto  = calcularImpostoAuto(registro.venda);
 
     try {
-        // Envia apenas custo, comissão e imposto — venda e frete são imutáveis pelo frontend
         const response = await fetch(`${API_URL}/lucro-real/${currentEditCodigo}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
@@ -482,22 +561,14 @@ async function saveEditModal() {
             throw new Error(err.error || 'Erro ao salvar');
         }
 
-        const registro = lucroData.find(r => r.codigo === currentEditCodigo);
-        if (registro) {
-            registro.custo           = novoCusto;
-            registro.comissao        = novaComissao;
-            registro.imposto_federal = novoImposto;
-        }
+        registro.custo           = novoCusto;
+        registro.comissao        = novaComissao;
+        registro.imposto_federal = novoImposto;
 
         updateTable();
         updateDashboard();
         closeEditModal();
-        showMessage('VALORES ATUALIZADOS', 'success');
-
-        // Se imposto manual estava ativo, pergunta se quer voltar ao automático
-        if (impostoManual !== null) {
-            showConfirmAutoImposto();
-        }
+        showMessage('CUSTO ATUALIZADO', 'success');
     } catch (error) {
         showMessage('ERRO AO SALVAR: ' + error.message, 'error');
     }
