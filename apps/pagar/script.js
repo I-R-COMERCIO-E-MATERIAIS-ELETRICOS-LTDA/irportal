@@ -438,10 +438,15 @@ window.showVencidoModal = function() {
     if (contasVencidas.length === 0) {
         body.innerHTML = `<div style="text-align:center;padding:3rem;color:var(--text-secondary);"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.3;margin-bottom:1rem;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8l0 4"></path><path d="M12 16l.01 0"></path></svg><p style="font-size:1.1rem;font-weight:600;margin:0;">Nenhuma conta vencida</p><p style="font-size:0.9rem;margin-top:0.5rem;">Todas as contas estão dentro do prazo ou foram pagas</p></div>`;
     } else {
-        body.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr></thead><tbody>${contasVencidas.map(c => {
+        body.innerHTML = `<div style="overflow-x:auto;"><tr><thead><tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr></thead><tbody>${contasVencidas.map(c => {
             const dataVenc = new Date(c.data_vencimento + 'T00:00:00');
             const diasAtraso = Math.floor((hoje - dataVenc) / (1000 * 60 * 60 * 24));
-            return `<tr><td style="word-break:break-word;">${c.descricao}</td><td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td><td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td></tr>`;
+            return `<tr>
+                        <td style="word-break:break-word;">${c.descricao}</td>
+                        <td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td>
+                        <td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                        <td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td>
+                    </tr>`;
         }).join('')}</tbody></table></div>`;
     }
     
@@ -457,7 +462,7 @@ window.closeVencidoModal = function() {
 };
 
 // ============================================
-// PDF - GERAR RELATÓRIO (dados visíveis)
+// PDF - GERAR RELATÓRIO (sem coluna Status)
 // ============================================
 window.gerarPDF = function() {
     // Coletar dados exibidos atualmente (filtrados)
@@ -493,20 +498,19 @@ window.gerarPDF = function() {
         doc.text(`Filtros: ${filtrosTexto.join(' | ')}`, 14, 40);
     }
     
-    // Preparar dados da tabela
+    // Preparar dados da tabela (sem coluna Status)
     const tableData = filtrados.map(c => [
         c.descricao,
         `R$ ${parseFloat(c.valor).toFixed(2)}`,
         formatDate(c.data_vencimento),
         c.banco || '-',
-        c.data_pagamento ? formatDate(c.data_pagamento) : '-',
-        getStatusDinamico(c)
+        c.data_pagamento ? formatDate(c.data_pagamento) : '-'
     ]);
     
-    // Configurar colunas e quebra automática
+    // Configurar colunas e quebra automática (status removido)
     doc.autoTable({
         startY: 48,
-        head: [['Descrição', 'Valor (R$)', 'Vencimento', 'Banco', 'Data Pagamento', 'Status']],
+        head: [['Descrição', 'Valor (R$)', 'Vencimento', 'Banco', 'Data Pagamento']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
@@ -516,13 +520,12 @@ window.gerarPDF = function() {
             1: { halign: 'right', cellWidth: 25 },
             2: { halign: 'center', cellWidth: 22 },
             3: { halign: 'left', cellWidth: 28 },
-            4: { halign: 'center', cellWidth: 25 },
-            5: { halign: 'center', cellWidth: 25 }
+            4: { halign: 'center', cellWidth: 25 }
         },
         margin: { left: 14, right: 14 }
     });
     
-    // Totais
+    // Totais (baseado nos mesmos dados filtrados)
     const totalPago = filtrados.filter(c => c.status === 'PAGO').reduce((s, c) => s + parseFloat(c.valor), 0);
     const totalPendente = filtrados.filter(c => c.status !== 'PAGO').reduce((s, c) => s + parseFloat(c.valor), 0);
     const totalGeral = totalPago + totalPendente;
@@ -1159,7 +1162,43 @@ function renderContas(lista) {
     const container = document.getElementById('contasContainer');
     if (!container) return;
     if (!lista || lista.length === 0) { container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary)">Nenhuma conta encontrada para este período</div>'; return; }
-    const table = `<table><thead><tr><th style="text-align:center;width:60px;"><span style="font-size:1.1rem;">✓</span></th><th>Descrição</th><th>Valor</th><th>Vencimento</th><th style="text-align:center;">Nº Parcelas</th><th>Banco</th><th>Data Pagamento</th><th>Status</th><th style="text-align:center;">Ações</th></tr></thead><tbody>${lista.map(c => { const numParcelas = c.parcela_numero && c.parcela_total ? `${c.parcela_numero}/${c.parcela_total}` : '-'; const syncIndicator = !c.synced && c.tempId ? '<span style="color:orange;font-size:0.8em;" title="Sincronizando...">⟳</span> ' : ''; const isPago = c.status === 'PAGO'; const contaId = c.id || c.tempId; return `<tr data-conta-id="${contaId}" style="cursor:pointer;" class="${isPago ? 'row-pago' : ''}"><td style="text-align:center;padding:8px;"><button class="check-btn ${isPago ? 'checked' : ''}" data-action="toggle" data-id="${contaId}" title="${isPago ? 'Marcar como pendente' : 'Marcar como pago'}" onclick="event.stopPropagation();"></button></td><td>${syncIndicator}${c.descricao}</td><td><strong>R$ ${parseFloat(c.valor).toFixed(2)}</strong></td><td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td><td style="text-align:center;">${numParcelas}</td><td>${c.banco || '-'}</td><td style="white-space:nowrap;">${c.data_pagamento ? formatDate(c.data_pagamento) : '-'}</td><td>${getStatusBadge(getStatusDinamico(c))}</td><td class="actions-cell" style="text-align:center;"><button class="action-btn edit" data-action="edit" data-id="${contaId}" onclick="event.stopPropagation();">Editar</button><button class="action-btn delete" data-action="delete" data-id="${contaId}" onclick="event.stopPropagation();">Excluir</button></td></tr>` }).join('')}</tbody></table>`;
+    const table = `<table>
+        <thead>
+            <tr>
+                <th style="text-align:center;width:60px;"><span style="font-size:1.1rem;">✓</span></th>
+                <th>Descrição</th>
+                <th>Valor</th>
+                <th>Vencimento</th>
+                <th style="text-align:center;">Nº Parcelas</th>
+                <th>Banco</th>
+                <th>Data Pagamento</th>
+                <th>Status</th>
+                <th style="text-align:center;">Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${lista.map(c => { 
+                const numParcelas = c.parcela_numero && c.parcela_total ? `${c.parcela_numero}/${c.parcela_total}` : '-'; 
+                const syncIndicator = !c.synced && c.tempId ? '<span style="color:orange;font-size:0.8em;" title="Sincronizando...">⟳</span> ' : ''; 
+                const isPago = c.status === 'PAGO'; 
+                const contaId = c.id || c.tempId; 
+                return `<tr data-conta-id="${contaId}" style="cursor:pointer;" class="${isPago ? 'row-pago' : ''}">
+                    <td style="text-align:center;padding:8px;"><button class="check-btn ${isPago ? 'checked' : ''}" data-action="toggle" data-id="${contaId}" title="${isPago ? 'Marcar como pendente' : 'Marcar como pago'}" onclick="event.stopPropagation();"></button></td>
+                    <td>${syncIndicator}${c.descricao}</td>
+                    <td><strong>R$ ${parseFloat(c.valor).toFixed(2)}</strong></td>
+                    <td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td>
+                    <td style="text-align:center;">${numParcelas}</td>
+                    <td>${c.banco || '-'}</td>
+                    <td style="white-space:nowrap;">${c.data_pagamento ? formatDate(c.data_pagamento) : '-'}</td>
+                    <td>${getStatusBadge(getStatusDinamico(c))}</td>
+                    <td class="actions-cell" style="text-align:center;">
+                        <button class="action-btn edit" data-action="edit" data-id="${contaId}" onclick="event.stopPropagation();">Editar</button>
+                        <button class="action-btn delete" data-action="delete" data-id="${contaId}" onclick="event.stopPropagation();">Excluir</button>
+                    </td>
+                </tr>`;
+            }).join('')}
+        </tbody>
+    </table>`;
     container.innerHTML = table;
 }
 
