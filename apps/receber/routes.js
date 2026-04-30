@@ -1,43 +1,12 @@
 // ============================================
-// RECEBER ROUTES — /api/receber (versão estável)
+// RECEBER ROUTES — /api/receber (corrigido)
 // ============================================
 const express = require('express');
 
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // Utilitário: extrair parcelas de observacoes
-    function extrairParcelas(observacoes) {
-        try {
-            if (!observacoes) return [];
-            const parsed = typeof observacoes === 'string' ? JSON.parse(observacoes) : observacoes;
-            if (parsed && Array.isArray(parsed.parcelas)) return parsed.parcelas;
-            return [];
-        } catch {
-            return [];
-        }
-    }
-
-    // Calcula valor_pago, data_pagamento, status a partir das parcelas
-    function calcularPagamento(observacoes, valorTotal) {
-        const parcelas = extrairParcelas(observacoes);
-        let totalPago = 0;
-        let ultimaData = null;
-        for (const p of parcelas) {
-            const valor = parseFloat(p.valor) || 0;
-            const data = p.data_pagamento;
-            if (data) {
-                totalPago += valor;
-                if (!ultimaData || data > ultimaData) ultimaData = data;
-            }
-        }
-        let status = 'A RECEBER';
-        if (totalPago >= valorTotal && valorTotal > 0) status = 'PAGO';
-        else if (totalPago > 0) status = `${parcelas.filter(p => p.data_pagamento).length}ª PARCELA`;
-        return { valor_pago: totalPago, data_pagamento: ultimaData, status };
-    }
-
-    // GET / - listar contas
+    // GET / - listar contas (todas, sem filtro)
     router.get('/', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -74,7 +43,7 @@ module.exports = function (supabase) {
         try {
             const { parcelas, ...dados } = req.body;
 
-            // Construir observacoes com as parcelas
+            // Se houver parcelas, monta observacoes
             let observacoes = null;
             if (parcelas && Array.isArray(parcelas) && parcelas.length > 0) {
                 observacoes = JSON.stringify({
@@ -87,7 +56,6 @@ module.exports = function (supabase) {
                 });
             }
 
-            // Inserir conta
             const payload = {
                 numero_nf: dados.numero_nf?.toUpperCase().trim(),
                 orgao: dados.orgao?.toUpperCase().trim(),
@@ -97,10 +65,10 @@ module.exports = function (supabase) {
                 data_emissao: dados.data_emissao,
                 data_vencimento: dados.data_vencimento || null,
                 tipo_nf: dados.tipo_nf || 'ENVIO',
+                status: dados.status || 'A RECEBER', // preserva o status original
                 observacoes: observacoes,
-                valor_pago: 0,
-                data_pagamento: null,
-                status: 'A RECEBER'
+                valor_pago: parseFloat(dados.valor_pago) || 0,
+                data_pagamento: dados.data_pagamento || null
             };
 
             const { data: novaConta, error } = await supabase
@@ -110,24 +78,11 @@ module.exports = function (supabase) {
                 .single();
             if (error) throw error;
 
-            // Recalcular pagamento (caso já tenha parcelas pagas)
-            const calc = calcularPagamento(novaConta.observacoes, novaConta.valor);
-            if (calc.valor_pago > 0) {
-                await supabase
-                    .from('contas_receber')
-                    .update({
-                        valor_pago: calc.valor_pago,
-                        data_pagamento: calc.data_pagamento,
-                        status: calc.status
-                    })
-                    .eq('id', novaConta.id);
-                novaConta.valor_pago = calc.valor_pago;
-                novaConta.data_pagamento = calc.data_pagamento;
-                novaConta.status = calc.status;
+            // Sincronizar com Vendas (apenas se não for nota especial)
+            if (!isExcludedTipoNF(novaConta.tipo_nf)) {
+                sincronizarVendas(supabase, novaConta).catch(console.error);
             }
 
-            // Sincronizar com Vendas
-            sincronizarVendas(supabase, novaConta).catch(console.error);
             res.status(201).json(novaConta);
         } catch (err) {
             console.error('Erro ao criar conta:', err.message);
@@ -135,7 +90,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // PUT /:id - atualizar conta completa
+    // PUT /:id - atualizar conta
     router.put('/:id', async (req, res) => {
         try {
             const { id } = req.params;
@@ -162,7 +117,10 @@ module.exports = function (supabase) {
                 data_emissao: dados.data_emissao,
                 data_vencimento: dados.data_vencimento || null,
                 tipo_nf: dados.tipo_nf || 'ENVIO',
+                status: dados.status || 'A RECEBER',
                 observacoes: observacoes,
+                valor_pago: parseFloat(dados.valor_pago) || 0,
+                data_pagamento: dados.data_pagamento || null,
                 updated_at: new Date().toISOString()
             };
 
@@ -175,21 +133,10 @@ module.exports = function (supabase) {
             if (error) throw error;
             if (!contaAtualizada) return res.status(404).json({ error: 'Conta não encontrada' });
 
-            // Recalcular pagamento
-            const calc = calcularPagamento(contaAtualizada.observacoes, contaAtualizada.valor);
-            await supabase
-                .from('contas_receber')
-                .update({
-                    valor_pago: calc.valor_pago,
-                    data_pagamento: calc.data_pagamento,
-                    status: calc.status
-                })
-                .eq('id', id);
-            contaAtualizada.valor_pago = calc.valor_pago;
-            contaAtualizada.data_pagamento = calc.data_pagamento;
-            contaAtualizada.status = calc.status;
+            if (!isExcludedTipoNF(contaAtualizada.tipo_nf)) {
+                sincronizarVendas(supabase, contaAtualizada).catch(console.error);
+            }
 
-            sincronizarVendas(supabase, contaAtualizada).catch(console.error);
             res.json(contaAtualizada);
         } catch (err) {
             console.error('Erro ao atualizar conta:', err.message);
@@ -197,7 +144,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // PATCH /:id - atualização parcial
+    // PATCH /:id - atualização parcial (usado para marcar pagamento)
     router.patch('/:id', async (req, res) => {
         try {
             const updates = { ...req.body, updated_at: new Date().toISOString() };
@@ -210,21 +157,10 @@ module.exports = function (supabase) {
             if (error) throw error;
             if (!contaAtualizada) return res.status(404).json({ error: 'Conta não encontrada' });
 
-            // Se a atualização afetar pagamento, recalcular
-            const calc = calcularPagamento(contaAtualizada.observacoes, contaAtualizada.valor);
-            await supabase
-                .from('contas_receber')
-                .update({
-                    valor_pago: calc.valor_pago,
-                    data_pagamento: calc.data_pagamento,
-                    status: calc.status
-                })
-                .eq('id', req.params.id);
-            contaAtualizada.valor_pago = calc.valor_pago;
-            contaAtualizada.data_pagamento = calc.data_pagamento;
-            contaAtualizada.status = calc.status;
+            if (!isExcludedTipoNF(contaAtualizada.tipo_nf)) {
+                sincronizarVendas(supabase, contaAtualizada).catch(console.error);
+            }
 
-            sincronizarVendas(supabase, contaAtualizada).catch(console.error);
             res.json(contaAtualizada);
         } catch (err) {
             console.error('Erro no PATCH:', err.message);
@@ -250,9 +186,23 @@ module.exports = function (supabase) {
     return router;
 };
 
-// ─── SINCRONIZAÇÃO COM VENDAS ────────────────────────────────────────────────
+// Função auxiliar para identificar tipos excluídos do Vendas (mesma lógica usada no módulo Vendas)
+const EXCLUDED_NF_TYPES = [
+    'DEVOLUÇÃO', 'DEVOLUCAO', 'DEVOLUÇÃO DE MERCADORIA',
+    'SIMPLES REMESSA', 'SIMPLES_REMESSA',
+    'REMESSA DE AMOSTRA', 'REMESSA_AMOSTRA'
+];
+
+function isExcludedTipoNF(tipo) {
+    if (!tipo) return false;
+    const normalized = tipo.toUpperCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return EXCLUDED_NF_TYPES.some(ex => normalized.includes(ex.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
+}
+
+// Sincronização com Vendas (apenas para notas não excluídas)
 async function sincronizarVendas(supabase, conta) {
     if (!conta || !conta.numero_nf || !conta.vendedor) return;
+    if (isExcludedTipoNF(conta.tipo_nf)) return; // não sincroniza notas especiais
 
     const payload = {
         numero_nf: conta.numero_nf,
