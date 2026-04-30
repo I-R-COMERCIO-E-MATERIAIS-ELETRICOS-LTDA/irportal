@@ -28,7 +28,7 @@ async function inicializarApp() {
     await loadVendas();
     updateMonthDisplay();
     setInterval(checkServerStatus, 15000);
-    setInterval(() => syncData(), 300000);
+    setInterval(() => syncData(), 120000);   // a cada 2 minutos (antes era 5)
     setInterval(loadVendas, 30000);
 }
 
@@ -60,8 +60,8 @@ window.gerarPDF = function () {
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
+    // 🔧 CORREÇÃO: não filtrar por origem – pega TODOS os pagamentos do mês para o vendedor
     const vendasPagas = allVendas.filter(v => {
-        if (v.origem !== 'CONTAS_RECEBER') return false;
         if (!v.data_pagamento) return false;
         if (v.vendedor !== vendedorSelecionado) return false;
         const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
@@ -205,17 +205,17 @@ function loadDashboard() {
     let totalFaturado = 0;
 
     for (const v of allVendas) {
-        const valor = parseFloat(v.valor_nf) || 0;
+        const valorNF = parseFloat(v.valor_nf) || 0;
 
-        // FATURADO
+        // FATURADO (data de emissão)
         if (v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
             if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
-                totalFaturado += valor;
+                totalFaturado += valorNF;
             }
         }
 
-        // ENTREGUE
+        // ENTREGUE (data de emissão + status entregue)
         if (v.status_frete === 'ENTREGUE' && v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
             if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
@@ -223,17 +223,19 @@ function loadDashboard() {
             }
         }
 
-        // PAGO
+        // PAGO (data de pagamento, independente da emissão)
         if (v.data_pagamento) {
             const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
             if (dataPagamento.getMonth() === currentMonthIndex && dataPagamento.getFullYear() === currentYear) {
-                totalPago += parseFloat(v.valor_pago) || valor;
+                // Usa valor_pago se existir, senão valor_nf
+                const valorPago = (v.valor_pago !== null && !isNaN(parseFloat(v.valor_pago))) ? parseFloat(v.valor_pago) : valorNF;
+                totalPago += valorPago;
             }
         }
 
-        // A RECEBER
+        // A RECEBER: NF entregue E não paga (independente do mês)
         if (v.status_frete === 'ENTREGUE' && !v.data_pagamento) {
-            totalAReceber += valor;
+            totalAReceber += valorNF;
         }
     }
 
@@ -265,7 +267,7 @@ function updateTable() {
     filtered.sort((a, b) => (parseInt(a.numero_nf) || 0) - (parseInt(b.numero_nf) || 0));
     if (!filtered.length) { container.innerHTML = '<div style="text-align:center;padding:2rem;">Nenhuma venda encontrada</div>'; return; }
 
-    const table = `<div style="overflow-x:auto;"><table><thead><tr><th>NF</th><th>Emissão</th><th>Vendedor</th><th>Órgão</th><th>Valor NF</th><th>Status</th><th>Ações</th></tr></thead><tbody>${filtered.map(v => {
+    const table = `<div style="overflow-x:auto;"><tr><thead><tr><th>NF</th><th>Emissão</th><th>Vendedor</th><th>Órgão</th><th>Valor NF</th><th>Status</th><th>Ações</th></tr></thead><tbody>${filtered.map(v => {
         const status = v.data_pagamento ? 'PAGO' : (v.status_frete || 'EM TRÂNSITO');
         const rowClass = status === 'PAGO' ? 'row-pago' : (status === 'ENTREGUE' ? 'row-entregue' : '');
         return `<tr class="${rowClass}"><td><strong>${v.numero_nf}</strong></td><td>${formatDate(v.data_emissao)}</td><td>${v.vendedor}</td><td style="word-break:break-word;">${v.nome_orgao}</td><td><strong>${formatCurrency(v.valor_nf)}</strong></td><td>${getStatusBadge(status)}</td><td><button class="action-btn view" onclick="viewVenda('${v.id}')">Ver</button></td></tr>`;
