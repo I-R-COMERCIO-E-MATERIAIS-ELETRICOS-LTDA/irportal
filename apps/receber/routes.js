@@ -56,16 +56,7 @@ module.exports = function (supabase) {
                 });
             }
 
-            let obsJson = null;
-            if (observacoes) {
-                try {
-                    obsJson = typeof observacoes === 'string'
-                        ? JSON.parse(observacoes)
-                        : observacoes;
-                } catch {
-                    obsJson = null;
-                }
-            }
+            const obsJson = normalizarObservacoes(observacoes);
 
             const payload = {
                 numero_nf: (numero_nf || '').toUpperCase().trim(),
@@ -90,7 +81,6 @@ module.exports = function (supabase) {
 
             if (error) throw error;
 
-            // Sincronizar com tabela vendas de forma assíncrona
             sincronizarVendas(supabase, data).catch(console.error);
 
             res.status(201).json(data);
@@ -109,16 +99,7 @@ module.exports = function (supabase) {
                 status, tipo_nf, observacoes, valor_pago
             } = req.body;
 
-            let obsJson = null;
-            if (observacoes) {
-                try {
-                    obsJson = typeof observacoes === 'string'
-                        ? JSON.parse(observacoes)
-                        : observacoes;
-                } catch {
-                    obsJson = null;
-                }
-            }
+            const obsJson = normalizarObservacoes(observacoes);
 
             const payload = {
                 numero_nf: (numero_nf || '').toUpperCase().trim(),
@@ -146,7 +127,6 @@ module.exports = function (supabase) {
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
 
-            // Sincronizar com tabela vendas de forma assíncrona
             sincronizarVendas(supabase, data).catch(console.error);
 
             res.json(data);
@@ -161,6 +141,11 @@ module.exports = function (supabase) {
         try {
             const updates = { ...req.body, updated_at: new Date().toISOString() };
 
+            // Se vier observacoes no patch, normalizar também
+            if (updates.observacoes !== undefined) {
+                updates.observacoes = normalizarObservacoes(updates.observacoes);
+            }
+
             const { data, error } = await supabase
                 .from('contas_receber')
                 .update(updates)
@@ -171,7 +156,6 @@ module.exports = function (supabase) {
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Conta não encontrada' });
 
-            // Sincronizar com tabela vendas de forma assíncrona
             sincronizarVendas(supabase, data).catch(console.error);
 
             res.json(data);
@@ -191,7 +175,6 @@ module.exports = function (supabase) {
 
             if (error) throw error;
 
-            // Remover da tabela vendas de forma assíncrona
             supabase
                 .from('vendas')
                 .delete()
@@ -206,7 +189,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── RELATÓRIO RESUMIDO (para uso no módulo vendas) ─────────────────────────
+    // ─── RELATÓRIO RESUMIDO ──────────────────────────────────────────────────────
     router.get('/relatorio/resumo', async (req, res) => {
         try {
             const { mes, ano } = req.query;
@@ -252,23 +235,67 @@ module.exports = function (supabase) {
     return router;
 };
 
+// ─── NORMALIZAR OBSERVAÇÕES ──────────────────────────────────────────────────
+// Garante que o campo observacoes seja sempre salvo no formato objeto:
+// { notas: [{texto, data}], parcelas: [{numero, valor, data}] }
+// Suporta migração do formato legado (array direto de notas).
+function normalizarObservacoes(observacoes) {
+    if (!observacoes) return { notas: [], parcelas: [] };
+
+    let parsed = observacoes;
+
+    // Se vier como string, fazer parse
+    if (typeof parsed === 'string') {
+        try {
+            parsed = JSON.parse(parsed);
+        } catch {
+            return { notas: [], parcelas: [] };
+        }
+    }
+
+    // Formato já correto: objeto com notas e/ou parcelas
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return {
+            notas: Array.isArray(parsed.notas) ? parsed.notas : [],
+            parcelas: Array.isArray(parsed.parcelas) ? parsed.parcelas : []
+        };
+    }
+
+    // Formato legado: array direto de notas de texto
+    if (Array.isArray(parsed)) {
+        const notas = parsed
+            .filter(n => n && typeof n === 'object' && n.texto && n.texto !== '[]')
+            .map(n => ({ texto: n.texto, data: n.data || '' }));
+        return { notas, parcelas: [] };
+    }
+
+    return { notas: [], parcelas: [] };
+}
+
 // ─── SINCRONIZAÇÃO COM TABELA VENDAS ────────────────────────────────────────
+// Lê parcelas do campo observacoes (formato {notas, parcelas})
+// e sincroniza cada parcela individualmente na tabela vendas.
 async function sincronizarVendas(supabase, conta) {
     if (!conta || !conta.numero_nf || !conta.vendedor) return;
 
     const statusPagamento = conta.status || 'A RECEBER';
 
-    // Calcular valor_pago a partir das parcelas (se houver)
+    // Extrair parcelas do campo observacoes
+    let parcelas = [];
     let valorPago = parseFloat(conta.valor_pago) || 0;
+
     try {
         const obs = conta.observacoes;
         if (obs) {
             const parsed = typeof obs === 'string' ? JSON.parse(obs) : obs;
             if (parsed && Array.isArray(parsed.parcelas) && parsed.parcelas.length > 0) {
-                valorPago = parsed.parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
+                parcelas = parsed.parcelas.filter(p => p.valor > 0);
+                valorPago = parcelas.reduce((s, p) => s + parseFloat(p.valor || 0), 0);
             }
         }
-    } catch {}
+    } catch (e) {
+        console.error('Erro ao parsear observacoes para sincronizarVendas:', e.message);
+    }
 
     const tipoNfMap = {
         'ENVIO': 'ENVIO',
@@ -279,53 +306,128 @@ async function sincronizarVendas(supabase, conta) {
     };
     const tipoNf = tipoNfMap[conta.tipo_nf] || conta.tipo_nf || null;
 
-    const payload = {
-        numero_nf: conta.numero_nf,
-        origem: 'CONTAS_RECEBER',
-        data_emissao: conta.data_emissao,
-        valor_nf: parseFloat(conta.valor) || 0,
-        tipo_nf: tipoNf,
-        nome_orgao: conta.orgao,
-        vendedor: conta.vendedor,
-        banco: conta.banco || null,
-        data_vencimento: conta.data_vencimento || null,
-        data_pagamento: conta.data_pagamento || null,
-        status_pagamento: statusPagamento,
-        valor_pago: valorPago,
-        id_contas_receber: conta.id,
-        updated_at: new Date().toISOString()
-    };
+    if (parcelas.length > 0) {
+        // ── PAGAMENTO PARCELADO: sincronizar cada parcela como uma linha separada em vendas ──
+        for (let i = 0; i < parcelas.length; i++) {
+            const p = parcelas[i];
+            const numeroParc = p.numero || `${i + 1}ª Parcela`;
+            const chaveParc = `${conta.id}_parcela_${i + 1}`;
 
-    // Verifica se já existe na tabela vendas por id_contas_receber
-    const { data: existente } = await supabase
-        .from('vendas')
-        .select('id')
-        .eq('id_contas_receber', conta.id)
-        .single();
+            const payloadParc = {
+                numero_nf: conta.numero_nf,
+                origem: 'CONTAS_RECEBER',
+                data_emissao: conta.data_emissao,
+                valor_nf: parseFloat(conta.valor) || 0,
+                tipo_nf: tipoNf,
+                nome_orgao: conta.orgao,
+                vendedor: conta.vendedor,
+                banco: conta.banco || null,
+                data_vencimento: conta.data_vencimento || null,
+                // Cada parcela tem sua própria data e valor de pagamento
+                data_pagamento: p.data || null,
+                valor_pago: parseFloat(p.valor) || 0,
+                status_pagamento: statusPagamento,
+                id_contas_receber: conta.id,
+                numero_parcela: numeroParc,
+                chave_parcela: chaveParc,
+                updated_at: new Date().toISOString()
+            };
 
-    if (existente) {
+            // Verificar se essa parcela já existe por chave_parcela
+            const { data: existente } = await supabase
+                .from('vendas')
+                .select('id')
+                .eq('chave_parcela', chaveParc)
+                .single();
+
+            if (existente) {
+                await supabase
+                    .from('vendas')
+                    .update(payloadParc)
+                    .eq('chave_parcela', chaveParc);
+            } else {
+                await supabase
+                    .from('vendas')
+                    .insert([{ ...payloadParc, prioridade: 1 }]);
+            }
+        }
+
+        // Remover linhas de parcelas antigas que não existem mais
+        // (ex: usuário tinha 3 parcelas e reduziu para 2)
+        const chavesAtuais = parcelas.map((_, i) => `${conta.id}_parcela_${i + 1}`);
         await supabase
             .from('vendas')
-            .update(payload)
-            .eq('id_contas_receber', conta.id);
+            .delete()
+            .eq('id_contas_receber', conta.id)
+            .not('chave_parcela', 'in', `(${chavesAtuais.map(c => `"${c}"`).join(',')})`)
+            .not('chave_parcela', 'is', null);
+
     } else {
-        const { data: porNF } = await supabase
+        // ── PAGAMENTO ÚNICO (sem parcelas) ──
+        // Determinar data_pagamento: última data de parcela ou campo direto
+        let dataPagamento = conta.data_pagamento || null;
+
+        const payload = {
+            numero_nf: conta.numero_nf,
+            origem: 'CONTAS_RECEBER',
+            data_emissao: conta.data_emissao,
+            valor_nf: parseFloat(conta.valor) || 0,
+            tipo_nf: tipoNf,
+            nome_orgao: conta.orgao,
+            vendedor: conta.vendedor,
+            banco: conta.banco || null,
+            data_vencimento: conta.data_vencimento || null,
+            data_pagamento: dataPagamento,
+            status_pagamento: statusPagamento,
+            valor_pago: valorPago,
+            id_contas_receber: conta.id,
+            numero_parcela: null,
+            chave_parcela: null,
+            updated_at: new Date().toISOString()
+        };
+
+        // Verificar se já existe entrada única (sem chave_parcela) para essa conta
+        const { data: existente } = await supabase
             .from('vendas')
-            .select('id, origem')
-            .eq('numero_nf', conta.numero_nf)
-            .eq('vendedor', conta.vendedor)
-            .eq('origem', 'CONTAS_RECEBER')
+            .select('id')
+            .eq('id_contas_receber', conta.id)
+            .is('chave_parcela', null)
             .single();
 
-        if (porNF) {
+        if (existente) {
             await supabase
                 .from('vendas')
                 .update(payload)
-                .eq('id', porNF.id);
+                .eq('id_contas_receber', conta.id)
+                .is('chave_parcela', null);
         } else {
-            await supabase
+            // Verificar por numero_nf + vendedor como fallback
+            const { data: porNF } = await supabase
                 .from('vendas')
-                .insert([{ ...payload, prioridade: 1 }]);
+                .select('id, origem')
+                .eq('numero_nf', conta.numero_nf)
+                .eq('vendedor', conta.vendedor)
+                .eq('origem', 'CONTAS_RECEBER')
+                .is('chave_parcela', null)
+                .single();
+
+            if (porNF) {
+                await supabase
+                    .from('vendas')
+                    .update(payload)
+                    .eq('id', porNF.id);
+            } else {
+                await supabase
+                    .from('vendas')
+                    .insert([{ ...payload, prioridade: 1 }]);
+            }
         }
+
+        // Limpar parcelas antigas dessa conta (se havia parcelas antes e agora não tem mais)
+        await supabase
+            .from('vendas')
+            .delete()
+            .eq('id_contas_receber', conta.id)
+            .not('chave_parcela', 'is', null);
     }
 }
