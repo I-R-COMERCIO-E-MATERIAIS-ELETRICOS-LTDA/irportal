@@ -46,7 +46,6 @@ function processarConta(conta) {
     let statusPagamento = conta.status || 'A RECEBER';
     let valorPago = parseFloat(conta.valor_pago) || 0;
     let dataPagamento = conta.data_pagamento || null;
-    let observacoes = conta.observacoes;
 
     try {
         const raw = conta.observacoes;
@@ -66,12 +65,11 @@ function processarConta(conta) {
                 if (valorNF > 0 && valorPago >= valorNF) statusPagamento = 'PAGO';
                 else if (parcelas.length > 0) statusPagamento = `${parcelas.length}ª PARCELA`;
             }
-            observacoes = typeof raw === 'string' ? raw : JSON.stringify(raw);
         }
     } catch (e) {
         console.warn('[processarConta] Erro:', e.message);
     }
-    return { statusPagamento, valorPago, dataPagamento, observacoes };
+    return { statusPagamento, valorPago, dataPagamento };
 }
 
 module.exports = function (supabase) {
@@ -131,7 +129,6 @@ module.exports = function (supabase) {
 
             console.log(`[vendas] Fretes: ${fretes.length} (total ${fretesRaw?.length || 0}) | Contas: ${contas.length} (total ${contasRaw?.length || 0})`);
 
-            // Mapa final
             const mapa = {};
 
             // 1. Inserir todos os fretes
@@ -159,7 +156,6 @@ module.exports = function (supabase) {
                     data_vencimento: null,
                     data_pagamento: null,
                     valor_pago: 0,
-                    observacoes: null,
                     id_contas_receber: null,
                     updated_at: new Date().toISOString(),
                 };
@@ -177,17 +173,14 @@ module.exports = function (supabase) {
                     data_vencimento: conta.data_vencimento || null,
                     data_pagamento: pgto.dataPagamento,
                     valor_pago: pgto.valorPago,
-                    observacoes: pgto.observacoes,
                     id_contas_receber: idCR,
                     updated_at: new Date().toISOString(),
                 };
 
                 if (mapa[key]) {
-                    // Já existe do frete: atualiza com dados de pagamento e marca origem como mista
                     Object.assign(mapa[key], camposPagamento);
                     mapa[key].origem = pgto.statusPagamento === 'PAGO' ? 'PAGO (Frete + Conta)' : 'PARCIAL (Frete + Conta)';
                 } else {
-                    // Não tem frete: cria só com dados da conta
                     mapa[key] = {
                         numero_nf: (conta.numero_nf || '').trim(),
                         origem: 'CONTAS_RECEBER',
@@ -224,6 +217,8 @@ module.exports = function (supabase) {
                 if (upsertError) {
                     console.error(`[vendas] Erro no lote ${i}:`, upsertError.message);
                     erros++;
+                } else {
+                    console.log(`[vendas] Lote ${i} inserido/atualizado com sucesso.`);
                 }
             }
 
