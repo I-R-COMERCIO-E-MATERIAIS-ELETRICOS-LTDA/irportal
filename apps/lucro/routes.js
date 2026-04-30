@@ -46,7 +46,6 @@ module.exports = function (supabase) {
 
             if (novas.length > 0) {
                 const registros = novas.map(f => ({
-                    // 'codigo' é o campo de chave usada no PATCH — usamos numero_nf como código legível
                     codigo:            String(f.numero_nf),
                     nf:                String(f.numero_nf),
                     numero_nf:         String(f.numero_nf),
@@ -58,7 +57,8 @@ module.exports = function (supabase) {
                     comissao:          0,
                     imposto_federal:   0,
                     custo_fixo_mensal: 0,
-                    frete_id:          f.id,   // referência ao controle_frete
+                    cancelada:         false,   // novo campo
+                    frete_id:          f.id,
                     created_at:        new Date().toISOString(),
                     updated_at:        new Date().toISOString(),
                 }));
@@ -71,8 +71,6 @@ module.exports = function (supabase) {
     }
 
     // ─── HELPER: monta o resultado final mesclando controle_frete + lucro_real ─
-    // A fonte da verdade para venda e frete é sempre controle_frete.
-    // Custo, comissão e imposto vêm de lucro_real (editáveis pelo usuário).
     async function buscarLucroMesclado(mesNum, anoNum) {
         const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
         const fimDate = new Date(anoNum, mesNum, 0);
@@ -81,7 +79,7 @@ module.exports = function (supabase) {
         // 1. Garante que todas as NFs do controle_frete estejam em lucro_real
         await sincronizarDoControleFrete(mesNum, anoNum);
 
-        // 2. Busca lucro_real do período
+        // 2. Busca lucro_real do período (incluindo canceladas — o frontend as exibe transparentes)
         const { data: lucros, error: erroLucro } = await supabase
             .from('lucro_real')
             .select('*')
@@ -111,12 +109,13 @@ module.exports = function (supabase) {
             const frete = freteMap[nf];
             return {
                 ...r,
-                nf:       nf,
+                nf:        nf,
                 numero_nf: nf,
-                vendedor: frete ? (frete.vendedor || r.vendedor || '') : (r.vendedor || ''),
-                venda:    frete ? (parseFloat(frete.valor_nf)    || 0) : (r.venda    || 0),
-                frete:    frete ? (parseFloat(frete.valor_frete) || 0) : (r.frete    || 0),
-                // custo, comissao, imposto_federal permanecem do lucro_real
+                vendedor:  frete ? (frete.vendedor || r.vendedor || '') : (r.vendedor || ''),
+                venda:     frete ? (parseFloat(frete.valor_nf)    || 0) : (r.venda    || 0),
+                frete:     frete ? (parseFloat(frete.valor_frete) || 0) : (r.frete    || 0),
+                // custo, comissao, imposto_federal, cancelada permanecem do lucro_real
+                cancelada: !!r.cancelada,
             };
         });
 
@@ -156,15 +155,17 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── PATCH /api/lucro-real/:codigo (edição de custo, comissão, imposto) ──
+    // ─── PATCH /api/lucro-real/:codigo ───────────────────────────────────────
+    // Permite editar: custo, comissao, imposto_federal, cancelada
+    // Nunca sobrescreve: venda, frete (vêm sempre do controle_frete)
     router.patch('/lucro-real/:codigo', async (req, res) => {
         try {
-            // Remove campos que não devem ser sobrescritos via PATCH manual
             const body = { ...req.body };
+            // Campos protegidos — nunca alterados via PATCH manual
             delete body.id;
             delete body.created_at;
-            delete body.venda;    // venda vem sempre do controle_frete
-            delete body.frete;    // frete vem sempre do controle_frete
+            delete body.venda;
+            delete body.frete;
             body.updated_at = new Date().toISOString();
 
             const { data, error } = await supabase
@@ -183,7 +184,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── DELETE /api/lucro-real/:id (exclusão por UUID) ─────────────────────
+    // ─── DELETE /api/lucro-real/:id (mantido por compatibilidade) ───────────
     router.delete('/lucro-real/:id', async (req, res) => {
         try {
             const { error } = await supabase
@@ -257,7 +258,6 @@ module.exports = function (supabase) {
     // ─── POST /api/monitorar-pedidos (trigger de sincronização manual) ───────
     router.post('/monitorar-pedidos', async (req, res) => {
         try {
-            // Sincroniza o mês atual ao clicar em "Sincronizar"
             const agora = new Date();
             await sincronizarDoControleFrete(agora.getMonth() + 1, agora.getFullYear());
             res.json({ ok: true });
