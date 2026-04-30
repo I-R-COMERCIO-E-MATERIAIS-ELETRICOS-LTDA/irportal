@@ -19,7 +19,7 @@ function isExcludedTipoNF(tipo) {
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── GET /api/vendas ──────────────────────────────────────────────────────
+    // GET /api/vendas (listagem)
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor } = req.query;
@@ -31,7 +31,7 @@ module.exports = function (supabase) {
             if (mes && ano) {
                 const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
                 const fimDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
-                const fim    = `${ano}-${String(mes).padStart(2, '0')}-${fimDia}`;
+                const fim = `${ano}-${String(mes).padStart(2, '0')}-${fimDia}`;
                 query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
             }
             if (vendedor) query = query.eq('vendedor', vendedor);
@@ -45,7 +45,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── GET /api/vendas/:id ──────────────────────────────────────────────────
+    // GET /api/vendas/:id
     router.get('/:id', async (req, res) => {
         if (req.params.id === 'sincronizar') return res.status(405).json({ error: 'Use POST para sincronizar' });
         try {
@@ -55,31 +55,31 @@ module.exports = function (supabase) {
                 .eq('id', req.params.id)
                 .single();
             if (error) return res.status(500).json({ error: error.message });
-            if (!data)  return res.status(404).json({ error: 'Não encontrado' });
+            if (!data) return res.status(404).json({ error: 'Não encontrado' });
             res.json(data);
         } catch (e) {
             res.status(500).json({ error: e.message });
         }
     });
 
-    // ─── POST /api/vendas/sincronizar ─────────────────────────────────────────
+    // POST /api/vendas/sincronizar
     router.post('/sincronizar', async (req, res) => {
         const normFrete = s => ({
-            'EM_TRANSITO':       'EM TRÂNSITO',
-            'EM TRANSITO':       'EM TRÂNSITO',
-            'ENTREGUE':          'ENTREGUE',
+            'EM_TRANSITO': 'EM TRÂNSITO',
+            'EM TRANSITO': 'EM TRÂNSITO',
+            'ENTREGUE': 'ENTREGUE',
             'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
             'AGUARDANDO COLETA': 'AGUARDANDO COLETA',
-            'EXTRAVIADO':        'EM TRÂNSITO',
+            'EXTRAVIADO': 'EM TRÂNSITO',
         }[s] || s || 'EM TRÂNSITO');
 
         const chave = (nf, vend) => `${(nf || '').trim()}||${(vend || '').toUpperCase().trim()}`;
 
         function processarConta(c) {
-            let status        = c.status || 'A RECEBER';
-            let valorPago     = parseFloat(c.valor_pago) || 0;
+            let status = c.status || 'A RECEBER';
+            let valorPago = parseFloat(c.valor_pago) || 0;
             let dataPagamento = c.data_pagamento || null;
-            let obsOriginal   = c.observacoes;
+            let obsOriginal = c.observacoes;
 
             try {
                 const raw = c.observacoes;
@@ -88,8 +88,8 @@ module.exports = function (supabase) {
                     const arrParcelas = Array.isArray(parsed?.parcelas) && parsed.parcelas.length > 0
                         ? parsed.parcelas
                         : Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.valor !== undefined
-                        ? parsed
-                        : null;
+                            ? parsed
+                            : null;
 
                     if (arrParcelas) {
                         valorPago = arrParcelas.reduce((s, p) => s + parseFloat(p.valor || p.valor_parcela || 0), 0);
@@ -101,7 +101,7 @@ module.exports = function (supabase) {
                     }
                     obsOriginal = typeof raw === 'string' ? raw : JSON.stringify(raw);
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             return { status_pagamento: status, valor_pago: valorPago, data_pagamento: dataPagamento, observacoes: obsOriginal };
         }
@@ -109,18 +109,13 @@ module.exports = function (supabase) {
         try {
             console.log('[vendas] Iniciando sincronização...');
 
-            // 1. Buscar fretes e contas, já excluindo tipos de NF não desejados
-            let fretesQuery = supabase
+            // Busca fretes e contas, já filtrando tipos de NF excluídos
+            let fretesRes = await supabase
                 .from('controle_frete')
                 .select('*')
                 .not('status', 'in', '("DEVOLVIDO","DEVOLUCAO","devolvido","devolucao","DEVOLUÇÃO","DEVOLUÇAO")');
 
-            let contasQuery = supabase.from('contas_receber').select('*');
-
-            // Filtro adicional por tipo_nf (excluir os tipos indesejados)
-            // Nota: O Supabase não suporta "not in" com array de strings diretamente no JS client,
-            // por isso fazemos o filtro no código após a consulta.
-            const [fretesRes, contasRes] = await Promise.all([fretesQuery, contasQuery]);
+            let contasRes = await supabase.from('contas_receber').select('*');
 
             if (fretesRes.error) throw new Error('controle_frete: ' + fretesRes.error.message);
             if (contasRes.error) throw new Error('contas_receber: ' + contasRes.error.message);
@@ -132,51 +127,51 @@ module.exports = function (supabase) {
 
             const mapaFinal = {};
 
-            // 2. Base a partir do controle_frete
+            // Base a partir do controle_frete
             for (const f of fretes) {
                 const k = chave(f.numero_nf, f.vendedor);
                 mapaFinal[k] = {
-                    numero_nf:         (f.numero_nf || '').trim(),
-                    origem:            'CONTROLE_FRETE',
-                    data_emissao:      f.data_emissao     || null,
-                    valor_nf:          parseFloat(f.valor_nf)   || 0,
-                    tipo_nf:           f.tipo_nf          || null,
-                    nome_orgao:        f.nome_orgao || f.orgao  || null,
-                    vendedor:          f.vendedor         || null,
-                    documento:         f.documento        || null,
-                    contato_orgao:     f.contato_orgao    || null,
-                    transportadora:    f.transportadora   || null,
-                    valor_frete:       parseFloat(f.valor_frete) || 0,
-                    data_coleta:       f.data_coleta      || null,
-                    cidade_destino:    f.cidade_destino   || null,
-                    previsao_entrega:  f.previsao_entrega || null,
-                    status_frete:      normFrete(f.status),
+                    numero_nf: (f.numero_nf || '').trim(),
+                    origem: 'CONTROLE_FRETE',
+                    data_emissao: f.data_emissao || null,
+                    valor_nf: parseFloat(f.valor_nf) || 0,
+                    tipo_nf: f.tipo_nf || null,
+                    nome_orgao: f.nome_orgao || f.orgao || null,
+                    vendedor: f.vendedor || null,
+                    documento: f.documento || null,
+                    contato_orgao: f.contato_orgao || null,
+                    transportadora: f.transportadora || null,
+                    valor_frete: parseFloat(f.valor_frete) || 0,
+                    data_coleta: f.data_coleta || null,
+                    cidade_destino: f.cidade_destino || null,
+                    previsao_entrega: f.previsao_entrega || null,
+                    status_frete: normFrete(f.status),
                     id_controle_frete: (!isNaN(Number(f.id)) && String(f.id).length < 15) ? Number(f.id) : null,
-                    status_pagamento:  null,
-                    banco:             null,
-                    data_vencimento:   null,
-                    data_pagamento:    null,
-                    valor_pago:        0,
-                    observacoes:       null,
+                    status_pagamento: null,
+                    banco: null,
+                    data_vencimento: null,
+                    data_pagamento: null,
+                    valor_pago: 0,
+                    observacoes: null,
                     id_contas_receber: null,
-                    prioridade:        1,
-                    updated_at:        new Date().toISOString(),
+                    prioridade: 1,
+                    updated_at: new Date().toISOString(),
                 };
             }
 
-            // 3. Aplicar dados de contas_receber (pagamentos)
+            // Aplica dados de contas_receber (pagamentos)
             for (const c of contas) {
                 const k = chave(c.numero_nf, c.vendedor);
                 const idCR = (!isNaN(Number(c.id)) && String(c.id).length < 15) ? Number(c.id) : null;
                 const pgto = processarConta(c);
 
                 const paymentFields = {
-                    status_pagamento:  pgto.status_pagamento,
-                    banco:             c.banco            || null,
-                    data_vencimento:   c.data_vencimento  || null,
-                    data_pagamento:    pgto.data_pagamento,
-                    valor_pago:        pgto.valor_pago,
-                    observacoes:       pgto.observacoes,
+                    status_pagamento: pgto.status_pagamento,
+                    banco: c.banco || null,
+                    data_vencimento: c.data_vencimento || null,
+                    data_pagamento: pgto.data_pagamento,
+                    valor_pago: pgto.valor_pago,
+                    observacoes: pgto.observacoes,
                     id_contas_receber: idCR,
                 };
 
@@ -186,18 +181,18 @@ module.exports = function (supabase) {
                 } else {
                     // Registro exclusivo de contas_receber (sem frete)
                     mapaFinal[k] = {
-                        numero_nf:    (c.numero_nf || '').trim(),
-                        origem:       'CONTAS_RECEBER',
+                        numero_nf: (c.numero_nf || '').trim(),
+                        origem: 'CONTAS_RECEBER',
                         data_emissao: c.data_emissao || null,
-                        valor_nf:     parseFloat(c.valor) || 0,
-                        tipo_nf:      c.tipo_nf || null,
-                        nome_orgao:   c.orgao   || null,
-                        vendedor:     c.vendedor || null,
+                        valor_nf: parseFloat(c.valor) || 0,
+                        tipo_nf: c.tipo_nf || null,
+                        nome_orgao: c.orgao || null,
+                        vendedor: c.vendedor || null,
                         status_frete: null,
                         id_controle_frete: null,
                         ...paymentFields,
-                        prioridade:   1,
-                        updated_at:   new Date().toISOString(),
+                        prioridade: 1,
+                        updated_at: new Date().toISOString(),
                     };
                 }
             }
@@ -207,7 +202,7 @@ module.exports = function (supabase) {
                 return res.json({ success: true, message: '0 registros sincronizados (após exclusão de tipos)', total: 0 });
             }
 
-            // 4. Upsert em lotes
+            // Upsert em lotes
             const CHUNK = 200;
             let erros = 0;
             for (let i = 0; i < registros.length; i += CHUNK) {
