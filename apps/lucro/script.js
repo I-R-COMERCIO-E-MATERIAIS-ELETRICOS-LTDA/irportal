@@ -123,15 +123,12 @@ async function loadLucroReal() {
             return true;
         });
 
-        // Calcula imposto e comissão automaticamente para registros sem valor manual
+        // Mapeia campos do backend para uso local
+        // r.cancelada vem do banco — _cancelada é o alias local usado na renderização
         lucroData.forEach(r => {
-            // Marca se o registro tem valores manuais salvos no backend
-            // Se o backend retornar imposto/comissao como 0, calculamos automaticamente
-            // O campo _imposto_manual e _comissao_manual são usados localmente
-            if (!r._impostoManualOverride) {
-                r._impostoAuto = (r.venda || 0) * (11 / 100);
-                r._comissaoAuto = (r.venda || 0) * (1.25 / 100);
-            }
+            r._cancelada    = !!r.cancelada;
+            r._impostoAuto  = (r.venda || 0) * (11 / 100);
+            r._comissaoAuto = (r.venda || 0) * (1.25 / 100);
         });
 
         isOnline = true;
@@ -159,16 +156,6 @@ function calcularImpostoAuto(venda) {
 
 function calcularComissaoAuto(venda) {
     return (parseFloat(venda) || 0) * (1.25 / 100);
-}
-
-function getImpostoEfetivo(r) {
-    // Usa o valor do campo imposto_federal do backend (que pode ter sido salvo manualmente)
-    // Para o cálculo de linha, sempre usa o auto baseado na venda
-    return calcularImpostoAuto(r.venda);
-}
-
-function getComissaoEfetiva(r) {
-    return calcularComissaoAuto(r.venda);
 }
 
 // ============================================
@@ -248,7 +235,6 @@ function changeMonth(direction) {
     currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1);
     lucroData = [];
     lastDataHash = '';
-    // Reseta o imposto manual ao trocar de mês
     impostoManual = null;
     updateMonthDisplay();
     updateTable();
@@ -273,7 +259,6 @@ function updateDisplay() {
 }
 
 function updateDashboard() {
-    // Filtra apenas registros não cancelados para o dashboard
     const ativos = lucroData.filter(r => !r._cancelada);
 
     let totalVenda = 0, totalCusto = 0, totalFrete = 0, totalComissao = 0, totalImposto = 0;
@@ -286,15 +271,13 @@ function updateDashboard() {
         totalImposto  += calcularImpostoAuto(r.venda);
     });
 
-    const impostoExibido = impostoManual !== null ? impostoManual : totalImposto;
-
+    const impostoExibido  = impostoManual !== null ? impostoManual : totalImposto;
     const totalLucroBruto = totalVenda - totalCusto - totalFrete - totalComissao - impostoExibido;
 
-    document.getElementById('totalVenda').innerHTML   = `<span class="stat-value-success">${formatarMoeda(totalVenda)}</span>`;
-    document.getElementById('totalCusto').innerHTML   = `<span style="color:#EF4444;font-weight:700;">${formatarMoeda(totalCusto)}</span>`;
-    document.getElementById('totalFrete').innerHTML   = `<span style="color:#3B82F6;font-weight:700;">${formatarMoeda(totalFrete)}</span>`;
+    document.getElementById('totalVenda').innerHTML = `<span class="stat-value-success">${formatarMoeda(totalVenda)}</span>`;
+    document.getElementById('totalCusto').innerHTML = `<span style="color:#EF4444;font-weight:700;">${formatarMoeda(totalCusto)}</span>`;
+    document.getElementById('totalFrete').innerHTML = `<span style="color:#3B82F6;font-weight:700;">${formatarMoeda(totalFrete)}</span>`;
 
-    // Indicador visual se o imposto está em modo manual
     const impostoLabel = impostoManual !== null
         ? '<span style="font-size:0.7rem;color:#F59E0B;font-weight:600;margin-left:4px;">MANUAL</span>'
         : '';
@@ -302,8 +285,8 @@ function updateDashboard() {
         `<span style="color:#EF4444;">${formatarMoeda(impostoExibido)}</span>${impostoLabel}`;
 
     const lucroBrutoEl = document.getElementById('totalLucroBruto');
-    lucroBrutoEl.innerHTML   = formatarMoeda(totalLucroBruto);
-    lucroBrutoEl.className   = 'stat-value';
+    lucroBrutoEl.innerHTML = formatarMoeda(totalLucroBruto);
+    lucroBrutoEl.className = 'stat-value';
 
     const comissaoEl = document.getElementById('totalComissao');
     comissaoEl.innerHTML = formatarMoeda(totalComissao);
@@ -369,26 +352,22 @@ function updateTable() {
 
     let html = '';
     filtered.forEach(r => {
-        const cancelada = !!r._cancelada;
-
-        // Valores calculados automaticamente
-        const imposto  = calcularImpostoAuto(r.venda);
-        const comissao = calcularComissaoAuto(r.venda);
-        const lucroReal = cancelada ? 0 :
+        const cancelada  = !!r._cancelada;
+        const imposto    = calcularImpostoAuto(r.venda);
+        const comissao   = calcularComissaoAuto(r.venda);
+        const lucroReal  = cancelada ? 0 :
             (r.venda || 0) - (r.custo || 0) - (r.frete || 0) - comissao - imposto;
-        const margem = (!cancelada && r.venda) ? (lucroReal / r.venda) * 100 : 0;
+        const margem     = (!cancelada && r.venda) ? (lucroReal / r.venda) * 100 : 0;
         const lucroClass = lucroReal >= 0 ? 'stat-value-success' : 'stat-value-danger';
 
-        // Estilo para linhas canceladas
-        const rowStyle = cancelada
-            ? 'opacity:0.35;pointer-events:none;'
-            : '';
+        // SEM pointer-events:none na <tr> — necessário para o botão Desfazer funcionar
+        // O bloqueio de clique nas células de dados é feito individualmente via onclick vazio
+        const rowStyle  = cancelada ? 'opacity:0.35;' : '';
         const cellStyle = cancelada ? 'text-decoration:line-through;' : '';
 
-        // Botão de ação: Cancelar ou Desfazer
         const btnAcao = cancelada
             ? `<button onclick="desfazerCancelamento('${r.id}')"
-                       style="background:#6B7280;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;pointer-events:all;">
+                       style="background:#6B7280;color:white;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:0.8rem;font-weight:600;">
                    Desfazer
                </button>`
             : `<button onclick="showCancelModal('${r.id}', '${(r.nf || '').toUpperCase()}')"
@@ -398,15 +377,15 @@ function updateTable() {
 
         html += `
         <tr style="${rowStyle}">
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}"><strong>${(r.nf || '-').toUpperCase()}</strong></td>
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${(r.vendedor || '-').toUpperCase()}</td>
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${formatarMoeda(r.venda)}</td>
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};color:#EF4444;font-weight:700;${cellStyle}">${formatarMoeda(r.custo)}</td>
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${formatarMoeda(r.frete)}</td>
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${cancelada ? '-' : formatarMoeda(comissao)}</td>
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};color:#EF4444;font-weight:700;${cellStyle}">${cancelada ? '-' : formatarMoeda(imposto)}</td>
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};font-weight:700;${cellStyle}" class="${cancelada ? '' : lucroClass}">${cancelada ? '-' : formatarMoeda(lucroReal)}</td>
-            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada?'default':'pointer'};${cellStyle}">${cancelada ? '-' : margem.toFixed(2) + '%'}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};${cellStyle}"><strong>${(r.nf || '-').toUpperCase()}</strong></td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};${cellStyle}">${(r.vendedor || '-').toUpperCase()}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};${cellStyle}">${formatarMoeda(r.venda)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};color:#EF4444;font-weight:700;${cellStyle}">${formatarMoeda(r.custo)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};${cellStyle}">${formatarMoeda(r.frete)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};${cellStyle}">${cancelada ? '-' : formatarMoeda(comissao)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};color:#EF4444;font-weight:700;${cellStyle}">${cancelada ? '-' : formatarMoeda(imposto)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};font-weight:700;${cellStyle}" class="${cancelada ? '' : lucroClass}">${cancelada ? '-' : formatarMoeda(lucroReal)}</td>
+            <td onclick="${cancelada ? '' : `abrirEditModal('${r.codigo}')`}" style="cursor:${cancelada ? 'default' : 'pointer'};${cellStyle}">${cancelada ? '-' : margem.toFixed(2) + '%'}</td>
             <td style="text-align:center;">${btnAcao}</td>
         </tr>`;
     });
@@ -415,7 +394,7 @@ function updateTable() {
 }
 
 // ============================================
-// CANCELAMENTO DE NF (substitui exclusão)
+// CANCELAMENTO DE NF
 // ============================================
 function showCancelModal(id, nf) {
     const existing = document.getElementById('cancelModal');
@@ -450,7 +429,6 @@ async function confirmCancel(id) {
     if (!registro) return;
 
     try {
-        // Salva o estado de cancelamento via PATCH
         const response = await fetch(`${API_URL}/lucro-real/${registro.codigo}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
@@ -464,7 +442,8 @@ async function confirmCancel(id) {
         }
         if (!response.ok) throw new Error('Erro ao cancelar');
 
-        // Aplica localmente
+        // Atualiza tanto o campo original quanto o alias local
+        registro.cancelada  = true;
         registro._cancelada = true;
         updateDisplay();
         showMessage(`NF ${registro.nf || id} CANCELADA`, 'error');
@@ -486,6 +465,7 @@ async function desfazerCancelamento(id) {
 
         if (!response.ok) throw new Error('Erro ao desfazer cancelamento');
 
+        registro.cancelada  = false;
         registro._cancelada = false;
         updateDisplay();
         showMessage(`NF ${registro.nf || id} REATIVADA`, 'success');
@@ -496,9 +476,7 @@ async function desfazerCancelamento(id) {
 
 // ============================================
 // MODAL DE EDIÇÃO (apenas CUSTO)
-// Imposto e comissão são calculados automaticamente:
-//   Imposto = Venda × 11%
-//   Comissão = Venda × 1,25%
+// Imposto = Venda × 11% | Comissão = Venda × 1,25%
 // ============================================
 let currentEditCodigo = null;
 
@@ -508,16 +486,13 @@ function abrirEditModal(codigo) {
 
     currentEditCodigo = codigo;
 
-    document.getElementById('editNF').textContent    = registro.nf || '-';
-    document.getElementById('editCusto').value       = registro.custo || 0;
+    document.getElementById('editNF').textContent = registro.nf || '-';
+    document.getElementById('editCusto').value    = registro.custo || 0;
 
-    // Exibe os valores calculados automaticamente como informativos
-    const imposto  = calcularImpostoAuto(registro.venda);
-    const comissao = calcularComissaoAuto(registro.venda);
-    const el_imp  = document.getElementById('editImpostoInfo');
-    const el_com  = document.getElementById('editComissaoInfo');
-    if (el_imp)  el_imp.textContent  = formatarMoeda(imposto);
-    if (el_com)  el_com.textContent  = formatarMoeda(comissao);
+    const el_imp = document.getElementById('editImpostoInfo');
+    const el_com = document.getElementById('editComissaoInfo');
+    if (el_imp) el_imp.textContent = formatarMoeda(calcularImpostoAuto(registro.venda));
+    if (el_com) el_com.textContent = formatarMoeda(calcularComissaoAuto(registro.venda));
 
     document.getElementById('editCusto').addEventListener('keydown', handleEnterKey);
     document.getElementById('editModal').classList.add('show');
@@ -536,12 +511,10 @@ function closeEditModal() {
 async function saveEditModal() {
     if (!currentEditCodigo) return;
 
-    const novoCusto = parseFloat(document.getElementById('editCusto').value) || 0;
-
-    // Calcula automaticamente
     const registro = lucroData.find(r => r.codigo === currentEditCodigo);
     if (!registro) return;
 
+    const novoCusto    = parseFloat(document.getElementById('editCusto').value) || 0;
     const novaComissao = calcularComissaoAuto(registro.venda);
     const novoImposto  = calcularImpostoAuto(registro.venda);
 
