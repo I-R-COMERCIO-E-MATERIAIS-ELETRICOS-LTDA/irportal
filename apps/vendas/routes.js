@@ -17,33 +17,18 @@ module.exports = function (supabase) {
 
     function normalizeNF(numeroNF) {
         if (!numeroNF) return '';
-        let str = String(numeroNF).trim();
-        str = str.replace(/^0+/, '');
+        let str = String(numeroNF).trim().replace(/^0+/, '');
         return str || '0';
     }
 
     function makeKey(numeroNF, vendedor) {
-        const nf = normalizeNF(numeroNF);
-        const vendedorNorm = (vendedor || '').toUpperCase().trim();
-        return `${nf}||${vendedorNorm}`;
+        return `${normalizeNF(numeroNF)}||${(vendedor || '').toUpperCase().trim()}`;
     }
 
-    // 🔧 Remove qualquer campo que possa causar conflito de tipo no Supabase
     function sanitizeForUpsert(record) {
-        const {
-            id,              // PK da tabela vendas — deixa o Supabase gerar
-            observacoes,     // coluna que não existe em vendas
-            id_controle_frete,  // UUID — só inclui se a coluna for uuid no Supabase
-            id_contas_receber,  // UUID — idem
-            ...safe
-        } = record;
-
-        // Reinsere os IDs de referência APENAS como string (uuid),
-        // para não quebrar caso a coluna seja text ou uuid no Supabase.
-        // Se a coluna não existir na tabela, o Supabase ignora silenciosamente.
+        const { id, observacoes, id_controle_frete, id_contas_receber, ...safe } = record;
         if (id_controle_frete) safe.id_controle_frete = String(id_controle_frete);
         if (id_contas_receber) safe.id_contas_receber = String(id_contas_receber);
-
         return safe;
     }
 
@@ -81,6 +66,7 @@ module.exports = function (supabase) {
         try {
             console.log('[vendas] 🔄 Sincronização iniciada...');
 
+            // 1. Busca dados das fontes
             const { data: fretesRaw, error: errFretes } = await supabase
                 .from('controle_frete')
                 .select('*')
@@ -97,34 +83,49 @@ module.exports = function (supabase) {
 
             console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
 
+            // 2. Busca registros existentes na tabela vendas para saber quais fazer UPDATE vs INSERT
+            const { data: vendasExistentes, error: errVendas } = await supabase
+                .from('vendas')
+                .select('id, numero_nf, vendedor');
+            if (errVendas) throw new Error(`Vendas existentes: ${errVendas.message}`);
+
+            // key → id (PK bigint) da tabela vendas
+            const mapaExistentes = {};
+            for (const v of (vendasExistentes || [])) {
+                const key = makeKey(v.numero_nf, v.vendedor);
+                mapaExistentes[key] = v.id;
+            }
+            console.log(`[vendas] Registros existentes: ${Object.keys(mapaExistentes).length}`);
+
+            // 3. Monta o mapa completo de registros a sincronizar
             const mapa = {};
 
             for (const frete of fretes) {
                 const key = makeKey(frete.numero_nf, frete.vendedor);
                 mapa[key] = {
-                    numero_nf:        normalizeNF(frete.numero_nf),
-                    origem:           'CONTROLE_FRETE',
-                    data_emissao:     frete.data_emissao || null,
-                    valor_nf:         parseFloat(frete.valor_nf) || 0,
-                    tipo_nf:          frete.tipo_nf || null,
-                    nome_orgao:       frete.nome_orgao || frete.orgao || null,
-                    vendedor:         (frete.vendedor || '').toUpperCase().trim() || null,
-                    documento:        frete.documento || null,
-                    contato_orgao:    frete.contato_orgao || null,
-                    transportadora:   frete.transportadora || null,
-                    valor_frete:      parseFloat(frete.valor_frete) || 0,
-                    data_coleta:      frete.data_coleta || null,
-                    cidade_destino:   frete.cidade_destino || null,
-                    previsao_entrega: frete.previsao_entrega || null,
-                    status_frete:     (frete.status || 'EM TRÂNSITO').replace(/_/g, ' '),
-                    id_controle_frete: frete.id,   // UUID da tabela controle_frete
-                    status_pagamento: null,
-                    banco:            null,
-                    data_vencimento:  null,
-                    data_pagamento:   null,
-                    valor_pago:       0,
+                    numero_nf:         normalizeNF(frete.numero_nf),
+                    origem:            'CONTROLE_FRETE',
+                    data_emissao:      frete.data_emissao || null,
+                    valor_nf:          parseFloat(frete.valor_nf) || 0,
+                    tipo_nf:           frete.tipo_nf || null,
+                    nome_orgao:        frete.nome_orgao || frete.orgao || null,
+                    vendedor:          (frete.vendedor || '').toUpperCase().trim() || null,
+                    documento:         frete.documento || null,
+                    contato_orgao:     frete.contato_orgao || null,
+                    transportadora:    frete.transportadora || null,
+                    valor_frete:       parseFloat(frete.valor_frete) || 0,
+                    data_coleta:       frete.data_coleta || null,
+                    cidade_destino:    frete.cidade_destino || null,
+                    previsao_entrega:  frete.previsao_entrega || null,
+                    status_frete:      (frete.status || 'EM TRÂNSITO').replace(/_/g, ' '),
+                    id_controle_frete: frete.id,
+                    status_pagamento:  null,
+                    banco:             null,
+                    data_vencimento:   null,
+                    data_pagamento:    null,
+                    valor_pago:        0,
                     id_contas_receber: null,
-                    updated_at:       new Date().toISOString()
+                    updated_at:        new Date().toISOString()
                 };
             }
 
@@ -137,11 +138,12 @@ module.exports = function (supabase) {
                     data_vencimento:   conta.data_vencimento || null,
                     data_pagamento:    conta.data_pagamento || null,
                     valor_pago:        parseFloat(conta.valor_pago) || 0,
-                    id_contas_receber: conta.id,   // UUID da tabela contas_receber
+                    id_contas_receber: conta.id,
                     updated_at:        new Date().toISOString()
                 };
 
                 if (mapa[key]) {
+                    // NF já veio do frete — mescla os dados de pagamento
                     Object.assign(mapa[key], campos);
                     mapa[key].origem = conta.status === 'PAGO' ? 'PAGO (Frete+Conta)' : 'MISTO';
                     if (conta.data_emissao && !mapa[key].data_emissao)
@@ -149,60 +151,83 @@ module.exports = function (supabase) {
                     if (conta.valor && (!mapa[key].valor_nf || mapa[key].valor_nf === 0))
                         mapa[key].valor_nf = parseFloat(conta.valor) || 0;
                 } else {
+                    // NF sem frete correspondente
                     unmatchedContas++;
                     mapa[key] = {
-                        numero_nf:        normalizeNF(conta.numero_nf),
-                        origem:           'CONTAS_RECEBER',
-                        data_emissao:     conta.data_emissao || null,
-                        valor_nf:         parseFloat(conta.valor) || 0,
-                        tipo_nf:          conta.tipo_nf || null,
-                        nome_orgao:       conta.orgao || null,
-                        vendedor:         (conta.vendedor || '').toUpperCase().trim() || null,
-                        status_frete:     null,
+                        numero_nf:         normalizeNF(conta.numero_nf),
+                        origem:            'CONTAS_RECEBER',
+                        data_emissao:      conta.data_emissao || null,
+                        valor_nf:          parseFloat(conta.valor) || 0,
+                        tipo_nf:           conta.tipo_nf || null,
+                        nome_orgao:        conta.orgao || null,
+                        vendedor:          (conta.vendedor || '').toUpperCase().trim() || null,
+                        status_frete:      null,
                         id_controle_frete: null,
                         ...campos
                     };
                 }
             }
-
             console.log(`[vendas] Contas sem frete: ${unmatchedContas}`);
 
-            const registros = Object.values(mapa);
-            if (!registros.length)
-                return res.json({ success: true, message: 'Nenhum registro', total: 0 });
+            // 4. Separa em UPDATE (registro já existe na tabela vendas) e INSERT (novo)
+            const paraUpdate = [];
+            const paraInsert = [];
 
-            console.log(`[vendas] Total a sincronizar: ${registros.length}`);
-
-            const CHUNK = 200;
-            let erros = 0;
-            const erroMsgs = [];
-
-            for (let i = 0; i < registros.length; i += CHUNK) {
-                const chunk = registros.slice(i, i + CHUNK);
-
-                // ✅ sanitizeForUpsert remove 'id' e garante que campos UUID
-                // não quebrem colunas bigint na tabela vendas
-                const cleanChunk = chunk.map(sanitizeForUpsert);
-
-                const { error: upsertError } = await supabase
-                    .from('vendas')
-                    .upsert(cleanChunk, {
-                        onConflict: 'numero_nf,vendedor',
-                        ignoreDuplicates: false
-                    });
-
-                if (upsertError) {
-                    console.error(`[vendas] Erro lote ${i}:`, upsertError.message);
-                    erros++;
-                    erroMsgs.push(upsertError.message);
+            for (const [key, registro] of Object.entries(mapa)) {
+                const idExistente = mapaExistentes[key];
+                const clean = sanitizeForUpsert(registro);
+                if (idExistente !== undefined) {
+                    paraUpdate.push({ ...clean, _vendas_id: idExistente });
                 } else {
-                    console.log(`[vendas] Lote ${i} ok (${chunk.length} registros)`);
+                    paraInsert.push(clean);
                 }
             }
 
-            const msg = `${registros.length} registros sincronizados${erros ? ` (${erros} lotes com erro: ${erroMsgs[0]})` : ' com sucesso'}`;
+            console.log(`[vendas] UPDATE: ${paraUpdate.length} | INSERT: ${paraInsert.length}`);
+
+            const CHUNK = 50; // menor para updates paralelos não sobrecarregar
+            let erros = 0;
+            const erroMsgs = [];
+
+            // 5. Executa UPDATEs em paralelo por chunks
+            for (let i = 0; i < paraUpdate.length; i += CHUNK) {
+                const chunk = paraUpdate.slice(i, i + CHUNK);
+                const promises = chunk.map(({ _vendas_id, ...fields }) =>
+                    supabase
+                        .from('vendas')
+                        .update(fields)
+                        .eq('id', _vendas_id)
+                        .then(({ error }) => {
+                            if (error) {
+                                console.error(`[vendas] Update erro id=${_vendas_id} NF=${fields.numero_nf}:`, error.message);
+                                erroMsgs.push(error.message);
+                                erros++;
+                            }
+                        })
+                );
+                await Promise.all(promises);
+                console.log(`[vendas] Update chunk ${i}: ${chunk.length} registros`);
+            }
+
+            // 6. Executa INSERTs em chunks
+            for (let i = 0; i < paraInsert.length; i += CHUNK) {
+                const chunk = paraInsert.slice(i, i + CHUNK);
+                const { error: insertError } = await supabase
+                    .from('vendas')
+                    .insert(chunk);
+                if (insertError) {
+                    console.error(`[vendas] Insert erro lote ${i}:`, insertError.message);
+                    erros++;
+                    erroMsgs.push(insertError.message);
+                } else {
+                    console.log(`[vendas] Insert chunk ${i}: ${chunk.length} registros`);
+                }
+            }
+
+            const total = paraUpdate.length + paraInsert.length;
+            const msg = `${total} registros sincronizados (${paraUpdate.length} atualizados, ${paraInsert.length} inseridos)${erros ? ` — ${erros} erros: ${erroMsgs[0]}` : ''}`;
             console.log(`[vendas] ${erros ? '⚠️' : '✅'} ${msg}`);
-            res.json({ success: erros === 0, message: msg, total: registros.length });
+            res.json({ success: erros === 0, message: msg, total });
 
         } catch (err) {
             console.error('[vendas] ❌ Erro geral:', err.message);
