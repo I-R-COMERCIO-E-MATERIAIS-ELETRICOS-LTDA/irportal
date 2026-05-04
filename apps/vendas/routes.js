@@ -25,10 +25,23 @@ module.exports = function (supabase) {
         return `${normalizeNF(numeroNF)}||${(vendedor || '').toUpperCase().trim()}`;
     }
 
-    function sanitizeForUpsert(record) {
-        const { id, observacoes, id_controle_frete, id_contas_receber, ...safe } = record;
-        if (id_controle_frete) safe.id_controle_frete = String(id_controle_frete);
-        if (id_contas_receber) safe.id_contas_receber = String(id_contas_receber);
+    // ✅ Remove TODOS os campos incompatíveis com a tabela vendas:
+    // - id: bigserial gerado automaticamente, nunca enviar
+    // - id_controle_frete: bigint na tabela, mas frete.id é UUID → incompatível
+    // - id_contas_receber: bigint na tabela, mas conta.id é UUID → incompatível
+    // - observacoes: existe na tabela mas não deve ser sobrescrito na sync
+    function sanitize(record) {
+        const {
+            id,
+            id_controle_frete,
+            id_contas_receber,
+            observacoes,
+            numero_parcela,
+            chave_parcela,
+            prioridade,
+            created_at,
+            ...safe
+        } = record;
         return safe;
     }
 
@@ -66,7 +79,7 @@ module.exports = function (supabase) {
         try {
             console.log('[vendas] 🔄 Sincronização iniciada...');
 
-            // 1. Busca dados das fontes
+            // 1. Busca fontes
             const { data: fretesRaw, error: errFretes } = await supabase
                 .from('controle_frete')
                 .select('*')
@@ -83,151 +96,113 @@ module.exports = function (supabase) {
 
             console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
 
-            // 2. Busca registros existentes na tabela vendas para saber quais fazer UPDATE vs INSERT
-            const { data: vendasExistentes, error: errVendas } = await supabase
-                .from('vendas')
-                .select('id, numero_nf, vendedor');
-            if (errVendas) throw new Error(`Vendas existentes: ${errVendas.message}`);
-
-            // key → id (PK bigint) da tabela vendas
-            const mapaExistentes = {};
-            for (const v of (vendasExistentes || [])) {
-                const key = makeKey(v.numero_nf, v.vendedor);
-                mapaExistentes[key] = v.id;
-            }
-            console.log(`[vendas] Registros existentes: ${Object.keys(mapaExistentes).length}`);
-
-            // 3. Monta o mapa completo de registros a sincronizar
+            // 2. Monta mapa
             const mapa = {};
 
             for (const frete of fretes) {
                 const key = makeKey(frete.numero_nf, frete.vendedor);
                 mapa[key] = {
-                    numero_nf:         normalizeNF(frete.numero_nf),
-                    origem:            'CONTROLE_FRETE',
-                    data_emissao:      frete.data_emissao || null,
-                    valor_nf:          parseFloat(frete.valor_nf) || 0,
-                    tipo_nf:           frete.tipo_nf || null,
-                    nome_orgao:        frete.nome_orgao || frete.orgao || null,
-                    vendedor:          (frete.vendedor || '').toUpperCase().trim() || null,
-                    documento:         frete.documento || null,
-                    contato_orgao:     frete.contato_orgao || null,
-                    transportadora:    frete.transportadora || null,
-                    valor_frete:       parseFloat(frete.valor_frete) || 0,
-                    data_coleta:       frete.data_coleta || null,
-                    cidade_destino:    frete.cidade_destino || null,
-                    previsao_entrega:  frete.previsao_entrega || null,
-                    status_frete:      (frete.status || 'EM TRÂNSITO').replace(/_/g, ' '),
-                    id_controle_frete: frete.id,
-                    status_pagamento:  null,
-                    banco:             null,
-                    data_vencimento:   null,
-                    data_pagamento:    null,
-                    valor_pago:        0,
-                    id_contas_receber: null,
-                    updated_at:        new Date().toISOString()
+                    numero_nf:        normalizeNF(frete.numero_nf),
+                    origem:           'CONTROLE_FRETE',
+                    data_emissao:     frete.data_emissao || null,
+                    valor_nf:         parseFloat(frete.valor_nf) || 0,
+                    tipo_nf:          frete.tipo_nf || null,
+                    nome_orgao:       frete.nome_orgao || frete.orgao || null,
+                    vendedor:         (frete.vendedor || '').toUpperCase().trim() || null,
+                    documento:        frete.documento || null,
+                    contato_orgao:    frete.contato_orgao || null,
+                    transportadora:   frete.transportadora || null,
+                    valor_frete:      parseFloat(frete.valor_frete) || 0,
+                    data_coleta:      frete.data_coleta || null,
+                    cidade_destino:   frete.cidade_destino || null,
+                    previsao_entrega: frete.previsao_entrega || null,
+                    status_frete:     (frete.status || 'EM TRÂNSITO').replace(/_/g, ' '),
+                    // campos de pagamento zerados — serão preenchidos pela conta se existir
+                    status_pagamento: null,
+                    banco:            null,
+                    data_vencimento:  null,
+                    data_pagamento:   null,
+                    valor_pago:       0,
+                    updated_at:       new Date().toISOString()
                 };
             }
 
             let unmatchedContas = 0;
             for (const conta of contas) {
                 const key = makeKey(conta.numero_nf, conta.vendedor);
-                const campos = {
-                    status_pagamento:  conta.status,
-                    banco:             conta.banco || null,
-                    data_vencimento:   conta.data_vencimento || null,
-                    data_pagamento:    conta.data_pagamento || null,
-                    valor_pago:        parseFloat(conta.valor_pago) || 0,
-                    id_contas_receber: conta.id,
-                    updated_at:        new Date().toISOString()
+
+                // Campos exclusivos de pagamento (todos compatíveis com colunas text/numeric/date)
+                const camposPagamento = {
+                    status_pagamento: conta.status || null,
+                    banco:            conta.banco || null,
+                    data_vencimento:  conta.data_vencimento || null,
+                    data_pagamento:   conta.data_pagamento || null,
+                    valor_pago:       parseFloat(conta.valor_pago) || 0,
+                    updated_at:       new Date().toISOString()
                 };
 
                 if (mapa[key]) {
-                    // NF já veio do frete — mescla os dados de pagamento
-                    Object.assign(mapa[key], campos);
+                    // Mescla: frete + pagamento
+                    Object.assign(mapa[key], camposPagamento);
                     mapa[key].origem = conta.status === 'PAGO' ? 'PAGO (Frete+Conta)' : 'MISTO';
                     if (conta.data_emissao && !mapa[key].data_emissao)
                         mapa[key].data_emissao = conta.data_emissao;
                     if (conta.valor && (!mapa[key].valor_nf || mapa[key].valor_nf === 0))
                         mapa[key].valor_nf = parseFloat(conta.valor) || 0;
                 } else {
-                    // NF sem frete correspondente
+                    // Só conta, sem frete
                     unmatchedContas++;
                     mapa[key] = {
-                        numero_nf:         normalizeNF(conta.numero_nf),
-                        origem:            'CONTAS_RECEBER',
-                        data_emissao:      conta.data_emissao || null,
-                        valor_nf:          parseFloat(conta.valor) || 0,
-                        tipo_nf:           conta.tipo_nf || null,
-                        nome_orgao:        conta.orgao || null,
-                        vendedor:          (conta.vendedor || '').toUpperCase().trim() || null,
-                        status_frete:      null,
-                        id_controle_frete: null,
-                        ...campos
+                        numero_nf:        normalizeNF(conta.numero_nf),
+                        origem:           'CONTAS_RECEBER',
+                        data_emissao:     conta.data_emissao || null,
+                        valor_nf:         parseFloat(conta.valor) || 0,
+                        tipo_nf:          conta.tipo_nf || null,
+                        nome_orgao:       conta.orgao || null,
+                        vendedor:         (conta.vendedor || '').toUpperCase().trim() || null,
+                        status_frete:     null,
+                        transportadora:   null,
+                        valor_frete:      0,
+                        ...camposPagamento
                     };
                 }
             }
+
             console.log(`[vendas] Contas sem frete: ${unmatchedContas}`);
 
-            // 4. Separa em UPDATE (registro já existe na tabela vendas) e INSERT (novo)
-            const paraUpdate = [];
-            const paraInsert = [];
+            const registros = Object.values(mapa);
+            if (!registros.length)
+                return res.json({ success: true, message: 'Nenhum registro', total: 0 });
 
-            for (const [key, registro] of Object.entries(mapa)) {
-                const idExistente = mapaExistentes[key];
-                const clean = sanitizeForUpsert(registro);
-                if (idExistente !== undefined) {
-                    paraUpdate.push({ ...clean, _vendas_id: idExistente });
-                } else {
-                    paraInsert.push(clean);
-                }
-            }
+            console.log(`[vendas] Total a sincronizar: ${registros.length}`);
 
-            console.log(`[vendas] UPDATE: ${paraUpdate.length} | INSERT: ${paraInsert.length}`);
-
-            const CHUNK = 50; // menor para updates paralelos não sobrecarregar
+            // 3. Upsert — a tabela tem UNIQUE (numero_nf, vendedor) então funciona corretamente
+            const CHUNK = 200;
             let erros = 0;
             const erroMsgs = [];
 
-            // 5. Executa UPDATEs em paralelo por chunks
-            for (let i = 0; i < paraUpdate.length; i += CHUNK) {
-                const chunk = paraUpdate.slice(i, i + CHUNK);
-                const promises = chunk.map(({ _vendas_id, ...fields }) =>
-                    supabase
-                        .from('vendas')
-                        .update(fields)
-                        .eq('id', _vendas_id)
-                        .then(({ error }) => {
-                            if (error) {
-                                console.error(`[vendas] Update erro id=${_vendas_id} NF=${fields.numero_nf}:`, error.message);
-                                erroMsgs.push(error.message);
-                                erros++;
-                            }
-                        })
-                );
-                await Promise.all(promises);
-                console.log(`[vendas] Update chunk ${i}: ${chunk.length} registros`);
-            }
+            for (let i = 0; i < registros.length; i += CHUNK) {
+                const chunk = registros.slice(i, i + CHUNK).map(sanitize);
 
-            // 6. Executa INSERTs em chunks
-            for (let i = 0; i < paraInsert.length; i += CHUNK) {
-                const chunk = paraInsert.slice(i, i + CHUNK);
-                const { error: insertError } = await supabase
+                const { error: upsertError } = await supabase
                     .from('vendas')
-                    .insert(chunk);
-                if (insertError) {
-                    console.error(`[vendas] Insert erro lote ${i}:`, insertError.message);
+                    .upsert(chunk, {
+                        onConflict: 'numero_nf,vendedor',
+                        ignoreDuplicates: false
+                    });
+
+                if (upsertError) {
+                    console.error(`[vendas] Erro lote ${i}:`, upsertError.message);
                     erros++;
-                    erroMsgs.push(insertError.message);
+                    erroMsgs.push(upsertError.message);
                 } else {
-                    console.log(`[vendas] Insert chunk ${i}: ${chunk.length} registros`);
+                    console.log(`[vendas] Lote ${i} ok (${chunk.length} registros)`);
                 }
             }
 
-            const total = paraUpdate.length + paraInsert.length;
-            const msg = `${total} registros sincronizados (${paraUpdate.length} atualizados, ${paraInsert.length} inseridos)${erros ? ` — ${erros} erros: ${erroMsgs[0]}` : ''}`;
+            const msg = `${registros.length} registros sincronizados${erros ? ` (${erros} lotes com erro: ${erroMsgs[0]})` : ' com sucesso'}`;
             console.log(`[vendas] ${erros ? '⚠️' : '✅'} ${msg}`);
-            res.json({ success: erros === 0, message: msg, total });
+            res.json({ success: erros === 0, message: msg, total: registros.length });
 
         } catch (err) {
             console.error('[vendas] ❌ Erro geral:', err.message);
