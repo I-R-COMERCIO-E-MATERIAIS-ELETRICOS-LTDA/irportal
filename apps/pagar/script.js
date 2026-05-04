@@ -4,11 +4,16 @@
 const API_URL = window.location.origin + '/api';
 
 let contas = [];
+let isOnline = false;
+let sessionToken = null;
 let currentMonth = new Date();
+
 let formType = 'simple';
 let currentGrupoId = null;
 let parcelasDoGrupo = [];
 let observacoesArray = [];
+let tentativasReconexao = 0;
+const MAX_TENTATIVAS = 3;
 
 const meses = [
     'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
@@ -16,7 +21,7 @@ const meses = [
 ];
 
 // ============================================
-// CALENDÁRIO
+// CALENDÁRIO (integrado)
 // ============================================
 window.toggleCalendar = function() {
     const modal = document.getElementById('calendarModal');
@@ -45,11 +50,81 @@ window.changeCalendarYear = function(delta) {
 };
 
 // ============================================
-// MÊS E DISPLAY
+// AUTENTICAÇÃO (SESSION TOKEN)
+// ============================================
+function verificarAutenticacao() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenFromUrl = urlParams.get('sessionToken');
+    if (tokenFromUrl) {
+        sessionToken = tokenFromUrl;
+        sessionStorage.setItem('contasPagarSession', tokenFromUrl);
+        sessionStorage.setItem('contasPagarSessionTime', Date.now().toString());
+        window.history.replaceState({}, document.title, window.location.pathname);
+        console.log('✅ Token recebido da URL');
+    } else {
+        sessionToken = sessionStorage.getItem('contasPagarSession');
+        const sessionTime = sessionStorage.getItem('contasPagarSessionTime');
+        if (sessionTime && sessionToken) {
+            const hoursElapsed = (Date.now() - parseInt(sessionTime)) / (1000 * 60 * 60);
+            if (hoursElapsed > 24) {
+                console.log('⏰ Sessão expirada (>24h)');
+                sessionToken = null;
+            } else {
+                console.log(`✅ Sessão válida (${hoursElapsed.toFixed(1)}h)`);
+            }
+        }
+    }
+    if (!sessionToken) {
+        console.log('⚠️ Sem token - Modo offline apenas com cache');
+        showMessage('Sessão não encontrada. Acesse via link autorizado.', 'warning');
+    }
+    inicializarApp();
+}
+
+function tratarErroAutenticacao(response) {
+    if (response && response.status === 401) {
+        console.log('❌ Token inválido ou sessão expirada (401)');
+        tentativasReconexao++;
+        if (tentativasReconexao < MAX_TENTATIVAS) {
+            console.log(`🔄 Tentativa ${tentativasReconexao} de ${MAX_TENTATIVAS} - aguardando 2s...`);
+            setTimeout(() => checkServerStatus(), 2000);
+            return true;
+        } else {
+            console.log('❌ Máximo de tentativas - Modo offline');
+            isOnline = false;
+            showMessage('Sessão expirada. Recarregue a página com um token válido.', 'error');
+            return true;
+        }
+    }
+    return false;
+}
+
+function checkServerStatus() {
+    if (!sessionToken) {
+        isOnline = false;
+        return Promise.resolve(false);
+    }
+    return fetch(`${API_URL}/contas`, {
+        headers: { 'X-Session-Token': sessionToken }
+    })
+    .then(response => {
+        if (tratarErroAutenticacao(response)) {
+            isOnline = false;
+            return false;
+        }
+        isOnline = response.ok;
+        if (isOnline) tentativasReconexao = 0;
+        return isOnline;
+    })
+    .catch(() => { isOnline = false; return false; });
+}
+
+// ============================================
+// NAVEGAÇÃO POR MESES
 // ============================================
 function updateDisplay() {
-    const el = document.getElementById('currentMonth');
-    if (el) el.textContent = `${meses[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
+    const display = document.getElementById('currentMonth');
+    if (display) display.textContent = `${meses[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
     updateDashboard();
     filterContas();
 }
@@ -59,55 +134,56 @@ window.changeMonth = function(direction) {
 };
 
 // ============================================
-// CARREGAR DADOS (API + localStorage)
+// CARREGAMENTO DE DADOS (COM TOKEN)
 // ============================================
 async function loadContas() {
+    if (!sessionToken) return;
     try {
-        const resp = await fetch(`${API_URL}/contas`, { headers: { Accept: 'application/json' } });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
+        const response = await fetch(`${API_URL}/contas`, {
+            headers: { 'X-Session-Token': sessionToken, 'Accept': 'application/json' }
+        });
+        if (tratarErroAutenticacao(response)) return;
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
         contas = data;
         localStorage.setItem('contas_backup', JSON.stringify(contas));
-        console.log(`✅ ${contas.length} contas carregadas`);
         updateAllFilters();
         updateDashboard();
         filterContas();
+        console.log(`✅ ${contas.length} contas carregadas`);
     } catch (err) {
-        console.error('Erro na API:', err);
+        console.error('Erro ao carregar:', err);
         const backup = localStorage.getItem('contas_backup');
         if (backup) {
             contas = JSON.parse(backup);
-            console.log(`📦 Backup local: ${contas.length} contas`);
             updateAllFilters();
             updateDashboard();
             filterContas();
-            showMessage('Modo offline - dados do último acesso', 'warning');
-        } else {
-            contas = [];
-            updateAllFilters();
-            updateDashboard();
-            filterContas();
-            showMessage('Não foi possível carregar dados. Verifique o servidor.', 'error');
+            showMessage('Modo offline - últimos dados carregados', 'warning');
         }
     }
 }
 
 async function loadParcelasDoGrupo(grupoId) {
-    if (!grupoId) return [];
+    if (!sessionToken || !grupoId) return [];
     try {
-        const resp = await fetch(`${API_URL}/contas/grupo/${grupoId}`);
-        if (!resp.ok) return [];
-        return await resp.json();
+        const response = await fetch(`${API_URL}/contas/grupo/${grupoId}`, {
+            headers: { 'X-Session-Token': sessionToken }
+        });
+        if (!response.ok) return [];
+        return await response.json();
     } catch (e) { return []; }
 }
 
 function startPolling() {
     loadContas();
-    setInterval(() => loadContas(), 15000);
+    setInterval(() => {
+        if (isOnline) loadContas();
+    }, 15000);
 }
 
 // ============================================
-// DASHBOARD
+// DASHBOARD E VENCIDOS
 // ============================================
 function updateDashboard() {
     const hoje = new Date(); hoje.setHours(0,0,0,0);
@@ -140,8 +216,8 @@ window.showVencidoModal = function() {
     else {
         body.innerHTML = `<table style="width:100%"><thead><tr><th>Descrição</th><th>Vencimento</th><th>Valor</th><th>Dias</th></tr></thead><tbody>${vencidas.map(c=>{
             const dias = Math.floor((hoje - new Date(c.data_vencimento+'T00:00:00'))/(86400000));
-            return `<tr><td>${c.descricao}</td><td>${formatDate(c.data_vencimento)}</td><td>R$ ${parseFloat(c.valor).toFixed(2)}</td><td>${dias}</td></tr>`;
-        }).join('')}</tbody></table>`;
+            return `<td>${c.descricao}</td><td>${formatDate(c.data_vencimento)}</td><td>R$ ${parseFloat(c.valor).toFixed(2)}</td><td>${dias}</td></tr>`;
+        }).join('')}</tbody></tr>`;
     }
     document.getElementById('vencidoModal').style.display = 'flex';
 };
@@ -247,7 +323,7 @@ function renderContas(lista) {
 }
 
 // ============================================
-// FORMULÁRIO E CRUD
+// FORMULÁRIO E CRUD (com token)
 // ============================================
 window.showFormModal = async function(editingId=null) {
     const isEditing = editingId && editingId!=='null';
@@ -400,6 +476,7 @@ async function handleCreateSubmit() {
     else await salvarSimples();
 }
 async function salvarSimples() {
+    if(!sessionToken && isOnline) { showMessage('Sessão expirada','error'); return; }
     const desc = document.getElementById('descricao')?.value.trim();
     const val = document.getElementById('valor')?.value;
     const venc = document.getElementById('data_vencimento')?.value;
@@ -418,7 +495,12 @@ async function salvarSimples() {
         status: document.getElementById('data_pagamento')?.value ? 'PAGO' : 'PENDENTE'
     };
     try {
-        const resp = await fetch(`${API_URL}/contas`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        const resp = await fetch(`${API_URL}/contas`, {
+            method:'POST',
+            headers:{'Content-Type':'application/json','X-Session-Token':sessionToken},
+            body:JSON.stringify(data)
+        });
+        if(resp.status===401) { tratarErroAutenticacao(resp); return; }
         if(!resp.ok) throw new Error();
         const saved = await resp.json();
         contas.push(saved);
@@ -429,6 +511,7 @@ async function salvarSimples() {
     } catch(e) { showMessage('Erro ao salvar','error'); }
 }
 async function salvarParcelado() {
+    if(!sessionToken && isOnline) { showMessage('Sessão expirada','error'); return; }
     const desc = document.getElementById('descricao')?.value.trim();
     const num = parseInt(document.getElementById('numParcelas')?.value);
     const total = parseFloat(document.getElementById('valorTotal')?.value);
@@ -457,7 +540,12 @@ async function salvarParcelado() {
             grupo_id: grupoId
         };
         try {
-            const resp = await fetch(`${API_URL}/contas`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(parc) });
+            const resp = await fetch(`${API_URL}/contas`, {
+                method:'POST',
+                headers:{'Content-Type':'application/json','X-Session-Token':sessionToken},
+                body:JSON.stringify(parc)
+            });
+            if(resp.status===401) { tratarErroAutenticacao(resp); return; }
             if(resp.ok) { ok++; const saved=await resp.json(); contas.push(saved); }
         } catch(e) {}
     }
@@ -473,6 +561,7 @@ async function handleEditSubmit() {
     else await editarSimples(editId);
 }
 async function editarSimples(id) {
+    if(!sessionToken && isOnline) { showMessage('Sessão expirada','error'); return; }
     const desc = document.getElementById('descricao')?.value.trim();
     const val = document.getElementById('valor')?.value;
     const venc = document.getElementById('data_vencimento')?.value;
@@ -491,7 +580,12 @@ async function editarSimples(id) {
         status: document.getElementById('data_pagamento')?.value ? 'PAGO' : 'PENDENTE'
     };
     try {
-        const resp = await fetch(`${API_URL}/contas/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        const resp = await fetch(`${API_URL}/contas/${id}`, {
+            method:'PUT',
+            headers:{'Content-Type':'application/json','X-Session-Token':sessionToken},
+            body:JSON.stringify(data)
+        });
+        if(resp.status===401) { tratarErroAutenticacao(resp); return; }
         if(!resp.ok) throw new Error();
         const updated = await resp.json();
         const idx = contas.findIndex(c=>String(c.id)===String(id));
@@ -503,6 +597,7 @@ async function editarSimples(id) {
     } catch(e) { showMessage('Erro ao atualizar','error'); }
 }
 async function editarParcelas() {
+    if(!sessionToken && isOnline) { showMessage('Sessão expirada','error'); return; }
     const desc = document.getElementById('descricao')?.value.trim();
     const doc = document.getElementById('documento')?.value.trim()||null;
     const obs = document.getElementById('observacoesData')?.value||'[]';
@@ -524,7 +619,12 @@ async function editarParcelas() {
             parcela_numero: p.parcela_numero, parcela_total: parcelasDoGrupo.length
         };
         try {
-            const resp = await fetch(`${API_URL}/contas/${p.id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+            const resp = await fetch(`${API_URL}/contas/${p.id}`, {
+                method:'PUT',
+                headers:{'Content-Type':'application/json','X-Session-Token':sessionToken},
+                body:JSON.stringify(data)
+            });
+            if(resp.status===401) { tratarErroAutenticacao(resp); return; }
             if(resp.ok) { const upd = await resp.json(); const idx = contas.findIndex(c=>String(c.id)===String(p.id)); if(idx!==-1) contas[idx]=upd; }
             else erros++;
         } catch(e) { erros++; }
@@ -557,18 +657,27 @@ window.togglePago = async function(id) {
     conta.status = novo;
     conta.data_pagamento = novaData;
     updateDashboard(); filterContas();
-    try {
-        const resp = await fetch(`${API_URL}/contas/${id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ status: novo, data_pagamento: novaData }) });
-        if(!resp.ok) throw new Error();
-        const updated = await resp.json();
-        const idx = contas.findIndex(c=>String(c.id)===String(id));
-        if(idx!==-1) contas[idx]=updated;
-        localStorage.setItem('contas_backup', JSON.stringify(contas));
-        showMessage(`Conta ${novo==='PAGO'?'paga':'pendente'}`,'success');
-    } catch(e) {
-        conta.status = old.status; conta.data_pagamento = old.data;
-        updateDashboard(); filterContas();
-        showMessage('Erro ao alternar','error');
+    if(sessionToken && isOnline) {
+        try {
+            const resp = await fetch(`${API_URL}/contas/${id}`, {
+                method:'PATCH',
+                headers:{'Content-Type':'application/json','X-Session-Token':sessionToken},
+                body:JSON.stringify({ status: novo, data_pagamento: novaData })
+            });
+            if(resp.status===401) { tratarErroAutenticacao(resp); throw new Error('401'); }
+            if(!resp.ok) throw new Error();
+            const updated = await resp.json();
+            const idx = contas.findIndex(c=>String(c.id)===String(id));
+            if(idx!==-1) contas[idx]=updated;
+            localStorage.setItem('contas_backup', JSON.stringify(contas));
+            showMessage(`Conta ${novo==='PAGO'?'paga':'pendente'}`,'success');
+        } catch(e) {
+            conta.status = old.status; conta.data_pagamento = old.data;
+            updateDashboard(); filterContas();
+            showMessage('Erro ao alternar','error');
+        }
+    } else {
+        showMessage('Offline - status não sincronizado','warning');
     }
 };
 window.deleteConta = async function(id) {
@@ -578,14 +687,21 @@ window.deleteConta = async function(id) {
     const excluida = contas[idx];
     contas.splice(idx,1);
     updateAllFilters(); updateDashboard(); filterContas();
-    try {
-        await fetch(`${API_URL}/contas/${id}`, { method:'DELETE' });
+    if(sessionToken && isOnline) {
+        try {
+            const resp = await fetch(`${API_URL}/contas/${id}`, { method:'DELETE', headers:{'X-Session-Token':sessionToken} });
+            if(resp.status===401) { tratarErroAutenticacao(resp); throw new Error('401'); }
+            if(!resp.ok) throw new Error();
+            localStorage.setItem('contas_backup', JSON.stringify(contas));
+            showMessage('Excluída','error');
+        } catch(e) {
+            contas.push(excluida);
+            updateAllFilters(); updateDashboard(); filterContas();
+            showMessage('Erro ao excluir','error');
+        }
+    } else {
         localStorage.setItem('contas_backup', JSON.stringify(contas));
-        showMessage('Excluída','error');
-    } catch(e) {
-        contas.push(excluida);
-        updateAllFilters(); updateDashboard(); filterContas();
-        showMessage('Erro ao excluir','error');
+        showMessage('Excluída localmente','warning');
     }
 };
 window.viewConta = function(id) {
@@ -605,7 +721,7 @@ window.closeViewModal = () => { document.getElementById('viewModal')?.remove(); 
 window.editConta = (id) => window.showFormModal(id);
 
 // ============================================
-// UTILITÁRIOS
+// UTILITÁRIOS E INICIALIZAÇÃO
 // ============================================
 function formatDate(ds) { if(!ds) return '-'; return new Date(ds+'T00:00:00').toLocaleDateString('pt-BR'); }
 function showMessage(msg, type) {
@@ -617,7 +733,14 @@ function showMessage(msg, type) {
 }
 function generateUUID() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{ const r=Math.random()*16|0, v=c==='x'?r:(r&0x3|0x8); return v.toString(16); }); }
 
-// INICIALIZAÇÃO
+function inicializarApp() {
+    updateDisplay();
+    checkServerStatus().then(() => {
+        if (sessionToken && isOnline) startPolling();
+        else loadContas(); // tenta mesmo offline (cache)
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', e => {
         const btn = e.target.closest('[data-action]');
@@ -637,6 +760,5 @@ document.addEventListener('DOMContentLoaded', () => {
             window.viewConta(row.dataset.contaId);
         }
     });
-    updateDisplay();
-    startPolling();
+    verificarAutenticacao();
 });
