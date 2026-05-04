@@ -88,7 +88,7 @@ module.exports = function (supabase) {
                     valor_nf: parseFloat(frete.valor_nf) || 0,
                     tipo_nf: frete.tipo_nf || null,
                     nome_orgao: frete.nome_orgao || frete.orgao || null,
-                    vendedor: frete.vendedor || null,
+                    vendedor: (frete.vendedor || '').toUpperCase().trim() || null,
                     documento: frete.documento || null,
                     contato_orgao: frete.contato_orgao || null,
                     transportadora: frete.transportadora || null,
@@ -124,11 +124,9 @@ module.exports = function (supabase) {
                 if (mapa[key]) {
                     Object.assign(mapa[key], campos);
                     mapa[key].origem = conta.status === 'PAGO' ? 'PAGO (Frete+Conta)' : 'MISTO';
-                    // Se a conta trouxer data de emissão e o frete não tiver, aproveita
                     if (conta.data_emissao && !mapa[key].data_emissao) {
                         mapa[key].data_emissao = conta.data_emissao;
                     }
-                    // Se a conta trouxer valor NF e o frete não tiver (caso raro)
                     if (conta.valor && (!mapa[key].valor_nf || mapa[key].valor_nf === 0)) {
                         mapa[key].valor_nf = parseFloat(conta.valor) || 0;
                     }
@@ -141,7 +139,7 @@ module.exports = function (supabase) {
                         valor_nf: parseFloat(conta.valor) || 0,
                         tipo_nf: conta.tipo_nf || null,
                         nome_orgao: conta.orgao || null,
-                        vendedor: conta.vendedor || null,
+                        vendedor: (conta.vendedor || '').toUpperCase().trim() || null,
                         status_frete: null,
                         id_controle_frete: null,
                         ...campos
@@ -154,25 +152,37 @@ module.exports = function (supabase) {
             if (!registros.length) return res.json({ success: true, message: 'Nenhum registro', total: 0 });
             console.log(`[vendas] Total a sincronizar: ${registros.length}`);
 
+            // ✅ CORREÇÃO CRÍTICA: remover 'id' dos registros antes do upsert
+            // O conflito é em (numero_nf, vendedor) — colunas de texto, não bigint/UUID.
+            // Jamais enviar campo 'id' com UUID quando a PK é bigint.
             const CHUNK = 200;
             let erros = 0;
+            let erroMsgs = [];
+
             for (let i = 0; i < registros.length; i += CHUNK) {
                 const chunk = registros.slice(i, i + CHUNK);
-                // Remove qualquer campo "observacoes" que possa ter vindo por acidente
-                const cleanChunk = chunk.map(({ observacoes, ...rest }) => rest);
+
+                // Remove campos problemáticos: id (UUID de outras tabelas), observacoes, e quaisquer UUIDs soltos
+                const cleanChunk = chunk.map(({ observacoes, id, ...rest }) => rest);
+
                 const { error: upsertError } = await supabase
                     .from('vendas')
-                    .upsert(cleanChunk, { onConflict: 'numero_nf, vendedor', ignoreDuplicates: false });
+                    .upsert(cleanChunk, {
+                        onConflict: 'numero_nf,vendedor',
+                        ignoreDuplicates: false
+                    });
+
                 if (upsertError) {
                     console.error(`[vendas] Erro lote ${i}:`, upsertError.message);
                     erros++;
+                    erroMsgs.push(upsertError.message);
                 } else {
                     console.log(`[vendas] Lote ${i} ok (${chunk.length} registros)`);
                 }
             }
 
-            const msg = `${registros.length} registros sincronizados${erros ? ` (${erros} lotes com erro)` : ''}`;
-            console.log(`[vendas] ✅ ${msg}`);
+            const msg = `${registros.length} registros sincronizados${erros ? ` (${erros} lotes com erro: ${erroMsgs[0]})` : ' com sucesso'}`;
+            console.log(`[vendas] ${erros ? '⚠️' : '✅'} ${msg}`);
             res.json({ success: erros === 0, message: msg, total: registros.length });
         } catch (err) {
             console.error('[vendas] ❌ Erro geral:', err.message);
