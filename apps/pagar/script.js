@@ -69,7 +69,10 @@ async function processSingleItem(item) {
             mode: 'cors'
         });
 
-        if (tratarErroAutenticacao(response)) return; // redireciona para login se 401
+        if (tratarErroAutenticacao(response)) {
+            item.status = 'auth_error';
+            return;
+        }
 
         if (response.ok) {
             const savedData = await response.json();
@@ -170,69 +173,83 @@ window.nextMonth = function() {
 };
 
 // ============================================
-// AUTENTICAÇÃO (CORRIGIDA)
+// AUTENTICAÇÃO
 // ============================================
 function verificarAutenticacao() {
     const urlParams = new URLSearchParams(window.location.search);
-    let tokenFromUrl = urlParams.get('sessionToken');
-
-    // Tenta obter token de diferentes chaves do sessionStorage
-    let storedToken = sessionStorage.getItem('contasPagarSession') ||
-                      sessionStorage.getItem('sessionToken') ||
-                      sessionStorage.getItem('token');
+    const tokenFromUrl = urlParams.get('sessionToken');
 
     if (tokenFromUrl) {
         sessionToken = tokenFromUrl;
-        // Salva nas chaves possíveis para compatibilidade
         sessionStorage.setItem('contasPagarSession', tokenFromUrl);
-        sessionStorage.setItem('sessionToken', tokenFromUrl);
-        sessionStorage.setItem('token', tokenFromUrl);
         sessionStorage.setItem('contasPagarSessionTime', Date.now().toString());
         window.history.replaceState({}, document.title, window.location.pathname);
         console.log('✅ Token recebido da URL');
-    } else if (storedToken) {
-        sessionToken = storedToken;
+    } else {
+        sessionToken = sessionStorage.getItem('contasPagarSession');
+        
         const sessionTime = sessionStorage.getItem('contasPagarSessionTime');
-        if (sessionTime) {
-            const hoursElapsed = (Date.now() - parseInt(sessionTime)) / (1000 * 60 * 60);
+        if (sessionTime && sessionToken) {
+            const timeDiff = Date.now() - parseInt(sessionTime);
+            const hoursElapsed = timeDiff / (1000 * 60 * 60);
+            
             if (hoursElapsed > 24) {
-                console.log('⏰ Sessão expirada (>24h) – redirecionando para login');
-                redirecionarParaLogin();
-                return;
+                console.log('⏰ Sessão expirada por tempo (>24h)');
+                console.warn('⚠️ Sessão expirada - Funcionando em modo offline');
+                sessionToken = null;
+            } else {
+                console.log(`✅ Sessão válida (${hoursElapsed.toFixed(1)}h desde o login)`);
             }
         }
-        console.log('✅ Token obtido do sessionStorage');
-    } else {
-        console.log('⚠️ Nenhum token encontrado – redirecionando para login');
-        redirecionarParaLogin();
-        return;
+    }
+
+    if (!sessionToken) {
+        console.log('⚠️ Sem token - Funcionando em modo offline');
     }
 
     inicializarApp();
 }
 
-function redirecionarParaLogin() {
-    const currentPath = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = `${PORTAL_URL}/portal?redirect=${currentPath}`;
-}
-
 function tratarErroAutenticacao(response) {
     if (response && response.status === 401) {
-        console.log('❌ Token inválido ou sessão expirada (401) – redirecionando para login');
-        redirecionarParaLogin();
-        return true;
+        console.log('❌ Token inválido ou sessão expirada (401)');
+        tentativasReconexao++;
+        
+        if (tentativasReconexao < MAX_TENTATIVAS) {
+            console.log(`🔄 Tentativa ${tentativasReconexao} de ${MAX_TENTATIVAS} - aguardando 2s...`);
+            setTimeout(() => {
+                checkServerStatus().catch(err => console.warn('Erro na tentativa de reconexão:', err));
+            }, 2000);
+            return true;
+        } else {
+            console.log('❌ Máximo de tentativas atingido - Continuando em modo offline');
+            isOnline = false;
+            sessionToken = null;
+            showMessage('Sessão expirada - Modo offline ativado', 'warning');
+            return true;
+        }
     }
     return false;
 }
 
 function inicializarApp() {
     console.log('🚀 Iniciando aplicação...');
+    tentativasReconexao = 0;
     updateDisplay();
-    checkServerStatus().catch(err => console.warn('⚠️ Erro ao verificar servidor:', err));
-    setInterval(() => {
-        checkServerStatus().catch(err => console.warn('Erro no polling:', err));
-    }, 15000);
-    startPolling();
+    
+    checkServerStatus().catch(err => {
+        console.warn('⚠️ Erro ao verificar servidor:', err);
+        isOnline = false;
+    });
+    
+    if (sessionToken) {
+        setInterval(() => {
+            checkServerStatus().catch(err => console.warn('Erro no polling:', err));
+        }, 15000);
+        startPolling();
+    } else {
+        console.log('ℹ️ Modo offline - Polling desabilitado');
+    }
 }
 
 // ============================================
@@ -240,7 +257,7 @@ function inicializarApp() {
 // ============================================
 async function checkServerStatus() {
     if (!sessionToken) {
-        redirecionarParaLogin();
+        isOnline = false;
         return false;
     }
     
@@ -262,12 +279,15 @@ async function checkServerStatus() {
         
         if (wasOffline && isOnline) {
             console.log('✅ SERVIDOR ONLINE - Sincronizando pendências...');
+            tentativasReconexao = 0;
             await loadContas();
+            
             if (processingQueue.items.length > 0) {
                 showMessage('Sincronizando contas pendentes...', 'info');
                 processQueue();
             }
         }
+        
         return isOnline;
     } catch (error) {
         console.warn('⚠️ Erro ao verificar servidor:', error.message);
@@ -277,7 +297,7 @@ async function checkServerStatus() {
 }
 
 // ============================================
-// CARREGAMENTO DE DADOS (sem alterações)
+// CARREGAMENTO DE DADOS
 // ============================================
 async function loadContas() {
     if (!isOnline) return;
@@ -342,7 +362,7 @@ function startPolling() {
 }
 
 // ============================================
-// DASHBOARD (sem alterações)
+// DASHBOARD
 // ============================================
 function updateDashboard() {
     const hoje = new Date();
@@ -389,7 +409,7 @@ function updateDashboard() {
 }
 
 // ============================================
-// MODAL DE VENCIDOS (sem alterações)
+// MODAL DE VENCIDOS
 // ============================================
 window.showVencidoModal = function() {
     console.log('🔔 showVencidoModal chamado');
@@ -416,21 +436,16 @@ window.showVencidoModal = function() {
     if (contasVencidas.length === 0) {
         body.innerHTML = `<div style="text-align:center;padding:3rem;color:var(--text-secondary);"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.3;margin-bottom:1rem;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8l0 4"></path><path d="M12 16l.01 0"></path></svg><p style="font-size:1.1rem;font-weight:600;margin:0;">Nenhuma conta vencida</p><p style="font-size:0.9rem;margin-top:0.5rem;">Todas as contas estão dentro do prazo ou foram pagas</p></div>`;
     } else {
-        body.innerHTML = `<div style="overflow-x:auto;"><table>
-            <thead>
-                <tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr>
-            </thead>
-            <tbody>${contasVencidas.map(c => {
-                const dataVenc = new Date(c.data_vencimento + 'T00:00:00');
-                const diasAtraso = Math.floor((hoje - dataVenc) / (1000 * 60 * 60 * 24));
-                return `<tr>
-                            <td style="word-break:break-word;">${c.descricao}</td>
-                            <td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td>
-                            <td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                            <td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td>
-                          </tr>`;
-            }).join('')}</tbody>
-        </table></div>`;
+        body.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr></thead><tbody>${contasVencidas.map(c => {
+            const dataVenc = new Date(c.data_vencimento + 'T00:00:00');
+            const diasAtraso = Math.floor((hoje - dataVenc) / (1000 * 60 * 60 * 24));
+            return `<tr>
+                        <td style="word-break:break-word;">${c.descricao}</td>
+                        <td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td>
+                        <td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                        <td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td>
+                     </tr>`;
+        }).join('')}</tbody></table></div>`;
     }
     
     modal.style.display = 'flex';
@@ -445,7 +460,7 @@ window.closeVencidoModal = function() {
 };
 
 // ============================================
-// PDF (sem alterações)
+// PDF - GERAR RELATÓRIO (com coluna Parcela)
 // ============================================
 window.gerarPDF = function() {
     const filtrados = getDadosFiltrados();
@@ -478,6 +493,7 @@ window.gerarPDF = function() {
         doc.text(`Filtros: ${filtrosTexto.join(' | ')}`, 14, 40);
     }
     
+    // Prepara dados com informação de parcela
     const tableData = filtrados.map(c => {
         let parcelaDisplay = '-';
         if (c.parcela_numero && c.parcela_total) {
@@ -501,12 +517,12 @@ window.gerarPDF = function() {
         headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
         styles: { fontSize: 9, cellPadding: 3, valign: 'middle' },
         columnStyles: {
-            0: { cellWidth: 'auto', lineWidth: 0.2 },
-            1: { halign: 'center', cellWidth: 20 },
-            2: { halign: 'right', cellWidth: 25 },
-            3: { halign: 'center', cellWidth: 22 },
-            4: { halign: 'left', cellWidth: 28 },
-            5: { halign: 'center', cellWidth: 25 }
+            0: { cellWidth: 'auto', lineWidth: 0.2 },   // Descrição
+            1: { halign: 'center', cellWidth: 20 },     // Parcela
+            2: { halign: 'right', cellWidth: 25 },      // Valor
+            3: { halign: 'center', cellWidth: 22 },     // Vencimento
+            4: { halign: 'left', cellWidth: 28 },       // Banco
+            5: { halign: 'center', cellWidth: 25 }      // Data Pagamento
         },
         margin: { left: 14, right: 14 }
     });
@@ -566,7 +582,7 @@ function getDadosFiltrados() {
 }
 
 // ============================================
-// SINCRONIZAÇÃO (sem alterações)
+// SINCRONIZAÇÃO
 // ============================================
 window.sincronizarDados = async function() {
     showMessage('Sincronizando...', 'info');
@@ -575,7 +591,7 @@ window.sincronizarDados = async function() {
 };
 
 // ============================================
-// FORMULÁRIO (sem alterações)
+// FORMULÁRIO (mesmo código original)
 // ============================================
 window.toggleForm = function() { window.showFormModal(null); };
 
@@ -1023,7 +1039,7 @@ function applyUppercaseFields() {
 }
 
 // ============================================
-// TOGGLE PAGO (ajuste redirecionamento)
+// TOGGLE PAGO
 // ============================================
 window.togglePago = async function(id) {
     const idStr = String(id);
@@ -1050,7 +1066,7 @@ window.togglePago = async function(id) {
 };
 
 // ============================================
-// EDIÇÃO E EXCLUSÃO (com redirecionamento)
+// EDIÇÃO E EXCLUSÃO
 // ============================================
 window.editConta = function(id) { window.showFormModal(id); };
 
@@ -1073,7 +1089,7 @@ window.deleteConta = async function(id) {
 };
 
 // ============================================
-// VISUALIZAÇÃO (sem alterações)
+// VISUALIZAÇÃO (modal)
 // ============================================
 window.viewConta = function(id) {
     const idStr = String(id);
@@ -1108,7 +1124,7 @@ window.closeViewModal = function() {
 };
 
 // ============================================
-// FILTROS E RENDERIZAÇÃO (sem alterações)
+// FILTROS E RENDERIZAÇÃO DA TABELA
 // ============================================
 function updateAllFilters() {
     const bancos = new Set();
