@@ -15,11 +15,10 @@ module.exports = function (supabase) {
         return EXCLUDED_NF_TYPES.some(ex => normalized.includes(ex.normalize('NFD').replace(/[\u0300-\u036f]/g, '')));
     }
 
-    // 🔧 NORMALIZAÇÃO ROBUSTA DO NÚMERO DA NF (remove zeros à esquerda)
     function normalizeNF(numeroNF) {
         if (!numeroNF) return '';
         let str = String(numeroNF).trim();
-        str = str.replace(/^0+/, '');      // remove zeros à esquerda
+        str = str.replace(/^0+/, '');
         return str || '0';
     }
 
@@ -27,6 +26,25 @@ module.exports = function (supabase) {
         const nf = normalizeNF(numeroNF);
         const vendedorNorm = (vendedor || '').toUpperCase().trim();
         return `${nf}||${vendedorNorm}`;
+    }
+
+    // 🔧 Remove qualquer campo que possa causar conflito de tipo no Supabase
+    function sanitizeForUpsert(record) {
+        const {
+            id,              // PK da tabela vendas — deixa o Supabase gerar
+            observacoes,     // coluna que não existe em vendas
+            id_controle_frete,  // UUID — só inclui se a coluna for uuid no Supabase
+            id_contas_receber,  // UUID — idem
+            ...safe
+        } = record;
+
+        // Reinsere os IDs de referência APENAS como string (uuid),
+        // para não quebrar caso a coluna seja text ou uuid no Supabase.
+        // Se a coluna não existir na tabela, o Supabase ignora silenciosamente.
+        if (id_controle_frete) safe.id_controle_frete = String(id_controle_frete);
+        if (id_contas_receber) safe.id_contas_receber = String(id_contas_receber);
+
+        return safe;
     }
 
     router.get('/', async (req, res) => {
@@ -62,108 +80,109 @@ module.exports = function (supabase) {
     router.post('/sincronizar', async (req, res) => {
         try {
             console.log('[vendas] 🔄 Sincronização iniciada...');
+
             const { data: fretesRaw, error: errFretes } = await supabase
                 .from('controle_frete')
                 .select('*')
                 .not('status', 'in', '(DEVOLVIDO,DEVOLUCAO,devolvido,devolution,DEVOLUÇÃO,DEVOLUÇAO)');
             if (errFretes) throw new Error(`Frete: ${errFretes.message}`);
+
             const { data: contasRaw, error: errContas } = await supabase
                 .from('contas_receber')
                 .select('*');
             if (errContas) throw new Error(`Contas: ${errContas.message}`);
 
-            let fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
-            let contas = (contasRaw || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
+            const fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
+            const contas = (contasRaw || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
 
-            console.log(`[vendas] Fretes (após excluir tipos): ${fretes.length} | Contas (após excluir tipos): ${contas.length}`);
+            console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
+
             const mapa = {};
 
-            // Adiciona fretes
             for (const frete of fretes) {
                 const key = makeKey(frete.numero_nf, frete.vendedor);
                 mapa[key] = {
-                    numero_nf: normalizeNF(frete.numero_nf),
-                    origem: 'CONTROLE_FRETE',
-                    data_emissao: frete.data_emissao || null,
-                    valor_nf: parseFloat(frete.valor_nf) || 0,
-                    tipo_nf: frete.tipo_nf || null,
-                    nome_orgao: frete.nome_orgao || frete.orgao || null,
-                    vendedor: (frete.vendedor || '').toUpperCase().trim() || null,
-                    documento: frete.documento || null,
-                    contato_orgao: frete.contato_orgao || null,
-                    transportadora: frete.transportadora || null,
-                    valor_frete: parseFloat(frete.valor_frete) || 0,
-                    data_coleta: frete.data_coleta || null,
-                    cidade_destino: frete.cidade_destino || null,
+                    numero_nf:        normalizeNF(frete.numero_nf),
+                    origem:           'CONTROLE_FRETE',
+                    data_emissao:     frete.data_emissao || null,
+                    valor_nf:         parseFloat(frete.valor_nf) || 0,
+                    tipo_nf:          frete.tipo_nf || null,
+                    nome_orgao:       frete.nome_orgao || frete.orgao || null,
+                    vendedor:         (frete.vendedor || '').toUpperCase().trim() || null,
+                    documento:        frete.documento || null,
+                    contato_orgao:    frete.contato_orgao || null,
+                    transportadora:   frete.transportadora || null,
+                    valor_frete:      parseFloat(frete.valor_frete) || 0,
+                    data_coleta:      frete.data_coleta || null,
+                    cidade_destino:   frete.cidade_destino || null,
                     previsao_entrega: frete.previsao_entrega || null,
-                    status_frete: (frete.status || 'EM TRÂNSITO').replace(/_/g, ' '),
-                    id_controle_frete: frete.id,
+                    status_frete:     (frete.status || 'EM TRÂNSITO').replace(/_/g, ' '),
+                    id_controle_frete: frete.id,   // UUID da tabela controle_frete
                     status_pagamento: null,
-                    banco: null,
-                    data_vencimento: null,
-                    data_pagamento: null,
-                    valor_pago: 0,
+                    banco:            null,
+                    data_vencimento:  null,
+                    data_pagamento:   null,
+                    valor_pago:       0,
                     id_contas_receber: null,
-                    updated_at: new Date().toISOString()
+                    updated_at:       new Date().toISOString()
                 };
             }
 
             let unmatchedContas = 0;
-            // Mescla contas a receber
             for (const conta of contas) {
                 const key = makeKey(conta.numero_nf, conta.vendedor);
                 const campos = {
-                    status_pagamento: conta.status,
-                    banco: conta.banco || null,
-                    data_vencimento: conta.data_vencimento || null,
-                    data_pagamento: conta.data_pagamento || null,
-                    valor_pago: parseFloat(conta.valor_pago) || 0,
-                    id_contas_receber: conta.id,
-                    updated_at: new Date().toISOString()
+                    status_pagamento:  conta.status,
+                    banco:             conta.banco || null,
+                    data_vencimento:   conta.data_vencimento || null,
+                    data_pagamento:    conta.data_pagamento || null,
+                    valor_pago:        parseFloat(conta.valor_pago) || 0,
+                    id_contas_receber: conta.id,   // UUID da tabela contas_receber
+                    updated_at:        new Date().toISOString()
                 };
+
                 if (mapa[key]) {
                     Object.assign(mapa[key], campos);
                     mapa[key].origem = conta.status === 'PAGO' ? 'PAGO (Frete+Conta)' : 'MISTO';
-                    if (conta.data_emissao && !mapa[key].data_emissao) {
+                    if (conta.data_emissao && !mapa[key].data_emissao)
                         mapa[key].data_emissao = conta.data_emissao;
-                    }
-                    if (conta.valor && (!mapa[key].valor_nf || mapa[key].valor_nf === 0)) {
+                    if (conta.valor && (!mapa[key].valor_nf || mapa[key].valor_nf === 0))
                         mapa[key].valor_nf = parseFloat(conta.valor) || 0;
-                    }
                 } else {
                     unmatchedContas++;
                     mapa[key] = {
-                        numero_nf: normalizeNF(conta.numero_nf),
-                        origem: 'CONTAS_RECEBER',
-                        data_emissao: conta.data_emissao || null,
-                        valor_nf: parseFloat(conta.valor) || 0,
-                        tipo_nf: conta.tipo_nf || null,
-                        nome_orgao: conta.orgao || null,
-                        vendedor: (conta.vendedor || '').toUpperCase().trim() || null,
-                        status_frete: null,
+                        numero_nf:        normalizeNF(conta.numero_nf),
+                        origem:           'CONTAS_RECEBER',
+                        data_emissao:     conta.data_emissao || null,
+                        valor_nf:         parseFloat(conta.valor) || 0,
+                        tipo_nf:          conta.tipo_nf || null,
+                        nome_orgao:       conta.orgao || null,
+                        vendedor:         (conta.vendedor || '').toUpperCase().trim() || null,
+                        status_frete:     null,
                         id_controle_frete: null,
                         ...campos
                     };
                 }
             }
-            console.log(`[vendas] Contas sem frete correspondente (novos registros): ${unmatchedContas}`);
+
+            console.log(`[vendas] Contas sem frete: ${unmatchedContas}`);
 
             const registros = Object.values(mapa);
-            if (!registros.length) return res.json({ success: true, message: 'Nenhum registro', total: 0 });
+            if (!registros.length)
+                return res.json({ success: true, message: 'Nenhum registro', total: 0 });
+
             console.log(`[vendas] Total a sincronizar: ${registros.length}`);
 
-            // ✅ CORREÇÃO CRÍTICA: remover 'id' dos registros antes do upsert
-            // O conflito é em (numero_nf, vendedor) — colunas de texto, não bigint/UUID.
-            // Jamais enviar campo 'id' com UUID quando a PK é bigint.
             const CHUNK = 200;
             let erros = 0;
-            let erroMsgs = [];
+            const erroMsgs = [];
 
             for (let i = 0; i < registros.length; i += CHUNK) {
                 const chunk = registros.slice(i, i + CHUNK);
 
-                // Remove campos problemáticos: id (UUID de outras tabelas), observacoes, e quaisquer UUIDs soltos
-                const cleanChunk = chunk.map(({ observacoes, id, ...rest }) => rest);
+                // ✅ sanitizeForUpsert remove 'id' e garante que campos UUID
+                // não quebrem colunas bigint na tabela vendas
+                const cleanChunk = chunk.map(sanitizeForUpsert);
 
                 const { error: upsertError } = await supabase
                     .from('vendas')
@@ -184,6 +203,7 @@ module.exports = function (supabase) {
             const msg = `${registros.length} registros sincronizados${erros ? ` (${erros} lotes com erro: ${erroMsgs[0]})` : ' com sucesso'}`;
             console.log(`[vendas] ${erros ? '⚠️' : '✅'} ${msg}`);
             res.json({ success: erros === 0, message: msg, total: registros.length });
+
         } catch (err) {
             console.error('[vendas] ❌ Erro geral:', err.message);
             res.status(500).json({ success: false, error: err.message });
