@@ -28,7 +28,7 @@ async function inicializarApp() {
     await loadVendas();
     updateMonthDisplay();
     setInterval(checkServerStatus, 15000);
-    setInterval(() => syncData(), 120000);   // a cada 2 minutos (antes era 5)
+    setInterval(() => syncData(), 120000);
     setInterval(loadVendas, 30000);
 }
 
@@ -46,9 +46,41 @@ function changeMonth(direction) {
     updateDisplay();
 }
 
-function toggleCalendar() { /* implementar se necessário */ }
-function renderCalendar() {}
-function selectMonth(monthIndex) { currentMonth = new Date(calendarYear, monthIndex, 1); updateMonthDisplay(); updateDisplay(); }
+function toggleCalendar() {
+    const modal = document.getElementById('calendarModal');
+    if (!modal) return;
+    calendarYear = currentMonth.getFullYear();
+    renderCalendar();
+    modal.classList.toggle('show');
+}
+
+function renderCalendar() {
+    const yearElem = document.getElementById('calendarYear');
+    if (yearElem) yearElem.textContent = calendarYear;
+
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+                        'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const container = document.getElementById('calendarMonths');
+    if (!container) return;
+
+    container.innerHTML = monthNames.map((m, i) => {
+        const isCurrent = i === currentMonth.getMonth() && calendarYear === currentMonth.getFullYear();
+        return `<div class="calendar-month${isCurrent ? ' current' : ''}" onclick="selectMonth(${i})">${m}</div>`;
+    }).join('');
+}
+
+function changeCalendarYear(dir) {
+    calendarYear += dir;
+    renderCalendar();
+}
+
+function selectMonth(monthIndex) {
+    currentMonth = new Date(calendarYear, monthIndex, 1);
+    updateMonthDisplay();
+    updateDisplay();
+    const modal = document.getElementById('calendarModal');
+    if (modal) modal.classList.remove('show');
+}
 
 window.gerarPDF = function () {
     const filterVendedor = document.getElementById('filterVendedor');
@@ -60,7 +92,6 @@ window.gerarPDF = function () {
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-    // 🔧 CORREÇÃO: não filtrar por origem – pega TODOS os pagamentos do mês para o vendedor
     const vendasPagas = allVendas.filter(v => {
         if (!v.data_pagamento) return false;
         if (v.vendedor !== vendedorSelecionado) return false;
@@ -138,8 +169,12 @@ async function checkServerStatus() {
             await loadVendas();
         }
     } catch (error) {
-        console.error('❌ Erro ao verificar status:', error);
         isOnline = false;
+        const statusElem = document.getElementById('connectionStatus');
+        if (statusElem) {
+            statusElem.classList.remove('online');
+            statusElem.classList.add('offline');
+        }
     }
 }
 
@@ -227,7 +262,6 @@ function loadDashboard() {
         if (v.data_pagamento) {
             const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
             if (dataPagamento.getMonth() === currentMonthIndex && dataPagamento.getFullYear() === currentYear) {
-                // Usa valor_pago se existir, senão valor_nf
                 const valorPago = (v.valor_pago !== null && !isNaN(parseFloat(v.valor_pago))) ? parseFloat(v.valor_pago) : valorNF;
                 totalPago += valorPago;
             }
@@ -250,29 +284,72 @@ function updateTable() {
     if (!container) return;
 
     const vendedorSelecionado = document.getElementById('filterVendedor')?.value || '';
-    let monthVendas = allVendas.filter(v => {
+
+    let filtered = allVendas.filter(v => {
         if (!v.data_emissao) return false;
         const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
         return dataEmissao.getMonth() === currentMonth.getMonth() &&
                dataEmissao.getFullYear() === currentMonth.getFullYear();
     });
-    let filtered = [...monthVendas];
-    if (vendedorSelecionado) filtered = filtered.filter(v => v.vendedor === vendedorSelecionado);
-    const search = document.getElementById('search')?.value.toLowerCase() || '';
-    const filterStatus = document.getElementById('filterStatus')?.value || '';
-    if (search) filtered = filtered.filter(v => (v.numero_nf || '').toLowerCase().includes(search) || (v.nome_orgao || '').toLowerCase().includes(search));
-    if (filterStatus === 'PAGO') filtered = filtered.filter(v => v.data_pagamento);
-    if (filterStatus === 'ENTREGUE') filtered = filtered.filter(v => v.status_frete === 'ENTREGUE');
-    if (filterStatus === 'EM TRÂNSITO') filtered = filtered.filter(v => v.status_frete === 'EM TRÂNSITO');
-    filtered.sort((a, b) => (parseInt(a.numero_nf) || 0) - (parseInt(b.numero_nf) || 0));
-    if (!filtered.length) { container.innerHTML = '<div style="text-align:center;padding:2rem;">Nenhuma venda encontrada</div>'; return; }
 
-    const table = `<div style="overflow-x:auto;"><tr><thead><tr><th>NF</th><th>Emissão</th><th>Vendedor</th><th>Órgão</th><th>Valor NF</th><th>Status</th><th>Ações</th></tr></thead><tbody>${filtered.map(v => {
+    if (vendedorSelecionado) {
+        filtered = filtered.filter(v => v.vendedor === vendedorSelecionado);
+    }
+
+    const search = (document.getElementById('search')?.value || '').toLowerCase();
+    const filterStatus = document.getElementById('filterStatus')?.value || '';
+
+    if (search) {
+        filtered = filtered.filter(v =>
+            (v.numero_nf || '').toLowerCase().includes(search) ||
+            (v.nome_orgao || '').toLowerCase().includes(search)
+        );
+    }
+
+    if (filterStatus === 'PAGO') filtered = filtered.filter(v => v.data_pagamento);
+    else if (filterStatus === 'ENTREGUE') filtered = filtered.filter(v => v.status_frete === 'ENTREGUE' && !v.data_pagamento);
+    else if (filterStatus === 'EM TRÂNSITO') filtered = filtered.filter(v => v.status_frete === 'EM TRÂNSITO');
+
+    filtered.sort((a, b) => (parseInt(a.numero_nf) || 0) - (parseInt(b.numero_nf) || 0));
+
+    if (!filtered.length) {
+        container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Nenhuma venda encontrada</div>';
+        return;
+    }
+
+    // ✅ CORREÇÃO: HTML da tabela com estrutura correta
+    const rows = filtered.map(v => {
         const status = v.data_pagamento ? 'PAGO' : (v.status_frete || 'EM TRÂNSITO');
         const rowClass = status === 'PAGO' ? 'row-pago' : (status === 'ENTREGUE' ? 'row-entregue' : '');
-        return `<tr class="${rowClass}"><td><strong>${v.numero_nf}</strong></td><td>${formatDate(v.data_emissao)}</td><td>${v.vendedor}</td><td style="word-break:break-word;">${v.nome_orgao}</td><td><strong>${formatCurrency(v.valor_nf)}</strong></td><td>${getStatusBadge(status)}</td><td><button class="action-btn view" onclick="viewVenda('${v.id}')">Ver</button></td></tr>`;
-    }).join('')}</tbody></table></div>`;
-    container.innerHTML = table;
+        const nfEscaped = String(v.id).replace(/'/g, "\\'");
+        return `<tr class="${rowClass}">
+            <td><strong>${v.numero_nf || '-'}</strong></td>
+            <td>${formatDate(v.data_emissao)}</td>
+            <td>${v.vendedor || '-'}</td>
+            <td style="word-break:break-word;max-width:220px;">${v.nome_orgao || '-'}</td>
+            <td><strong>${formatCurrency(v.valor_nf)}</strong></td>
+            <td>${getStatusBadge(status)}</td>
+            <td><button class="action-btn view" onclick="viewVenda('${nfEscaped}')">Ver</button></td>
+        </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+        <div style="overflow-x:auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>NF</th>
+                        <th>Emissão</th>
+                        <th>Vendedor</th>
+                        <th>Órgão</th>
+                        <th>Valor NF</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>`;
 }
 
 function getStatusBadge(status) {
@@ -286,20 +363,67 @@ function getStatusBadge(status) {
 }
 
 function viewVenda(id) {
-    const venda = allVendas.find(v => v.id === id);
+    const venda = allVendas.find(v => String(v.id) === String(id));
     if (!venda) return;
     document.getElementById('modalNumeroNF').textContent = venda.numero_nf;
     const modalBody = document.getElementById('modalBody');
     if (!modalBody) return;
+
     if (venda.data_pagamento) {
-        modalBody.innerHTML = `<div class="info-section"><h4>Pagamento</h4><p><strong>NF:</strong> ${venda.numero_nf}</p><p><strong>Vendedor:</strong> ${venda.vendedor}</p><p><strong>Órgão:</strong> ${venda.nome_orgao}</p><p><strong>Valor NF:</strong> ${formatCurrency(venda.valor_nf)}</p><p><strong>Valor Pago:</strong> ${formatCurrency(venda.valor_pago)}</p><p><strong>Emissão:</strong> ${formatDate(venda.data_emissao)}</p><p><strong>Pagamento:</strong> ${formatDate(venda.data_pagamento)}</p><p><strong>Banco:</strong> ${venda.banco || '-'}</p></div>`;
+        modalBody.innerHTML = `
+            <div class="info-section">
+                <h4>Pagamento</h4>
+                <p><strong>NF:</strong> ${venda.numero_nf}</p>
+                <p><strong>Vendedor:</strong> ${venda.vendedor || '-'}</p>
+                <p><strong>Órgão:</strong> ${venda.nome_orgao || '-'}</p>
+                <p><strong>Valor NF:</strong> ${formatCurrency(venda.valor_nf)}</p>
+                <p><strong>Valor Pago:</strong> ${formatCurrency(venda.valor_pago)}</p>
+                <p><strong>Emissão:</strong> ${formatDate(venda.data_emissao)}</p>
+                <p><strong>Pagamento:</strong> ${formatDate(venda.data_pagamento)}</p>
+                <p><strong>Banco:</strong> ${venda.banco || '-'}</p>
+            </div>`;
     } else {
-        modalBody.innerHTML = `<div class="info-section"><h4>Frete</h4><p><strong>NF:</strong> ${venda.numero_nf}</p><p><strong>Vendedor:</strong> ${venda.vendedor}</p><p><strong>Órgão:</strong> ${venda.nome_orgao}</p><p><strong>Valor NF:</strong> ${formatCurrency(venda.valor_nf)}</p><p><strong>Emissão:</strong> ${formatDate(venda.data_emissao)}</p><p><strong>Transportadora:</strong> ${venda.transportadora || '-'}</p><p><strong>Status Frete:</strong> ${venda.status_frete}</p></div>`;
+        modalBody.innerHTML = `
+            <div class="info-section">
+                <h4>Frete</h4>
+                <p><strong>NF:</strong> ${venda.numero_nf}</p>
+                <p><strong>Vendedor:</strong> ${venda.vendedor || '-'}</p>
+                <p><strong>Órgão:</strong> ${venda.nome_orgao || '-'}</p>
+                <p><strong>Valor NF:</strong> ${formatCurrency(venda.valor_nf)}</p>
+                <p><strong>Emissão:</strong> ${formatDate(venda.data_emissao)}</p>
+                <p><strong>Transportadora:</strong> ${venda.transportadora || '-'}</p>
+                <p><strong>Status Frete:</strong> ${venda.status_frete || '-'}</p>
+                <p><strong>Cidade Destino:</strong> ${venda.cidade_destino || '-'}</p>
+                <p><strong>Previsão Entrega:</strong> ${formatDate(venda.previsao_entrega)}</p>
+            </div>`;
     }
+
     document.getElementById('infoModal').classList.add('show');
 }
-function closeInfoModal() { document.getElementById('infoModal').classList.remove('show'); }
-function filterVendas() { updateDisplay(); }
-function formatDate(d) { return d ? new Date(d+'T00:00:00').toLocaleDateString('pt-BR') : '-'; }
-function formatCurrency(v) { return v ? `R$ ${parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2})}` : 'R$ 0,00'; }
-function showToast(msg, type) { const div = document.createElement('div'); div.className = `floating-message ${type}`; div.textContent = msg; document.body.appendChild(div); setTimeout(() => div.remove(), 3000); }
+
+function closeInfoModal() {
+    document.getElementById('infoModal').classList.remove('show');
+}
+
+function filterVendas() {
+    updateDisplay();
+}
+
+function formatDate(d) {
+    if (!d) return '-';
+    return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
+}
+
+function formatCurrency(v) {
+    const num = parseFloat(v);
+    if (isNaN(num)) return 'R$ 0,00';
+    return `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function showToast(msg, type) {
+    const div = document.createElement('div');
+    div.className = `floating-message ${type}`;
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 3000);
+}
