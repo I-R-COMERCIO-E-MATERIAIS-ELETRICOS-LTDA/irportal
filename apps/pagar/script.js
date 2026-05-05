@@ -58,13 +58,12 @@ async function processQueue() {
 
 async function processSingleItem(item) {
     try {
+        const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+
         const response = await fetch(`${API_URL}/contas`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Session-Token': sessionToken,
-                'Accept': 'application/json'
-            },
+            headers,
             body: JSON.stringify(item.data),
             mode: 'cors'
         });
@@ -173,7 +172,7 @@ window.nextMonth = function() {
 };
 
 // ============================================
-// AUTENTICAÇÃO
+// AUTENTICAÇÃO — CORRIGIDA
 // ============================================
 function verificarAutenticacao() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -195,16 +194,18 @@ function verificarAutenticacao() {
             
             if (hoursElapsed > 24) {
                 console.log('⏰ Sessão expirada por tempo (>24h)');
-                console.warn('⚠️ Sessão expirada - Funcionando em modo offline');
                 sessionToken = null;
+                sessionStorage.removeItem('contasPagarSession');
+                sessionStorage.removeItem('contasPagarSessionTime');
             } else {
                 console.log(`✅ Sessão válida (${hoursElapsed.toFixed(1)}h desde o login)`);
             }
         }
     }
 
+    // ✅ CORREÇÃO: mesmo sem token, inicializa a aplicação normalmente
     if (!sessionToken) {
-        console.log('⚠️ Sem token - Funcionando em modo offline');
+        console.log('ℹ️ Sem token de sessão — tentando conexão sem autenticação');
     }
 
     inicializarApp();
@@ -222,10 +223,10 @@ function tratarErroAutenticacao(response) {
             }, 2000);
             return true;
         } else {
-            console.log('❌ Máximo de tentativas atingido - Continuando em modo offline');
+            console.log('❌ Máximo de tentativas atingido');
             isOnline = false;
             sessionToken = null;
-            showMessage('Sessão expirada - Modo offline ativado', 'warning');
+            showMessage('Sessão expirada — recarregue a página', 'warning');
             return true;
         }
     }
@@ -237,37 +238,33 @@ function inicializarApp() {
     tentativasReconexao = 0;
     updateDisplay();
     
+    // ✅ CORREÇÃO: sempre tenta verificar o servidor, independente de ter token
     checkServerStatus().catch(err => {
         console.warn('⚠️ Erro ao verificar servidor:', err);
         isOnline = false;
     });
     
-    if (sessionToken) {
-        setInterval(() => {
-            checkServerStatus().catch(err => console.warn('Erro no polling:', err));
-        }, 15000);
-        startPolling();
-    } else {
-        console.log('ℹ️ Modo offline - Polling desabilitado');
-    }
+    // ✅ CORREÇÃO: polling sempre ativo
+    setInterval(() => {
+        checkServerStatus().catch(err => console.warn('Erro no polling:', err));
+    }, 15000);
+
+    startPolling();
 }
 
 // ============================================
-// CONEXÃO E STATUS
+// CONEXÃO E STATUS — CORRIGIDA
 // ============================================
 async function checkServerStatus() {
-    if (!sessionToken) {
-        isOnline = false;
-        return false;
-    }
-    
+    // ✅ CORREÇÃO: removido o bloqueio por sessionToken
+    // A API pode ou não exigir autenticação — tentamos de qualquer forma
     try {
+        const headers = { 'Accept': 'application/json' };
+        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+
         const response = await fetch(`${API_URL}/contas`, {
             method: 'GET',
-            headers: { 
-                'X-Session-Token': sessionToken,
-                'Accept': 'application/json'
-            },
+            headers,
             mode: 'cors',
             signal: AbortSignal.timeout(5000)
         });
@@ -278,7 +275,7 @@ async function checkServerStatus() {
         isOnline = response.ok;
         
         if (wasOffline && isOnline) {
-            console.log('✅ SERVIDOR ONLINE - Sincronizando pendências...');
+            console.log('✅ SERVIDOR ONLINE - Sincronizando...');
             tentativasReconexao = 0;
             await loadContas();
             
@@ -297,24 +294,27 @@ async function checkServerStatus() {
 }
 
 // ============================================
-// CARREGAMENTO DE DADOS
+// CARREGAMENTO DE DADOS — CORRIGIDO
 // ============================================
 async function loadContas() {
-    if (!isOnline) return;
-
+    // ✅ CORREÇÃO: removida dependência de isOnline para a primeira carga
     try {
+        const headers = { 'Accept': 'application/json' };
+        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+
         const response = await fetch(`${API_URL}/contas`, {
             method: 'GET',
-            headers: { 
-                'X-Session-Token': sessionToken,
-                'Accept': 'application/json'
-            },
+            headers,
             mode: 'cors'
         });
 
         if (tratarErroAutenticacao(response)) return;
-        if (!response.ok) return;
+        if (!response.ok) {
+            console.warn('⚠️ Resposta não OK ao carregar contas:', response.status);
+            return;
+        }
 
+        isOnline = true;
         const data = await response.json();
         contas = data;
         
@@ -327,19 +327,20 @@ async function loadContas() {
         }
     } catch (error) {
         console.error('❌ Erro ao carregar:', error);
+        isOnline = false;
     }
 }
 
 async function loadParcelasDoGrupo(grupoId) {
-    if (!isOnline || !grupoId) return [];
+    if (!grupoId) return [];
 
     try {
+        const headers = { 'Accept': 'application/json' };
+        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+
         const response = await fetch(`${API_URL}/contas/grupo/${grupoId}`, {
             method: 'GET',
-            headers: { 
-                'X-Session-Token': sessionToken,
-                'Accept': 'application/json'
-            },
+            headers,
             mode: 'cors'
         });
 
@@ -355,9 +356,10 @@ async function loadParcelasDoGrupo(grupoId) {
 }
 
 function startPolling() {
+    // ✅ CORREÇÃO: carrega imediatamente sem verificar isOnline
     loadContas();
     setInterval(() => {
-        if (isOnline) loadContas();
+        loadContas();
     }, 10000);
 }
 
@@ -460,7 +462,7 @@ window.closeVencidoModal = function() {
 };
 
 // ============================================
-// PDF - GERAR RELATÓRIO (com coluna Parcela)
+// PDF - GERAR RELATÓRIO
 // ============================================
 window.gerarPDF = function() {
     const filtrados = getDadosFiltrados();
@@ -493,7 +495,6 @@ window.gerarPDF = function() {
         doc.text(`Filtros: ${filtrosTexto.join(' | ')}`, 14, 40);
     }
     
-    // Prepara dados com informação de parcela
     const tableData = filtrados.map(c => {
         let parcelaDisplay = '-';
         if (c.parcela_numero && c.parcela_total) {
@@ -517,12 +518,12 @@ window.gerarPDF = function() {
         headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
         styles: { fontSize: 9, cellPadding: 3, valign: 'middle' },
         columnStyles: {
-            0: { cellWidth: 'auto', lineWidth: 0.2 },   // Descrição
-            1: { halign: 'center', cellWidth: 20 },     // Parcela
-            2: { halign: 'right', cellWidth: 25 },      // Valor
-            3: { halign: 'center', cellWidth: 22 },     // Vencimento
-            4: { halign: 'left', cellWidth: 28 },       // Banco
-            5: { halign: 'center', cellWidth: 25 }      // Data Pagamento
+            0: { cellWidth: 'auto', lineWidth: 0.2 },
+            1: { halign: 'center', cellWidth: 20 },
+            2: { halign: 'right', cellWidth: 25 },
+            3: { halign: 'center', cellWidth: 22 },
+            4: { halign: 'left', cellWidth: 28 },
+            5: { halign: 'center', cellWidth: 25 }
         },
         margin: { left: 14, right: 14 }
     });
@@ -591,7 +592,7 @@ window.sincronizarDados = async function() {
 };
 
 // ============================================
-// FORMULÁRIO (mesmo código original)
+// FORMULÁRIO
 // ============================================
 window.toggleForm = function() { window.showFormModal(null); };
 
@@ -953,7 +954,9 @@ async function editarContaOtimista(editId) {
     window.closeFormModal();
     showMessage('Registro atualizado', 'success');
     try {
-        const response = await fetch(`${API_URL}/contas/${editId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken, 'Accept': 'application/json' }, body: JSON.stringify(formData), mode: 'cors' });
+        const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+        const response = await fetch(`${API_URL}/contas/${editId}`, { method: 'PUT', headers, body: JSON.stringify(formData), mode: 'cors' });
         if (tratarErroAutenticacao(response)) { contas[index] = backup; updateDashboard(); filterContas(); return; }
         if (!response.ok) { let errorMessage = 'Erro ao salvar'; try { const errorData = await response.json(); errorMessage = errorData.error || errorData.message || errorMessage; } catch (e) { errorMessage = `Erro ${response.status}: ${response.statusText}`; } throw new Error(errorMessage); }
         const savedData = await response.json();
@@ -1005,7 +1008,9 @@ async function processEditQueue(atualizacoes, backupOriginal, totalParcelas) {
     for (let i = 0; i < atualizacoes.length; i += BATCH_SIZE) {
         const batch = atualizacoes.slice(i, i + BATCH_SIZE);
         const results = await Promise.allSettled(batch.map(async (item) => {
-            const response = await fetch(`${API_URL}/contas/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken, 'Accept': 'application/json' }, body: JSON.stringify(item.data), mode: 'cors' });
+            const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+            if (sessionToken) headers['X-Session-Token'] = sessionToken;
+            const response = await fetch(`${API_URL}/contas/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item.data), mode: 'cors' });
             if (!response.ok) throw new Error(`Erro ${response.status}`);
             const savedData = await response.json();
             const index = contas.findIndex(c => String(c.id) === String(item.id));
@@ -1039,7 +1044,7 @@ function applyUppercaseFields() {
 }
 
 // ============================================
-// TOGGLE PAGO
+// TOGGLE PAGO — CORRIGIDO
 // ============================================
 window.togglePago = async function(id) {
     const idStr = String(id);
@@ -1053,20 +1058,35 @@ window.togglePago = async function(id) {
     updateDashboard();
     filterContas();
     showMessage(`Conta marcada como ${novoStatus === 'PAGO' ? 'paga' : 'pendente'}!`, 'success');
+
+    // ✅ CORREÇÃO: tenta salvar se houver conexão, independente de sessionToken
     if (isOnline) {
         try {
-            const response = await fetch(`${API_URL}/contas/${idStr}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken, 'Accept': 'application/json' }, body: JSON.stringify({ status: novoStatus, data_pagamento: novaData }), mode: 'cors' });
+            const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+            if (sessionToken) headers['X-Session-Token'] = sessionToken;
+            const response = await fetch(`${API_URL}/contas/${idStr}`, {
+                method: 'PATCH',
+                headers,
+                body: JSON.stringify({ status: novoStatus, data_pagamento: novaData }),
+                mode: 'cors'
+            });
             if (tratarErroAutenticacao(response)) return;
             if (!response.ok) throw new Error('Erro ao atualizar');
             const data = await response.json();
             const index = contas.findIndex(c => String(c.id) === idStr);
             if (index !== -1) contas[index] = data;
-        } catch (error) { conta.status = old.status; conta.data_pagamento = old.data; updateDashboard(); filterContas(); showMessage('Erro ao atualizar status', 'error'); }
+        } catch (error) {
+            conta.status = old.status;
+            conta.data_pagamento = old.data;
+            updateDashboard();
+            filterContas();
+            showMessage('Erro ao atualizar status', 'error');
+        }
     }
 };
 
 // ============================================
-// EDIÇÃO E EXCLUSÃO
+// EDIÇÃO E EXCLUSÃO — CORRIGIDAS
 // ============================================
 window.editConta = function(id) { window.showFormModal(id); };
 
@@ -1081,7 +1101,9 @@ window.deleteConta = async function(id) {
     showMessage('Registro excluído', 'error');
     if (isOnline) {
         try {
-            const response = await fetch(`${API_URL}/contas/${idStr}`, { method: 'DELETE', headers: { 'X-Session-Token': sessionToken, 'Accept': 'application/json' }, mode: 'cors' });
+            const headers = { 'Accept': 'application/json' };
+            if (sessionToken) headers['X-Session-Token'] = sessionToken;
+            const response = await fetch(`${API_URL}/contas/${idStr}`, { method: 'DELETE', headers, mode: 'cors' });
             if (tratarErroAutenticacao(response)) return;
             if (!response.ok) throw new Error('Erro ao deletar');
         } catch (error) { if (deleted) { contas.push(deleted); updateAllFilters(); updateDashboard(); filterContas(); showMessage('Erro ao excluir conta', 'error'); } }
