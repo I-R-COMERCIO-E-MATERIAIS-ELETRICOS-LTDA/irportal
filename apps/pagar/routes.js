@@ -6,32 +6,18 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── MIDDLEWARE DE AUTENTICAÇÃO OPCIONAL ─────────────────────────────────
-    // ✅ CORREÇÃO: autenticação é opcional — se não houver token, continua normalmente.
-    // Se sua API exigir token obrigatório, altere `optional: true` para `optional: false`
-    // e descomente o bloco de retorno 401.
-    function authMiddleware(req, res, next) {
+    // ─── MIDDLEWARE DE AUTH OPCIONAL ────────────────────────────────────────
+    // Se SESSION_TOKEN_SECRET estiver definido no .env, valida o token.
+    // Se não estiver definido, libera todas as requisições.
+    router.use((req, res, next) => {
+        const secret = process.env.SESSION_TOKEN_SECRET;
+        if (!secret) return next(); // sem segredo configurado = acesso livre
+
         const token = req.headers['x-session-token'];
-
-        if (!token) {
-            // Se quiser tornar a autenticação obrigatória, descomente as linhas abaixo:
-            // return res.status(401).json({ error: 'Token de sessão obrigatório' });
-            console.log('[auth] Requisição sem token — acesso permitido em modo aberto');
-            return next();
-        }
-
-        // Se tiver token, valida (ajuste esta lógica conforme seu sistema de auth)
-        // Exemplo simples: token fixo em variável de ambiente
-        const TOKEN_VALIDO = process.env.SESSION_TOKEN_SECRET;
-        if (TOKEN_VALIDO && token !== TOKEN_VALIDO) {
-            return res.status(401).json({ error: 'Token inválido' });
-        }
-
+        if (!token)          return res.status(401).json({ error: 'Token ausente' });
+        if (token !== secret) return res.status(401).json({ error: 'Token inválido' });
         next();
-    }
-
-    // Aplica o middleware em todas as rotas
-    router.use(authMiddleware);
+    });
 
     // ─── GET /api/contas ────────────────────────────────────────────────────
     router.get('/contas', async (req, res) => {
@@ -47,7 +33,7 @@ module.exports = function (supabase) {
             if (mes && ano) {
                 const mesNum  = parseInt(mes);
                 const anoNum  = parseInt(ano);
-                const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
+                const inicio  = `${anoNum}-${String(mesNum).padStart(2,'0')}-01`;
                 const fimDate = new Date(anoNum, mesNum, 0);
                 const fim     = fimDate.toISOString().split('T')[0];
                 query = query.gte('data_vencimento', inicio).lte('data_vencimento', fim);
@@ -81,7 +67,7 @@ module.exports = function (supabase) {
     // ─── POST /api/contas ───────────────────────────────────────────────────
     router.post('/contas', async (req, res) => {
         try {
-            const body = req.body;
+            const body = { ...req.body };
             delete body.id;
             delete body.created_at;
             delete body.updated_at;
