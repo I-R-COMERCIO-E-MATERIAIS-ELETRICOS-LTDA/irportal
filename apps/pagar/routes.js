@@ -6,19 +6,6 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── MIDDLEWARE DE AUTH OPCIONAL ────────────────────────────────────────
-    // Se SESSION_TOKEN_SECRET estiver definido no .env, valida o token.
-    // Se não estiver definido, libera todas as requisições.
-    router.use((req, res, next) => {
-        const secret = process.env.SESSION_TOKEN_SECRET;
-        if (!secret) return next(); // sem segredo configurado = acesso livre
-
-        const token = req.headers['x-session-token'];
-        if (!token)          return res.status(401).json({ error: 'Token ausente' });
-        if (token !== secret) return res.status(401).json({ error: 'Token inválido' });
-        next();
-    });
-
     // ─── GET /api/contas ────────────────────────────────────────────────────
     router.get('/contas', async (req, res) => {
         try {
@@ -33,7 +20,7 @@ module.exports = function (supabase) {
             if (mes && ano) {
                 const mesNum  = parseInt(mes);
                 const anoNum  = parseInt(ano);
-                const inicio  = `${anoNum}-${String(mesNum).padStart(2,'0')}-01`;
+                const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
                 const fimDate = new Date(anoNum, mesNum, 0);
                 const fim     = fimDate.toISOString().split('T')[0];
                 query = query.gte('data_vencimento', inicio).lte('data_vencimento', fim);
@@ -67,7 +54,7 @@ module.exports = function (supabase) {
     // ─── POST /api/contas ───────────────────────────────────────────────────
     router.post('/contas', async (req, res) => {
         try {
-            const body = { ...req.body };
+            const body = req.body;
             delete body.id;
             delete body.created_at;
             delete body.updated_at;
@@ -108,7 +95,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── PATCH /api/contas/:id ──────────────────────────────────────────────
+    // ─── PATCH /api/contas/:id (NOVO – resolve o erro 404 no toggle) ────────
     router.patch('/contas/:id', async (req, res) => {
         try {
             const updates = { ...req.body, updated_at: new Date().toISOString() };
