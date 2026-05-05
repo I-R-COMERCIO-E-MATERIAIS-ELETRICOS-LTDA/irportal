@@ -58,12 +58,13 @@ async function processQueue() {
 
 async function processSingleItem(item) {
     try {
-        const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-        if (sessionToken) headers['X-Session-Token'] = sessionToken;
-
         const response = await fetch(`${API_URL}/contas`, {
             method: 'POST',
-            headers,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Token': sessionToken,
+                'Accept': 'application/json'
+            },
             body: JSON.stringify(item.data),
             mode: 'cors'
         });
@@ -79,6 +80,9 @@ async function processSingleItem(item) {
             if (index !== -1) contas[index] = savedData;
             item.status = 'success';
             console.log(`✅ Parcela ${item.tempId} salva com sucesso`);
+            updateAllFilters();
+            updateDashboard();
+            filterContas();
         } else {
             throw new Error(`Erro ${response.status}`);
         }
@@ -105,11 +109,13 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM carregado');
     
     document.addEventListener('click', function(e) {
+        // Botões com data-action
         const btn = e.target.closest('[data-action]');
         if (btn) {
+            e.stopPropagation(); // Evita que o clique na linha seja acionado
             const action = btn.dataset.action;
             const id = btn.dataset.id;
-            console.log(`🎯 Event delegation - Ação: ${action}, ID: ${id}`);
+            console.log(`🎯 Ação: ${action}, ID: ${id}`);
             if (!id && action !== 'new-conta') {
                 console.error('❌ ID não encontrado no botão');
                 return;
@@ -136,6 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
+        // Clique na linha (exceto se for em botão)
         const row = e.target.closest('tr[data-conta-id]');
         if (row && !e.target.closest('.action-btn') && !e.target.closest('.check-btn')) {
             const contaId = row.dataset.contaId;
@@ -172,7 +179,7 @@ window.nextMonth = function() {
 };
 
 // ============================================
-// AUTENTICAÇÃO — CORRIGIDA
+// AUTENTICAÇÃO
 // ============================================
 function verificarAutenticacao() {
     const urlParams = new URLSearchParams(window.location.search);
@@ -194,18 +201,16 @@ function verificarAutenticacao() {
             
             if (hoursElapsed > 24) {
                 console.log('⏰ Sessão expirada por tempo (>24h)');
+                console.warn('⚠️ Sessão expirada - Funcionando em modo offline');
                 sessionToken = null;
-                sessionStorage.removeItem('contasPagarSession');
-                sessionStorage.removeItem('contasPagarSessionTime');
             } else {
                 console.log(`✅ Sessão válida (${hoursElapsed.toFixed(1)}h desde o login)`);
             }
         }
     }
 
-    // ✅ CORREÇÃO: mesmo sem token, inicializa a aplicação normalmente
     if (!sessionToken) {
-        console.log('ℹ️ Sem token de sessão — tentando conexão sem autenticação');
+        console.log('⚠️ Sem token - Funcionando em modo offline');
     }
 
     inicializarApp();
@@ -223,10 +228,10 @@ function tratarErroAutenticacao(response) {
             }, 2000);
             return true;
         } else {
-            console.log('❌ Máximo de tentativas atingido');
+            console.log('❌ Máximo de tentativas atingido - Continuando em modo offline');
             isOnline = false;
             sessionToken = null;
-            showMessage('Sessão expirada — recarregue a página', 'warning');
+            showMessage('Sessão expirada - Modo offline ativado', 'warning');
             return true;
         }
     }
@@ -238,33 +243,37 @@ function inicializarApp() {
     tentativasReconexao = 0;
     updateDisplay();
     
-    // ✅ CORREÇÃO: sempre tenta verificar o servidor, independente de ter token
     checkServerStatus().catch(err => {
         console.warn('⚠️ Erro ao verificar servidor:', err);
         isOnline = false;
     });
     
-    // ✅ CORREÇÃO: polling sempre ativo
-    setInterval(() => {
-        checkServerStatus().catch(err => console.warn('Erro no polling:', err));
-    }, 15000);
-
-    startPolling();
+    if (sessionToken) {
+        setInterval(() => {
+            checkServerStatus().catch(err => console.warn('Erro no polling:', err));
+        }, 15000);
+        startPolling();
+    } else {
+        console.log('ℹ️ Modo offline - Polling desabilitado');
+    }
 }
 
 // ============================================
-// CONEXÃO E STATUS — CORRIGIDA
+// CONEXÃO E STATUS
 // ============================================
 async function checkServerStatus() {
-    // ✅ CORREÇÃO: removido o bloqueio por sessionToken
-    // A API pode ou não exigir autenticação — tentamos de qualquer forma
+    if (!sessionToken) {
+        isOnline = false;
+        return false;
+    }
+    
     try {
-        const headers = { 'Accept': 'application/json' };
-        if (sessionToken) headers['X-Session-Token'] = sessionToken;
-
         const response = await fetch(`${API_URL}/contas`, {
             method: 'GET',
-            headers,
+            headers: { 
+                'X-Session-Token': sessionToken,
+                'Accept': 'application/json'
+            },
             mode: 'cors',
             signal: AbortSignal.timeout(5000)
         });
@@ -275,7 +284,7 @@ async function checkServerStatus() {
         isOnline = response.ok;
         
         if (wasOffline && isOnline) {
-            console.log('✅ SERVIDOR ONLINE - Sincronizando...');
+            console.log('✅ SERVIDOR ONLINE - Sincronizando pendências...');
             tentativasReconexao = 0;
             await loadContas();
             
@@ -294,27 +303,24 @@ async function checkServerStatus() {
 }
 
 // ============================================
-// CARREGAMENTO DE DADOS — CORRIGIDO
+// CARREGAMENTO DE DADOS
 // ============================================
 async function loadContas() {
-    // ✅ CORREÇÃO: removida dependência de isOnline para a primeira carga
-    try {
-        const headers = { 'Accept': 'application/json' };
-        if (sessionToken) headers['X-Session-Token'] = sessionToken;
+    if (!isOnline) return;
 
+    try {
         const response = await fetch(`${API_URL}/contas`, {
             method: 'GET',
-            headers,
+            headers: { 
+                'X-Session-Token': sessionToken,
+                'Accept': 'application/json'
+            },
             mode: 'cors'
         });
 
         if (tratarErroAutenticacao(response)) return;
-        if (!response.ok) {
-            console.warn('⚠️ Resposta não OK ao carregar contas:', response.status);
-            return;
-        }
+        if (!response.ok) return;
 
-        isOnline = true;
         const data = await response.json();
         contas = data;
         
@@ -327,20 +333,19 @@ async function loadContas() {
         }
     } catch (error) {
         console.error('❌ Erro ao carregar:', error);
-        isOnline = false;
     }
 }
 
 async function loadParcelasDoGrupo(grupoId) {
-    if (!grupoId) return [];
+    if (!isOnline || !grupoId) return [];
 
     try {
-        const headers = { 'Accept': 'application/json' };
-        if (sessionToken) headers['X-Session-Token'] = sessionToken;
-
         const response = await fetch(`${API_URL}/contas/grupo/${grupoId}`, {
             method: 'GET',
-            headers,
+            headers: { 
+                'X-Session-Token': sessionToken,
+                'Accept': 'application/json'
+            },
             mode: 'cors'
         });
 
@@ -356,10 +361,9 @@ async function loadParcelasDoGrupo(grupoId) {
 }
 
 function startPolling() {
-    // ✅ CORREÇÃO: carrega imediatamente sem verificar isOnline
     loadContas();
     setInterval(() => {
-        loadContas();
+        if (isOnline) loadContas();
     }, 10000);
 }
 
@@ -438,16 +442,21 @@ window.showVencidoModal = function() {
     if (contasVencidas.length === 0) {
         body.innerHTML = `<div style="text-align:center;padding:3rem;color:var(--text-secondary);"><svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.3;margin-bottom:1rem;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8l0 4"></path><path d="M12 16l.01 0"></path></svg><p style="font-size:1.1rem;font-weight:600;margin:0;">Nenhuma conta vencida</p><p style="font-size:0.9rem;margin-top:0.5rem;">Todas as contas estão dentro do prazo ou foram pagas</p></div>`;
     } else {
-        body.innerHTML = `<div style="overflow-x:auto;"><table><thead><tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr></thead><tbody>${contasVencidas.map(c => {
-            const dataVenc = new Date(c.data_vencimento + 'T00:00:00');
-            const diasAtraso = Math.floor((hoje - dataVenc) / (1000 * 60 * 60 * 24));
-            return `<tr>
-                        <td style="word-break:break-word;">${c.descricao}</td>
-                        <td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td>
-                        <td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                        <td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td>
-                     </tr>`;
-        }).join('')}</tbody></table></div>`;
+        body.innerHTML = `<div style="overflow-x:auto;"><table>
+            <thead>
+                <tr><th>Descrição</th><th>Vencimento</th><th style="text-align:right;">Valor</th><th style="text-align:center;">Dias Atraso</th></tr>
+            </thead>
+            <tbody>${contasVencidas.map(c => {
+                const dataVenc = new Date(c.data_vencimento + 'T00:00:00');
+                const diasAtraso = Math.floor((hoje - dataVenc) / (1000 * 60 * 60 * 24));
+                return `<tr>
+                            <td style="word-break:break-word;">${c.descricao}</td>
+                            <td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td>
+                            <td style="text-align:right;font-weight:700;color:#EF4444;">R$ ${parseFloat(c.valor).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                            <td style="text-align:center;"><span class="badge vencido">${diasAtraso} dia${diasAtraso!==1?'s':''}</span></td>
+                         </tr>`;
+            }).join('')}</tbody>
+        </table></div>`;
     }
     
     modal.style.display = 'flex';
@@ -603,9 +612,14 @@ window.showFormModal = async function(editingId = null) {
     let conta = null;
     
     if (isEditing) {
-        conta = contas.find(c => String(c.id) === String(editingId) || String(c.tempId) === String(editingId));
+        conta = contas.find(c => String(c.id || c.tempId) === String(editingId));
         if (!conta) {
             showMessage('Conta não encontrada!', 'error');
+            return;
+        }
+        // Verificar se é um ID temporário (não sincronizado)
+        if (String(editingId).startsWith('temp_')) {
+            showMessage('Aguarde a sincronização completa para editar esta conta.', 'warning');
             return;
         }
         if (conta.grupo_id) {
@@ -868,7 +882,7 @@ async function salvarContaOtimista() {
         status: document.getElementById('data_pagamento')?.value ? 'PAGO' : 'PENDENTE'
     };
     if (isNaN(formData.valor) || formData.valor <= 0) { showMessage('Valor inválido. Digite um número maior que zero.', 'error'); return; }
-    const tempId = `temp_${Date.now()}`;
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     const contaTemporaria = { ...formData, id: null, tempId: tempId, synced: false };
     contas.push(contaTemporaria);
     lastDataHash = JSON.stringify(contas.map(c => c.id || c.tempId));
@@ -876,7 +890,7 @@ async function salvarContaOtimista() {
     updateDashboard();
     filterContas();
     window.closeFormModal();
-    showMessage('Nova conta registrada', 'success');
+    showMessage('Nova conta registrada localmente', 'success');
     if (!isOnline) { showMessage('Sistema offline. A conta será sincronizada quando voltar online.', 'warning'); return; }
     addToQueue({ tempId: tempId, data: formData });
     processQueue();
@@ -905,7 +919,7 @@ async function salvarContaParcelada() {
     }
     const tempIds = [];
     for (const parcela of parcelas) {
-        const tempId = `temp_${Date.now()}_${Math.random()}`;
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
         tempIds.push(tempId);
         contas.push({ ...parcela, id: null, tempId, synced: false });
     }
@@ -914,7 +928,7 @@ async function salvarContaParcelada() {
     updateDashboard();
     filterContas();
     window.closeFormModal();
-    showMessage('Nova conta registrada', 'success');
+    showMessage(`${numParcelas} parcelas registradas localmente`, 'success');
     if (!isOnline) { showMessage('Sistema offline. As parcelas serão sincronizadas quando voltar online.', 'warning'); return; }
     for (let i = 0; i < parcelas.length; i++) { addToQueue({ tempId: tempIds[i], data: parcelas[i] }); }
     processQueue();
@@ -954,9 +968,7 @@ async function editarContaOtimista(editId) {
     window.closeFormModal();
     showMessage('Registro atualizado', 'success');
     try {
-        const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-        if (sessionToken) headers['X-Session-Token'] = sessionToken;
-        const response = await fetch(`${API_URL}/contas/${editId}`, { method: 'PUT', headers, body: JSON.stringify(formData), mode: 'cors' });
+        const response = await fetch(`${API_URL}/contas/${editId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken, 'Accept': 'application/json' }, body: JSON.stringify(formData), mode: 'cors' });
         if (tratarErroAutenticacao(response)) { contas[index] = backup; updateDashboard(); filterContas(); return; }
         if (!response.ok) { let errorMessage = 'Erro ao salvar'; try { const errorData = await response.json(); errorMessage = errorData.error || errorData.message || errorMessage; } catch (e) { errorMessage = `Erro ${response.status}: ${response.statusText}`; } throw new Error(errorMessage); }
         const savedData = await response.json();
@@ -1008,9 +1020,7 @@ async function processEditQueue(atualizacoes, backupOriginal, totalParcelas) {
     for (let i = 0; i < atualizacoes.length; i += BATCH_SIZE) {
         const batch = atualizacoes.slice(i, i + BATCH_SIZE);
         const results = await Promise.allSettled(batch.map(async (item) => {
-            const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-            if (sessionToken) headers['X-Session-Token'] = sessionToken;
-            const response = await fetch(`${API_URL}/contas/${item.id}`, { method: 'PUT', headers, body: JSON.stringify(item.data), mode: 'cors' });
+            const response = await fetch(`${API_URL}/contas/${item.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken, 'Accept': 'application/json' }, body: JSON.stringify(item.data), mode: 'cors' });
             if (!response.ok) throw new Error(`Erro ${response.status}`);
             const savedData = await response.json();
             const index = contas.findIndex(c => String(c.id) === String(item.id));
@@ -1044,12 +1054,19 @@ function applyUppercaseFields() {
 }
 
 // ============================================
-// TOGGLE PAGO — CORRIGIDO
+// TOGGLE PAGO
 // ============================================
 window.togglePago = async function(id) {
     const idStr = String(id);
     const conta = contas.find(c => String(c.id || c.tempId) === idStr);
     if (!conta) return;
+    
+    // Se for ID temporário, não permite alternar (aguardar sincronização)
+    if (idStr.startsWith('temp_')) {
+        showMessage('Aguarde a sincronização completa para alterar o status.', 'warning');
+        return;
+    }
+    
     const novoStatus = conta.status === 'PAGO' ? 'PENDENTE' : 'PAGO';
     const novaData = novoStatus === 'PAGO' ? new Date().toISOString().split('T')[0] : null;
     const old = { status: conta.status, data: conta.data_pagamento };
@@ -1058,52 +1075,56 @@ window.togglePago = async function(id) {
     updateDashboard();
     filterContas();
     showMessage(`Conta marcada como ${novoStatus === 'PAGO' ? 'paga' : 'pendente'}!`, 'success');
-
-    // ✅ CORREÇÃO: tenta salvar se houver conexão, independente de sessionToken
     if (isOnline) {
         try {
-            const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
-            if (sessionToken) headers['X-Session-Token'] = sessionToken;
-            const response = await fetch(`${API_URL}/contas/${idStr}`, {
-                method: 'PATCH',
-                headers,
-                body: JSON.stringify({ status: novoStatus, data_pagamento: novaData }),
-                mode: 'cors'
-            });
+            const response = await fetch(`${API_URL}/contas/${idStr}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken, 'Accept': 'application/json' }, body: JSON.stringify({ status: novoStatus, data_pagamento: novaData }), mode: 'cors' });
             if (tratarErroAutenticacao(response)) return;
             if (!response.ok) throw new Error('Erro ao atualizar');
             const data = await response.json();
             const index = contas.findIndex(c => String(c.id) === idStr);
             if (index !== -1) contas[index] = data;
-        } catch (error) {
-            conta.status = old.status;
-            conta.data_pagamento = old.data;
-            updateDashboard();
-            filterContas();
-            showMessage('Erro ao atualizar status', 'error');
-        }
+        } catch (error) { conta.status = old.status; conta.data_pagamento = old.data; updateDashboard(); filterContas(); showMessage('Erro ao atualizar status', 'error'); }
     }
 };
 
 // ============================================
-// EDIÇÃO E EXCLUSÃO — CORRIGIDAS
+// EDIÇÃO E EXCLUSÃO
 // ============================================
-window.editConta = function(id) { window.showFormModal(id); };
+window.editConta = function(id) {
+    if (String(id).startsWith('temp_')) {
+        showMessage('Aguarde a sincronização para editar esta conta.', 'warning');
+        return;
+    }
+    window.showFormModal(id);
+};
 
 window.deleteConta = async function(id) {
-    if (!confirm('Tem certeza que deseja excluir esta conta?')) return;
     const idStr = String(id);
-    const deleted = contas.find(c => String(c.id || c.tempId) === idStr);
-    contas = contas.filter(c => String(c.id || c.tempId) !== idStr);
+    const conta = contas.find(c => String(c.id || c.tempId) === idStr);
+    if (!conta) return;
+    
+    // Se for temporário, remove apenas localmente
+    if (idStr.startsWith('temp_')) {
+        if (confirm('Tem certeza que deseja excluir esta conta (não sincronizada)?')) {
+            contas = contas.filter(c => String(c.id || c.tempId) !== idStr);
+            updateAllFilters();
+            updateDashboard();
+            filterContas();
+            showMessage('Registro local excluído.', 'error');
+        }
+        return;
+    }
+    
+    if (!confirm('Tem certeza que deseja excluir esta conta?')) return;
+    const deleted = contas.find(c => String(c.id) === idStr);
+    contas = contas.filter(c => String(c.id) !== idStr);
     updateAllFilters();
     updateDashboard();
     filterContas();
     showMessage('Registro excluído', 'error');
     if (isOnline) {
         try {
-            const headers = { 'Accept': 'application/json' };
-            if (sessionToken) headers['X-Session-Token'] = sessionToken;
-            const response = await fetch(`${API_URL}/contas/${idStr}`, { method: 'DELETE', headers, mode: 'cors' });
+            const response = await fetch(`${API_URL}/contas/${idStr}`, { method: 'DELETE', headers: { 'X-Session-Token': sessionToken, 'Accept': 'application/json' }, mode: 'cors' });
             if (tratarErroAutenticacao(response)) return;
             if (!response.ok) throw new Error('Erro ao deletar');
         } catch (error) { if (deleted) { contas.push(deleted); updateAllFilters(); updateDashboard(); filterContas(); showMessage('Erro ao excluir conta', 'error'); } }
@@ -1198,11 +1219,11 @@ function renderContas(lista) {
         <tbody>
             ${lista.map(c => { 
                 const numParcelas = c.parcela_numero && c.parcela_total ? `${c.parcela_numero}/${c.parcela_total}` : '-'; 
-                const syncIndicator = !c.synced && c.tempId ? '<span style="color:orange;font-size:0.8em;" title="Sincronizando...">⟳</span> ' : ''; 
+                const syncIndicator = (!c.id && c.tempId) ? '<span style="color:orange;font-size:0.8em;" title="Sincronizando...">⟳</span> ' : ''; 
                 const isPago = c.status === 'PAGO'; 
                 const contaId = c.id || c.tempId; 
-                return `<tr data-conta-id="${contaId}" style="cursor:pointer;" class="${isPago ? 'row-pago' : ''}">
-                    <td style="text-align:center;padding:8px;"><button class="check-btn ${isPago ? 'checked' : ''}" data-action="toggle" data-id="${contaId}" title="${isPago ? 'Marcar como pendente' : 'Marcar como pago'}" onclick="event.stopPropagation();"></button></td>
+                return `<tr data-conta-id="${contaId}" class="${isPago ? 'row-pago' : ''}">
+                    <td style="text-align:center;padding:8px;"><button class="check-btn ${isPago ? 'checked' : ''}" data-action="toggle" data-id="${contaId}"></button></td>
                     <td>${syncIndicator}${c.descricao}</td>
                     <td><strong>R$ ${parseFloat(c.valor).toFixed(2)}</strong></td>
                     <td style="white-space:nowrap;">${formatDate(c.data_vencimento)}</td>
@@ -1211,10 +1232,10 @@ function renderContas(lista) {
                     <td style="white-space:nowrap;">${c.data_pagamento ? formatDate(c.data_pagamento) : '-'}</td>
                     <td>${getStatusBadge(getStatusDinamico(c))}</td>
                     <td class="actions-cell" style="text-align:center;">
-                        <button class="action-btn edit" data-action="edit" data-id="${contaId}" onclick="event.stopPropagation();">Editar</button>
-                        <button class="action-btn delete" data-action="delete" data-id="${contaId}" onclick="event.stopPropagation();">Excluir</button>
+                        <button class="action-btn edit" data-action="edit" data-id="${contaId}">Editar</button>
+                        <button class="action-btn delete" data-action="delete" data-id="${contaId}">Excluir</button>
                     </td>
-                </tr>`;
+                 </tr>`;
             }).join('')}
         </tbody>
     </table>`;
