@@ -16,8 +16,15 @@ module.exports = function(supabase) {
 
             if (error) throw error;
 
-            // Extrai valores únicos e ordena
-            const marcas = [...new Set(data.map(p => p.marca.trim().toUpperCase()))].sort();
+            // Filtra nulos/vazios antes de processar
+            const marcas = [
+                ...new Set(
+                    (data || [])
+                        .map(p => (p.marca || '').trim().toUpperCase())
+                        .filter(m => m.length > 0)
+                )
+            ].sort();
+
             res.json(marcas);
         } catch (e) {
             console.error('Erro ao buscar marcas:', e);
@@ -57,23 +64,24 @@ module.exports = function(supabase) {
             if (error) throw error;
 
             const normalized = (data || []).map(p => ({
-                id: p.id,
-                marca: p.marca,
-                codigo: p.codigo,
-                preco: p.preco,
-                descricao: p.descricao,
-                timestamp: p.timestamp,
+                id:         p.id,
+                marca:      p.marca,
+                codigo:     p.codigo,
+                preco:      p.preco,
+                descricao:  p.descricao,
+                timestamp:  p.timestamp,
                 marca_nome: p.marca
             }));
 
             res.json({
-                data: normalized,
-                total: count || 0,
+                data:       normalized,
+                total:      count || 0,
                 page,
                 limit,
                 totalPages: Math.ceil((count || 0) / limit)
             });
         } catch (e) {
+            console.error('Erro ao buscar preços:', e);
             res.status(500).json({ error: 'Erro ao buscar preços' });
         }
     });
@@ -88,6 +96,7 @@ module.exports = function(supabase) {
             if (error) return res.status(404).json({ error: 'Preço não encontrado' });
             res.json({ ...data, marca_nome: data.marca });
         } catch (e) {
+            console.error('Erro ao buscar preço:', e);
             res.status(500).json({ error: 'Erro ao buscar preço' });
         }
     });
@@ -95,14 +104,29 @@ module.exports = function(supabase) {
     router.post('/', async (req, res) => {
         try {
             const { marca, codigo, preco, descricao } = req.body;
-            if (!marca || !codigo || !preco || !descricao)
+
+            if (!marca || !codigo || preco === undefined || preco === null || !descricao)
                 return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
+
+            const codigoNormalizado = codigo.trim();
+
+            // ─── VERIFICA CÓDIGO DUPLICADO ────────────────────────────────────
+            const { data: existing, error: checkError } = await supabase
+                .from('precos')
+                .select('id')
+                .eq('codigo', codigoNormalizado)
+                .maybeSingle();
+
+            if (checkError) throw checkError;
+            if (existing) {
+                return res.status(409).json({ error: 'Já existe um preço cadastrado com este código' });
+            }
 
             const { data, error } = await supabase
                 .from('precos')
                 .insert([{
                     marca:     marca.trim().toUpperCase(),
-                    codigo:    codigo.trim(),
+                    codigo:    codigoNormalizado,
                     preco:     parseFloat(preco),
                     descricao: descricao.trim(),
                     timestamp: new Date().toISOString()
@@ -113,6 +137,7 @@ module.exports = function(supabase) {
             if (error) throw error;
             res.status(201).json({ ...data, marca_nome: data.marca });
         } catch (e) {
+            console.error('Erro ao criar preço:', e);
             res.status(500).json({ error: 'Erro ao criar preço' });
         }
     });
@@ -120,14 +145,30 @@ module.exports = function(supabase) {
     router.put('/:id', async (req, res) => {
         try {
             const { marca, codigo, preco, descricao } = req.body;
-            if (!marca || !codigo || !preco || !descricao)
+
+            if (!marca || !codigo || preco === undefined || preco === null || !descricao)
                 return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
+
+            const codigoNormalizado = codigo.trim();
+
+            // ─── VERIFICA CÓDIGO DUPLICADO (excluindo o próprio registro) ────
+            const { data: existing, error: checkError } = await supabase
+                .from('precos')
+                .select('id')
+                .eq('codigo', codigoNormalizado)
+                .neq('id', req.params.id)
+                .maybeSingle();
+
+            if (checkError) throw checkError;
+            if (existing) {
+                return res.status(409).json({ error: 'Já existe outro preço cadastrado com este código' });
+            }
 
             const { data, error } = await supabase
                 .from('precos')
                 .update({
                     marca:     marca.trim().toUpperCase(),
-                    codigo:    codigo.trim(),
+                    codigo:    codigoNormalizado,
                     preco:     parseFloat(preco),
                     descricao: descricao.trim(),
                     timestamp: new Date().toISOString()
@@ -139,6 +180,7 @@ module.exports = function(supabase) {
             if (error) return res.status(404).json({ error: 'Preço não encontrado' });
             res.json({ ...data, marca_nome: data.marca });
         } catch (e) {
+            console.error('Erro ao atualizar preço:', e);
             res.status(500).json({ error: 'Erro ao atualizar preço' });
         }
     });
@@ -149,6 +191,7 @@ module.exports = function(supabase) {
             if (error) throw error;
             res.status(204).end();
         } catch (e) {
+            console.error('Erro ao excluir preço:', e);
             res.status(500).json({ error: 'Erro ao excluir preço' });
         }
     });
