@@ -282,9 +282,9 @@ function showFormModal(editingId) {
         '<div class="form-group"><label for="modalCodigo">Código *</label>' +
         '<input type="text" id="modalCodigo" value="' + (preco && preco.codigo ? preco.codigo : '') + '" required></div>' +
         '<div class="form-group"><label for="modalPreco">Preço (R$) *</label>' +
-        '<input type="number" id="modalPreco" step="0.01" min="0" value="' + (preco && preco.preco ? preco.preco : '') + '" required></div>' +
+        '<input type="number" id="modalPreco" step="0.01" min="0.01" value="' + (preco && preco.preco ? parseFloat(preco.preco).toFixed(2) : '') + '" required></div>' +
         '<div class="form-group" style="grid-column:1/-1;"><label for="modalDescricao">Descrição *</label>' +
-        '<textarea id="modalDescricao" rows="3" required>' + (preco && preco.descricao ? preco.descricao : '') + '</textarea></div>' +
+        '<textarea id="modalDescricao" rows="4" style="resize:vertical;min-height:80px;" required>' + (preco && preco.descricao ? preco.descricao : '') + '</textarea></div>' +
         '</div>' +
         '<div class="modal-actions modal-actions-right">' +
         '<button type="submit" class="save">' + (isEditing ? 'Atualizar' : 'Salvar') + '</button>' +
@@ -318,26 +318,60 @@ function closeFormModal(showCancelMessage) {
 async function handleSubmit(event) {
     event.preventDefault();
     var editId = document.getElementById('modalEditId').value;
+
+    var precoValor = parseFloat(document.getElementById('modalPreco').value);
+    if (isNaN(precoValor) || precoValor <= 0) {
+        showToast('Informe um preço válido maior que zero', 'error');
+        return;
+    }
+
     var formData = {
         marca:     document.getElementById('modalMarca').value.trim().toUpperCase(),
         codigo:    document.getElementById('modalCodigo').value.trim(),
-        preco:     parseFloat(document.getElementById('modalPreco').value),
+        preco:     precoValor,
         descricao: document.getElementById('modalDescricao').value.trim().toUpperCase()
     };
+
     if (!isOnline) { showToast('Sistema offline', 'error'); closeFormModal(false); return; }
+
+    // Desabilita o botão de submit para evitar duplo clique
+    var submitBtn = document.querySelector('#modalPrecoForm button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Aguarde...'; }
+
     try {
         var headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
         if (sessionToken) headers['X-Session-Token'] = sessionToken;
         var response = await fetchWithTimeout(
             editId ? API_URL + '/precos/' + editId : API_URL + '/precos',
             { method: editId ? 'PUT' : 'POST', headers: headers, body: JSON.stringify(formData) }, 15000);
-        if (response.status === 401) { sessionStorage.removeItem(SESSION_KEY); mostrarTelaAcessoNegado('Sua sessão expirou'); return; }
-        if (!response.ok) { var err = await response.json().catch(function() { return {}; }); throw new Error(err.error || 'Erro ' + response.status); }
+
+        if (response.status === 401) {
+            sessionStorage.removeItem(SESSION_KEY);
+            mostrarTelaAcessoNegado('Sua sessão expirou');
+            return;
+        }
+
+        // ─── CÓDIGO DUPLICADO ─────────────────────────────────────────────
+        if (response.status === 409) {
+            var errData = await response.json().catch(function() { return {}; });
+            showToast(errData.error || 'Código já cadastrado', 'error');
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = editId ? 'Atualizar' : 'Salvar'; }
+            return; // mantém o modal aberto para o usuário corrigir
+        }
+
+        if (!response.ok) {
+            var err = await response.json().catch(function() { return {}; });
+            throw new Error(err.error || 'Erro ' + response.status);
+        }
+
         closeFormModal(false);
         showToast(editId ? 'Item atualizado' : 'Item registrado', 'success');
         await atualizarMarcasDisponiveis();
         loadPrecos(editId ? state.currentPage : 1);
-    } catch (error) { showToast(error.name === 'AbortError' ? 'Timeout: Operação demorou muito' : 'Erro: ' + error.message, 'error'); }
+    } catch (error) {
+        showToast(error.name === 'AbortError' ? 'Timeout: Operação demorou muito' : 'Erro: ' + error.message, 'error');
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = editId ? 'Atualizar' : 'Salvar'; }
+    }
 }
 
 window.editPreco   = function(id) { showFormModal(id); };
