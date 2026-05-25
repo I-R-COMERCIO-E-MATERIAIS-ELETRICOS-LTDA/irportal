@@ -24,7 +24,7 @@ const tabs = ['tab-geral', 'tab-faturamento', 'tab-itens', 'tab-entrega', 'tab-t
 
 // ── Controle de permissões ──────────────────────────────────────────────────
 const ROLES_CHECKBOX = ['administrador', 'financeiro'];
-const NAMES_CHECKBOX = ['roberto', 'rosemeire', 'pollyanna'];
+const NAMES_CHECKBOX = ['roberto', 'rosemeire', 'pollyanna', 'gustavo'];
 
 function detectResponsavelFromUser() {
     if (!currentUser) return '';
