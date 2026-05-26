@@ -14,7 +14,8 @@ let state = {
     filterCollapsed: false
 };
 
-let isOnline = false;
+// ─── isOnline começa como true para não bloquear o carregamento inicial ───────
+let isOnline = true;
 let sessionToken = null;
 
 document.addEventListener('DOMContentLoaded', function() { verificarAutenticacao(); });
@@ -59,7 +60,7 @@ function inicializarApp() {
     setInterval(async function() {
         var online = await verificarConexao();
         if (online && !isOnline) { isOnline = true; carregarTudo(); }
-        else if (!online && isOnline) { isOnline = false; }
+        else if (!online) { isOnline = false; }
     }, 15000);
     setInterval(function() {
         if (isOnline && !state.isLoading) loadPrecos(state.currentPage);
@@ -115,9 +116,8 @@ async function atualizarMarcasDisponiveis() {
         var response = await fetchWithTimeout(API_URL + '/precos/marcas', { method: 'GET', headers: getHeaders() });
         if (response.ok) {
             var marcas = await response.json();
-            state.marcasDisponiveis = marcas;
+            state.marcasDisponiveis = Array.isArray(marcas) ? marcas : [];
         } else {
-            // fallback: extrai localmente da página atual (menos ideal)
             var nomes = {};
             state.precos.forEach(function(p) {
                 var nome = (p.marca_nome || p.marca || '').trim().toUpperCase();
@@ -180,13 +180,13 @@ async function loadPrecos(page) {
         if (state.searchTerm) params.set('search', state.searchTerm);
         var response = await fetchWithTimeout(API_URL + '/precos?' + params.toString(), { method: 'GET', headers: getHeaders() });
         if (response.status === 401) { sessionStorage.removeItem(SESSION_KEY); mostrarTelaAcessoNegado('Sua sessão expirou'); return; }
-        if (!response.ok) { console.error('Erro ao carregar preços:', response.status); return; }
+        if (!response.ok) { console.error('Erro ao carregar preços:', response.status); isOnline = false; return; }
         var result = await response.json();
         if (Array.isArray(result)) {
-            state.precos = result.map(function(item) { return Object.assign({}, item, { descricao: item.descricao.toUpperCase() }); });
+            state.precos = result.map(function(item) { return Object.assign({}, item, { descricao: (item.descricao || '').toUpperCase() }); });
             state.totalRecords = result.length; state.totalPages = 1; state.currentPage = 1;
         } else {
-            state.precos = (result.data || []).map(function(item) { return Object.assign({}, item, { descricao: item.descricao.toUpperCase() }); });
+            state.precos = (result.data || []).map(function(item) { return Object.assign({}, item, { descricao: (item.descricao || '').toUpperCase() }); });
             state.totalRecords = result.total || 0;
             state.totalPages = result.totalPages || 1;
             state.currentPage = result.page || page;
@@ -195,13 +195,14 @@ async function loadPrecos(page) {
         renderPrecos();
         renderPaginacao();
     } catch (error) {
-        console.error(error.name === 'AbortError' ? 'Timeout' : 'Erro:', error);
+        console.error(error.name === 'AbortError' ? 'Timeout ao carregar preços' : 'Erro ao carregar preços:', error);
+        isOnline = false;
     } finally { state.isLoading = false; }
 }
 
 var searchDebounceTimer = null;
 window.filterPrecos = function() {
-    state.searchTerm = document.getElementById('search').value.trim();
+    state.searchTerm = (document.getElementById('search').value || '').trim();
     clearTimeout(searchDebounceTimer);
     searchDebounceTimer = setTimeout(function() { loadPrecos(1); }, 200);
 };
@@ -215,16 +216,25 @@ function renderPrecos() {
     }
     container.innerHTML = state.precos.map(function(p) {
         return '<tr>' +
-            '<td><strong>' + (p.marca_nome || p.marca || '') + '</strong></td>' +
-            '<td>' + p.codigo + '</td>' +
+            '<td><strong>' + escHtml(p.marca_nome || p.marca || '') + '</strong></td>' +
+            '<td>' + escHtml(p.codigo) + '</td>' +
             '<td>R$ ' + parseFloat(p.preco).toFixed(2) + '</td>' +
-            '<td>' + p.descricao + '</td>' +
+            '<td>' + escHtml(p.descricao) + '</td>' +
             '<td style="color:var(--text-secondary);font-size:0.85rem;">' + getTimeAgo(p.timestamp) + '</td>' +
             '<td class="actions-cell" style="text-align:center;">' +
             '<button onclick="window.editPreco(\'' + p.id + '\')" class="action-btn edit">Editar</button>' +
             '<button onclick="window.deletePreco(\'' + p.id + '\')" class="action-btn delete">Excluir</button>' +
             '</td></tr>';
     }).join('');
+}
+
+// ─── ESCAPE HTML (segurança) ───────────────────────────────────────────────
+function escHtml(str) {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 function renderPaginacao() {
@@ -266,7 +276,11 @@ window.toggleForm = function() { showFormModal(null); };
 function showFormModal(editingId) {
     var isEditing = editingId !== null && editingId !== undefined;
     var preco = isEditing ? state.precos.find(function(p) { return p.id === editingId; }) : null;
-    var marcaAtual = preco ? (preco.marca_nome || preco.marca || '') : '';
+    var marcaAtual    = preco ? escHtml(preco.marca_nome || preco.marca || '') : '';
+    var codigoAtual   = preco ? escHtml(preco.codigo   || '') : '';
+    var precoAtual    = preco ? parseFloat(preco.preco).toFixed(2) : '';
+    var descAtual     = preco ? escHtml(preco.descricao || '') : '';
+
     document.body.insertAdjacentHTML('beforeend',
         '<div class="modal-overlay" id="formModal" style="display:flex;">' +
         '<div class="modal-content large">' +
@@ -280,23 +294,39 @@ function showFormModal(editingId) {
         '<div class="form-group"><label for="modalMarca">Marca *</label>' +
         '<input type="text" id="modalMarca" value="' + marcaAtual + '" required></div>' +
         '<div class="form-group"><label for="modalCodigo">Código *</label>' +
-        '<input type="text" id="modalCodigo" value="' + (preco && preco.codigo ? preco.codigo : '') + '" required></div>' +
+        '<input type="text" id="modalCodigo" value="' + codigoAtual + '" required></div>' +
         '<div class="form-group"><label for="modalPreco">Preço (R$) *</label>' +
-        '<input type="number" id="modalPreco" step="0.01" min="0.01" value="' + (preco && preco.preco ? parseFloat(preco.preco).toFixed(2) : '') + '" required></div>' +
-        '<div class="form-group" style="grid-column:1/-1;"><label for="modalDescricao">Descrição *</label>' +
-        '<textarea id="modalDescricao" rows="4" style="resize:vertical;min-height:80px;" required>' + (preco && preco.descricao ? preco.descricao : '') + '</textarea></div>' +
+        '<input type="number" id="modalPreco" step="0.01" min="0.01" value="' + precoAtual + '" required></div>' +
+        '<div class="form-group" style="grid-column:1/-1;">' +
+        '<label for="modalDescricao">Descrição *</label>' +
+        '<textarea id="modalDescricao" rows="4" style="resize:vertical;min-height:80px;max-height:none;overflow-y:hidden;width:100%;box-sizing:border-box;" required>' + descAtual + '</textarea>' +
+        '</div>' +
         '</div>' +
         '<div class="modal-actions modal-actions-right">' +
         '<button type="submit" class="save">' + (isEditing ? 'Atualizar' : 'Salvar') + '</button>' +
         '<button type="button" onclick="closeFormModal(true)" class="danger">Cancelar</button>' +
         '</div></form></div></div>');
+
     setTimeout(function() {
+        // ── auto-resize helper ────────────────────────────────────────────────
+        function autoResize(el) {
+            el.style.height = 'auto';
+            el.style.height = (el.scrollHeight) + 'px';
+        }
+
+        // ── textarea de descrição ─────────────────────────────────────────────
         var ta = document.getElementById('modalDescricao');
-        if (ta) ta.addEventListener('input', function(e) {
-            var start = e.target.selectionStart;
-            e.target.value = e.target.value.toUpperCase();
-            e.target.setSelectionRange(start, start);
-        });
+        if (ta) {
+            autoResize(ta); // ajusta imediatamente (modo edição)
+            ta.addEventListener('input', function(e) {
+                var start = e.target.selectionStart;
+                e.target.value = e.target.value.toUpperCase();
+                e.target.setSelectionRange(start, start);
+                autoResize(e.target);
+            });
+        }
+
+        // ── input de marca ────────────────────────────────────────────────────
         var marcaInput = document.getElementById('modalMarca');
         if (marcaInput) marcaInput.addEventListener('input', function(e) {
             var start = e.target.selectionStart;
@@ -317,7 +347,7 @@ function closeFormModal(showCancelMessage) {
 
 async function handleSubmit(event) {
     event.preventDefault();
-    var editId = document.getElementById('modalEditId').value;
+    var editId = (document.getElementById('modalEditId').value || '').trim();
 
     var precoValor = parseFloat(document.getElementById('modalPreco').value);
     if (isNaN(precoValor) || precoValor <= 0) {
@@ -326,15 +356,19 @@ async function handleSubmit(event) {
     }
 
     var formData = {
-        marca:     document.getElementById('modalMarca').value.trim().toUpperCase(),
-        codigo:    document.getElementById('modalCodigo').value.trim(),
+        marca:     (document.getElementById('modalMarca').value    || '').trim().toUpperCase(),
+        codigo:    (document.getElementById('modalCodigo').value   || '').trim(),
         preco:     precoValor,
-        descricao: document.getElementById('modalDescricao').value.trim().toUpperCase()
+        descricao: (document.getElementById('modalDescricao').value || '').trim().toUpperCase()
     };
 
-    if (!isOnline) { showToast('Sistema offline', 'error'); closeFormModal(false); return; }
+    if (!formData.marca || !formData.codigo || !formData.descricao) {
+        showToast('Preencha todos os campos obrigatórios', 'error');
+        return;
+    }
 
-    // Desabilita o botão de submit para evitar duplo clique
+    if (!isOnline) { showToast('Sistema offline', 'error'); return; }
+
     var submitBtn = document.querySelector('#modalPrecoForm button[type="submit"]');
     if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Aguarde...'; }
 
@@ -351,12 +385,11 @@ async function handleSubmit(event) {
             return;
         }
 
-        // ─── CÓDIGO DUPLICADO ─────────────────────────────────────────────
         if (response.status === 409) {
             var errData = await response.json().catch(function() { return {}; });
             showToast(errData.error || 'Código já cadastrado', 'error');
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = editId ? 'Atualizar' : 'Salvar'; }
-            return; // mantém o modal aberto para o usuário corrigir
+            return;
         }
 
         if (!response.ok) {
