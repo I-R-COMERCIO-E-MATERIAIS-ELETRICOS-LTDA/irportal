@@ -16,7 +16,6 @@ module.exports = function(supabase) {
 
             if (error) throw error;
 
-            // Filtra nulos/vazios antes de processar
             const marcas = [
                 ...new Set(
                     (data || [])
@@ -32,24 +31,25 @@ module.exports = function(supabase) {
         }
     });
 
-    // ─── PREÇOS ───────────────────────────────────────────────────────────────
+    // ─── LISTAGEM DE PREÇOS COM PAGINAÇÃO ─────────────────────────────────────
     router.get('/', async (req, res) => {
         try {
-            const page   = parseInt(req.query.page)  || 1;
-            const limit  = Math.min(parseInt(req.query.limit) || 50, 50);
-            const marca  = req.query.marca  || null;
-            const search = req.query.search || null;
+            const page  = Math.max(1, parseInt(req.query.page)  || 1);
+            const limit = Math.min(Math.max(1, parseInt(req.query.limit) || 50), 50);
+            const marca  = (req.query.marca  || '').trim() || null;
+            const search = (req.query.search || '').trim() || null;
             const from   = (page - 1) * limit;
             const to     = from + limit - 1;
 
+            // ── query principal ───────────────────────────────────────────────
             let query = supabase
                 .from('precos')
                 .select('*', { count: 'exact' })
-                .order('marca', { ascending: true })
+                .order('marca',  { ascending: true })
                 .order('codigo', { ascending: true });
 
-            if (marca && marca !== 'TODAS') {
-                query = query.eq('marca', marca);
+            if (marca && marca.toUpperCase() !== 'TODAS') {
+                query = query.eq('marca', marca.toUpperCase());
             }
 
             if (search) {
@@ -61,31 +61,33 @@ module.exports = function(supabase) {
             query = query.range(from, to);
 
             const { data, error, count } = await query;
-            if (error) throw error;
+
+            if (error) {
+                console.error('Supabase query error (GET /):', error);
+                return res.status(500).json({ error: 'Erro ao buscar preços: ' + (error.message || error) });
+            }
 
             const normalized = (data || []).map(p => ({
                 id:         p.id,
-                marca:      p.marca,
-                codigo:     p.codigo,
-                preco:      p.preco,
-                descricao:  p.descricao,
-                timestamp:  p.timestamp,
-                marca_nome: p.marca
+                marca:      p.marca       || '',
+                codigo:     p.codigo      || '',
+                preco:      p.preco       ?? 0,
+                descricao:  p.descricao   || '',
+                timestamp:  p.timestamp   || null,
+                marca_nome: p.marca       || ''
             }));
 
-            res.json({
-                data:       normalized,
-                total:      count || 0,
-                page,
-                limit,
-                totalPages: Math.ceil((count || 0) / limit)
-            });
+            const total      = typeof count === 'number' ? count : normalized.length;
+            const totalPages = Math.max(1, Math.ceil(total / limit));
+
+            res.json({ data: normalized, total, page, limit, totalPages });
         } catch (e) {
-            console.error('Erro ao buscar preços:', e);
-            res.status(500).json({ error: 'Erro ao buscar preços' });
+            console.error('Erro inesperado ao buscar preços:', e);
+            res.status(500).json({ error: 'Erro interno ao buscar preços' });
         }
     });
 
+    // ─── BUSCA POR ID ─────────────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
         try {
             const { data, error } = await supabase
@@ -93,28 +95,39 @@ module.exports = function(supabase) {
                 .select('*')
                 .eq('id', req.params.id)
                 .single();
-            if (error) return res.status(404).json({ error: 'Preço não encontrado' });
-            res.json({ ...data, marca_nome: data.marca });
+
+            if (error || !data) return res.status(404).json({ error: 'Preço não encontrado' });
+
+            res.json({ ...data, marca_nome: data.marca || '' });
         } catch (e) {
-            console.error('Erro ao buscar preço:', e);
-            res.status(500).json({ error: 'Erro ao buscar preço' });
+            console.error('Erro ao buscar preço por id:', e);
+            res.status(500).json({ error: 'Erro interno ao buscar preço' });
         }
     });
 
+    // ─── CRIAR PREÇO ──────────────────────────────────────────────────────────
     router.post('/', async (req, res) => {
         try {
-            const { marca, codigo, preco, descricao } = req.body;
+            const { marca, codigo, preco, descricao } = req.body || {};
 
-            if (!marca || !codigo || preco === undefined || preco === null || !descricao)
+            if (!marca || !codigo || preco === undefined || preco === null || !descricao) {
                 return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
+            }
 
-            const codigoNormalizado = codigo.trim();
+            const precoNum = parseFloat(preco);
+            if (isNaN(precoNum) || precoNum <= 0) {
+                return res.status(400).json({ error: 'Preço deve ser um número maior que zero' });
+            }
 
-            // ─── VERIFICA CÓDIGO DUPLICADO ────────────────────────────────────
+            const codigoNorm   = String(codigo).trim();
+            const marcaNorm    = String(marca).trim().toUpperCase();
+            const descricaoNorm = String(descricao).trim().toUpperCase();
+
+            // verifica duplicata de código
             const { data: existing, error: checkError } = await supabase
                 .from('precos')
                 .select('id')
-                .eq('codigo', codigoNormalizado)
+                .eq('codigo', codigoNorm)
                 .maybeSingle();
 
             if (checkError) throw checkError;
@@ -125,37 +138,47 @@ module.exports = function(supabase) {
             const { data, error } = await supabase
                 .from('precos')
                 .insert([{
-                    marca:     marca.trim().toUpperCase(),
-                    codigo:    codigoNormalizado,
-                    preco:     parseFloat(preco),
-                    descricao: descricao.trim(),
+                    marca:     marcaNorm,
+                    codigo:    codigoNorm,
+                    preco:     precoNum,
+                    descricao: descricaoNorm,
                     timestamp: new Date().toISOString()
                 }])
                 .select('*')
                 .single();
 
             if (error) throw error;
-            res.status(201).json({ ...data, marca_nome: data.marca });
+
+            res.status(201).json({ ...data, marca_nome: data.marca || '' });
         } catch (e) {
             console.error('Erro ao criar preço:', e);
-            res.status(500).json({ error: 'Erro ao criar preço' });
+            res.status(500).json({ error: 'Erro interno ao criar preço' });
         }
     });
 
+    // ─── ATUALIZAR PREÇO ──────────────────────────────────────────────────────
     router.put('/:id', async (req, res) => {
         try {
-            const { marca, codigo, preco, descricao } = req.body;
+            const { marca, codigo, preco, descricao } = req.body || {};
 
-            if (!marca || !codigo || preco === undefined || preco === null || !descricao)
+            if (!marca || !codigo || preco === undefined || preco === null || !descricao) {
                 return res.status(400).json({ error: 'Todos os campos são obrigatórios' });
+            }
 
-            const codigoNormalizado = codigo.trim();
+            const precoNum = parseFloat(preco);
+            if (isNaN(precoNum) || precoNum <= 0) {
+                return res.status(400).json({ error: 'Preço deve ser um número maior que zero' });
+            }
 
-            // ─── VERIFICA CÓDIGO DUPLICADO (excluindo o próprio registro) ────
+            const codigoNorm    = String(codigo).trim();
+            const marcaNorm     = String(marca).trim().toUpperCase();
+            const descricaoNorm = String(descricao).trim().toUpperCase();
+
+            // verifica duplicata de código (excluindo o próprio registro)
             const { data: existing, error: checkError } = await supabase
                 .from('precos')
                 .select('id')
-                .eq('codigo', codigoNormalizado)
+                .eq('codigo', codigoNorm)
                 .neq('id', req.params.id)
                 .maybeSingle();
 
@@ -167,32 +190,39 @@ module.exports = function(supabase) {
             const { data, error } = await supabase
                 .from('precos')
                 .update({
-                    marca:     marca.trim().toUpperCase(),
-                    codigo:    codigoNormalizado,
-                    preco:     parseFloat(preco),
-                    descricao: descricao.trim(),
+                    marca:     marcaNorm,
+                    codigo:    codigoNorm,
+                    preco:     precoNum,
+                    descricao: descricaoNorm,
                     timestamp: new Date().toISOString()
                 })
                 .eq('id', req.params.id)
                 .select('*')
                 .single();
 
-            if (error) return res.status(404).json({ error: 'Preço não encontrado' });
-            res.json({ ...data, marca_nome: data.marca });
+            if (error || !data) return res.status(404).json({ error: 'Preço não encontrado' });
+
+            res.json({ ...data, marca_nome: data.marca || '' });
         } catch (e) {
             console.error('Erro ao atualizar preço:', e);
-            res.status(500).json({ error: 'Erro ao atualizar preço' });
+            res.status(500).json({ error: 'Erro interno ao atualizar preço' });
         }
     });
 
+    // ─── EXCLUIR PREÇO ────────────────────────────────────────────────────────
     router.delete('/:id', async (req, res) => {
         try {
-            const { error } = await supabase.from('precos').delete().eq('id', req.params.id);
+            const { error } = await supabase
+                .from('precos')
+                .delete()
+                .eq('id', req.params.id);
+
             if (error) throw error;
+
             res.status(204).end();
         } catch (e) {
             console.error('Erro ao excluir preço:', e);
-            res.status(500).json({ error: 'Erro ao excluir preço' });
+            res.status(500).json({ error: 'Erro interno ao excluir preço' });
         }
     });
 
