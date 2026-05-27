@@ -1,5 +1,6 @@
 // apps/precos/routes.js
 const express = require('express');
+const { randomUUID } = require('crypto'); // nativo do Node.js — sem dependência extra
 
 module.exports = function(supabase) {
     const router = express.Router();
@@ -172,6 +173,7 @@ module.exports = function(supabase) {
             const { data, error } = await supabase
                 .from('precos')
                 .insert([{
+                    id:        randomUUID(),   // gera UUID explicitamente — evita conflito de pkey
                     marca:     marcaNorm,
                     codigo:    codigoNorm,
                     preco:     precoNum,
