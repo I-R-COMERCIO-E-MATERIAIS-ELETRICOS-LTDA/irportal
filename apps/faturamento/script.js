@@ -931,6 +931,8 @@ function addItem() {
                 <option value="PC">PC</option>
                 <option value="CX">CX</option>
                 <option value="LT">LT</option>
+                <option value="BO">BO</option>
+                <option value="BA">BA</option>
             </select>
         </td>
         <td>
