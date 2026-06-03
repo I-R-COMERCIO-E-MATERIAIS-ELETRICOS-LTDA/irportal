@@ -1237,6 +1237,8 @@ async function editPedido(id) {
                         <option value="PC" ${item.unidade === 'PC' ? 'selected' : ''}>PC</option>
                         <option value="CX" ${item.unidade === 'CX' ? 'selected' : ''}>CX</option>
                         <option value="LT" ${item.unidade === 'LT' ? 'selected' : ''}>LT</option>
+                        <option value="BO" ${item.unidade === 'BO' ? 'selected' : ''}>BO</option>
+                        <option value="BA" ${item.unidade === 'BA' ? 'selected' : ''}>BA</option>
                     </select>
                 </td>
                 <td>
