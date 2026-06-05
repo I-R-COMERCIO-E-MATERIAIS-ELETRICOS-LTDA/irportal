@@ -360,8 +360,6 @@ function updateTable() {
         const margem     = (!cancelada && r.venda) ? (lucroReal / r.venda) * 100 : 0;
         const lucroClass = lucroReal >= 0 ? 'stat-value-success' : 'stat-value-danger';
 
-        // SEM pointer-events:none na <tr> — necessário para o botão Desfazer funcionar
-        // O bloqueio de clique nas células de dados é feito individualmente via onclick vazio
         const rowStyle  = cancelada ? 'opacity:0.35;' : '';
         const cellStyle = cancelada ? 'text-decoration:line-through;' : '';
 
@@ -442,7 +440,6 @@ async function confirmCancel(id) {
         }
         if (!response.ok) throw new Error('Erro ao cancelar');
 
-        // Atualiza tanto o campo original quanto o alias local
         registro.cancelada  = true;
         registro._cancelada = true;
         updateDisplay();
