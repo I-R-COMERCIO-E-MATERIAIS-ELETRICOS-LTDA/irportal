@@ -5,20 +5,33 @@ module.exports = function (supabase) {
     const express = require('express');
     const router  = express.Router();
 
+    // Só sincroniza a partir de Junho/2025
+    function periodoPermitido(mesNum, anoNum) {
+        if (anoNum > 2025) return true;
+        if (anoNum === 2025 && mesNum >= 6) return true;
+        return false;
+    }
+
     async function sincronizarDoControleFrete(mesNum, anoNum) {
         try {
+            // Proteção: não mexe em meses anteriores a Junho/2025
+            if (!periodoPermitido(mesNum, anoNum)) {
+                console.log('[lucro] sincronização bloqueada para período anterior a Jun/2025:', mesNum, anoNum);
+                return;
+            }
+
             const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
             const fimDate = new Date(anoNum, mesNum, 0);
             const fim     = fimDate.toISOString().split('T')[0];
 
             console.log('[lucro] sincronizando período:', inicio, 'até', fim);
 
+            // Busca TODAS as NFs do período, sem filtro de tipo_nf
             const { data: fretes, error: erroFrete } = await supabase
                 .from('controle_frete')
                 .select('id, numero_nf, vendedor, data_emissao, valor_nf, valor_frete, tipo_nf')
                 .gte('data_emissao', inicio)
-                .lte('data_emissao', fim)
-                .not('tipo_nf', 'in', '("DEVOLUCAO","CANCELADA")');
+                .lte('data_emissao', fim);
 
             console.log('[lucro] fretes encontrados:', fretes?.length, 'erro:', erroFrete?.message);
 
@@ -72,7 +85,10 @@ module.exports = function (supabase) {
         const fimDate = new Date(anoNum, mesNum, 0);
         const fim     = fimDate.toISOString().split('T')[0];
 
-        await sincronizarDoControleFrete(mesNum, anoNum);
+        // Só tenta sincronizar se for Jun/2025 em diante
+        if (periodoPermitido(mesNum, anoNum)) {
+            await sincronizarDoControleFrete(mesNum, anoNum);
+        }
 
         const { data: lucros, error: erroLucro } = await supabase
             .from('lucro_real')
@@ -245,7 +261,13 @@ module.exports = function (supabase) {
     router.post('/monitorar-pedidos', async (req, res) => {
         try {
             const agora = new Date();
-            await sincronizarDoControleFrete(agora.getMonth() + 1, agora.getFullYear());
+            const mes   = agora.getMonth() + 1;
+            const ano   = agora.getFullYear();
+
+            if (periodoPermitido(mes, ano)) {
+                await sincronizarDoControleFrete(mes, ano);
+            }
+
             res.json({ ok: true });
         } catch (err) {
             console.error('[lucro] POST /monitorar-pedidos:', err.message);
