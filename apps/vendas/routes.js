@@ -16,29 +16,23 @@ module.exports = function (supabase) {
         return EXCLUDED_NF_TYPES.some(ex => n.includes(ex));
     }
 
-    // ─── Normaliza número de NF (remove zeros à esquerda) ────────────────────
     function normalizeNF(numeroNF) {
         if (!numeroNF) return '';
         const str = String(numeroNF).trim().replace(/^0+/, '');
         return str || '0';
     }
 
-    // ─── Chave de junção: APENAS o número da NF normalizado ──────────────────
-    //     O número da NF é o identificador real. Se a NF é a mesma nos dois
-    //     módulos, todos os dados pertencem ao mesmo registro.
     function makeKey(numeroNF) {
         return normalizeNF(numeroNF);
     }
 
-    // ─── Normaliza o status do frete para exibição uniforme ──────────────────
-    //     Banco grava com underscore: AGUARDANDO_COLETA, EM_TRANSITO …
-    //     Frontend espera: EM TRÂNSITO, AGUARDANDO COLETA …
     const STATUS_FRETE_MAP = {
         'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
         'EM_TRANSITO':       'EM TRÂNSITO',
         'ENTREGUE':          'ENTREGUE',
         'EXTRAVIADO':        'EXTRAVIADO',
-        'DEVOLVIDO':         'DEVOLVIDO'
+        'DEVOLVIDO':         'DEVOLVIDO',
+        'FORA_DO_PRAZO':     'FORA DO PRAZO'
     };
 
     function normalizeStatusFrete(status) {
@@ -47,7 +41,24 @@ module.exports = function (supabase) {
         return STATUS_FRETE_MAP[upper] || upper.replace(/_/g, ' ');
     }
 
-    // ─── Remove campos incompatíveis com a tabela vendas ─────────────────────
+    // ─── Determina status final do registro ──────────────────────────────────
+    // PAGO é superior a qualquer status de frete
+    // FORA DO PRAZO: data_coleta < hoje e status_frete != ENTREGUE
+    function resolveStatusFinal(record) {
+        if (record.data_pagamento) return 'PAGO';
+        const sf = normalizeStatusFrete(record.status_frete);
+        if (sf === 'ENTREGUE') return 'ENTREGUE';
+        if (sf === 'FORA DO PRAZO') return 'FORA DO PRAZO';
+        // Verifica se está fora do prazo pela previsão de entrega
+        if (record.previsao_entrega) {
+            const previsao = new Date(record.previsao_entrega);
+            const hoje = new Date();
+            hoje.setHours(0, 0, 0, 0);
+            if (previsao < hoje && sf !== 'ENTREGUE') return 'FORA DO PRAZO';
+        }
+        return sf || 'EM TRÂNSITO';
+    }
+
     function sanitize(record) {
         const {
             id,
@@ -89,10 +100,128 @@ module.exports = function (supabase) {
     });
 
     // ─────────────────────────────────────────────────────────────────────────
+    // GET /api/vendas/metricas?vendedor=X&ano=Y
+    // Retorna métricas mensais e anuais para gráficos
+    // ─────────────────────────────────────────────────────────────────────────
+    router.get('/metricas', async (req, res) => {
+        try {
+            const { vendedor, ano } = req.query;
+            let query = supabase.from('vendas').select('*');
+            if (vendedor) query = query.eq('vendedor', vendedor);
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            const registros = data || [];
+
+            // Agrupa por ano e mês
+            const porAnoMes = {};
+            const porAno = {};
+
+            for (const v of registros) {
+                const valorNF   = parseFloat(v.valor_nf)   || 0;
+                const valorPago = parseFloat(v.valor_pago) || 0;
+
+                // FATURADO: por data_emissao
+                if (v.data_emissao) {
+                    const d = new Date(v.data_emissao + 'T00:00:00');
+                    const a = d.getFullYear();
+                    const m = d.getMonth();
+
+                    if (!porAnoMes[a]) porAnoMes[a] = Array.from({ length: 12 }, () => ({ faturado: 0, pago: 0, a_receber: 0 }));
+                    if (!porAno[a]) porAno[a] = { faturado: 0, pago: 0, a_receber: 0 };
+
+                    porAnoMes[a][m].faturado += valorNF;
+                    porAno[a].faturado += valorNF;
+                }
+
+                // PAGO: por data_pagamento
+                if (v.data_pagamento) {
+                    const d = new Date(v.data_pagamento + 'T00:00:00');
+                    const a = d.getFullYear();
+                    const m = d.getMonth();
+
+                    if (!porAnoMes[a]) porAnoMes[a] = Array.from({ length: 12 }, () => ({ faturado: 0, pago: 0, a_receber: 0 }));
+                    if (!porAno[a]) porAno[a] = { faturado: 0, pago: 0, a_receber: 0 };
+
+                    const vp = valorPago || valorNF;
+                    porAnoMes[a][m].pago += vp;
+                    porAno[a].pago += vp;
+                }
+
+                // A RECEBER: entregue e não pago (por emissão)
+                const sf = normalizeStatusFrete(v.status_frete);
+                if (sf === 'ENTREGUE' && !v.data_pagamento && v.data_emissao) {
+                    const d = new Date(v.data_emissao + 'T00:00:00');
+                    const a = d.getFullYear();
+                    const m = d.getMonth();
+
+                    if (!porAnoMes[a]) porAnoMes[a] = Array.from({ length: 12 }, () => ({ faturado: 0, pago: 0, a_receber: 0 }));
+                    if (!porAno[a]) porAno[a] = { faturado: 0, pago: 0, a_receber: 0 };
+
+                    porAnoMes[a][m].a_receber += valorNF;
+                    porAno[a].a_receber += valorNF;
+                }
+            }
+
+            res.json({ porAnoMes, porAno });
+        } catch (e) {
+            console.error('[vendas] GET /metricas erro:', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /api/vendas/ranking?ano=Y
+    // Retorna ranking de vendedores (apenas admins devem chamar)
+    // ─────────────────────────────────────────────────────────────────────────
+    router.get('/ranking', async (req, res) => {
+        try {
+            const { ano } = req.query;
+            const { data, error } = await supabase.from('vendas').select('*');
+            if (error) throw error;
+
+            const vendedores = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
+            const porAno = {};
+
+            for (const v of (data || [])) {
+                if (!v.vendedor) continue;
+                const vend = v.vendedor.toUpperCase().trim();
+                if (!vendedores.includes(vend)) continue;
+
+                const valorNF   = parseFloat(v.valor_nf)   || 0;
+                const valorPago = parseFloat(v.valor_pago) || 0;
+
+                // FATURADO por emissão
+                if (v.data_emissao) {
+                    const a = new Date(v.data_emissao + 'T00:00:00').getFullYear();
+                    if (!porAno[a]) porAno[a] = {};
+                    if (!porAno[a][vend]) porAno[a][vend] = { faturado: 0, pago: 0 };
+                    porAno[a][vend].faturado += valorNF;
+                }
+
+                // PAGO por pagamento
+                if (v.data_pagamento) {
+                    const a = new Date(v.data_pagamento + 'T00:00:00').getFullYear();
+                    if (!porAno[a]) porAno[a] = {};
+                    if (!porAno[a][vend]) porAno[a][vend] = { faturado: 0, pago: 0 };
+                    porAno[a][vend].pago += valorPago || valorNF;
+                }
+            }
+
+            res.json({ porAno });
+        } catch (e) {
+            console.error('[vendas] GET /ranking erro:', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
     // GET /api/vendas/:id
     // ─────────────────────────────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
-        if (req.params.id === 'sincronizar') return res.status(405).json({ error: 'Use POST' });
+        const reserved = ['sincronizar', 'metricas', 'ranking'];
+        if (reserved.includes(req.params.id)) return res.status(405).json({ error: 'Use método correto' });
         try {
             const { data, error } = await supabase
                 .from('vendas').select('*').eq('id', req.params.id).single();
@@ -106,6 +235,8 @@ module.exports = function (supabase) {
 
     // ─────────────────────────────────────────────────────────────────────────
     // POST /api/vendas/sincronizar
+    // Fonte de verdade: CONTROLE_FRETE para tudo exceto dados de pagamento
+    // Dados de pagamento vêm exclusivamente de CONTAS_RECEBER
     // ─────────────────────────────────────────────────────────────────────────
     router.post('/sincronizar', async (req, res) => {
         try {
@@ -125,27 +256,26 @@ module.exports = function (supabase) {
 
             if (errContas) throw new Error(`Contas: ${errContas.message}`);
 
-            // ── 2. Filtra tipos de NF excluídos ───────────────────────────────
+            // ── 2. Filtra tipos excluídos ─────────────────────────────────────
             const fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
-            const contas  = (contasRaw  || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
+            // Contas: só interessa as que têm pagamento confirmado (PAGO)
+            const contas = (contasRaw || []).filter(c =>
+                !isExcludedTipoNF(c.tipo_nf) && c.status === 'PAGO' && c.data_pagamento
+            );
 
-            console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
+            console.log(`[vendas] Fretes: ${fretes.length} | Contas pagas: ${contas.length}`);
 
             // ── 3. Índice de contas por número de NF ─────────────────────────
-            //     Se houver mais de uma conta para a mesma NF (ex: parcelamento),
-            //     prioriza: PAGO > com data_pagamento > mais recente.
+            // Agrupa todas as parcelas de uma mesma NF
             const contasPorNF = {};
-            for (const conta of contas) {
+            for (const conta of (contasRaw || []).filter(c => !isExcludedTipoNF(c.tipo_nf))) {
                 const key = makeKey(conta.numero_nf);
-                const atual = contasPorNF[key];
-                if (!atual
-                    || conta.status === 'PAGO'
-                    || (atual.status !== 'PAGO' && conta.data_pagamento && !atual.data_pagamento)) {
-                    contasPorNF[key] = conta;
-                }
+                if (!contasPorNF[key]) contasPorNF[key] = [];
+                contasPorNF[key].push(conta);
             }
 
-            // ── 4. Constrói mapa indexado apenas pelo número da NF ────────────
+            // ── 4. Constrói registros baseados em CONTROLE_FRETE ──────────────
+            // Todos os campos informativos vêm do frete
             const mapa = {};
 
             for (const frete of fretes) {
@@ -166,66 +296,58 @@ module.exports = function (supabase) {
                     cidade_destino:   frete.cidade_destino   || null,
                     previsao_entrega: frete.previsao_entrega || null,
                     status_frete:     normalizeStatusFrete(frete.status),
+                    // Campos de pagamento: nulos por padrão, preenchidos pelo contas_receber
                     status_pagamento: null,
                     banco:            null,
                     data_vencimento:  null,
                     data_pagamento:   null,
                     valor_pago:       0,
+                    numero_parcela:   null,
                     updated_at:       new Date().toISOString()
                 };
             }
 
-            // ── 5. Mescla dados de pagamento pelo número da NF ────────────────
+            // ── 5. Mescla dados de pagamento (EXCLUSIVAMENTE de contas_receber) ─
             let matched = 0;
-            let unmatchedContas = 0;
 
-            for (const [key, conta] of Object.entries(contasPorNF)) {
-                const camposPagamento = {
-                    status_pagamento: conta.status          || null,
-                    banco:            conta.banco           || null,
-                    data_vencimento:  conta.data_vencimento || null,
-                    data_pagamento:   conta.data_pagamento  || null,
-                    valor_pago:       conta.valor_pago != null ? parseFloat(conta.valor_pago) : 0,
-                    updated_at:       new Date().toISOString()
-                };
+            for (const [key, parcelas] of Object.entries(contasPorNF)) {
+                if (!mapa[key]) continue; // Só processa NFs que existem no frete
 
-                if (mapa[key]) {
-                    matched++;
-                    Object.assign(mapa[key], camposPagamento);
-                    mapa[key].origem = conta.status === 'PAGO' ? 'PAGO' : 'MISTO';
+                // Filtra parcelas pagas
+                const parclasPagas = parcelas.filter(p => p.status === 'PAGO' && p.data_pagamento);
+                if (!parclasPagas.length) continue;
 
-                    if (conta.data_emissao && !mapa[key].data_emissao)
-                        mapa[key].data_emissao = conta.data_emissao;
-                    if (conta.valor && (!mapa[key].valor_nf || mapa[key].valor_nf === 0))
-                        mapa[key].valor_nf = parseFloat(conta.valor) || 0;
-                    if (!mapa[key].nome_orgao && conta.orgao)
-                        mapa[key].nome_orgao = conta.orgao;
-                    if (!mapa[key].vendedor && conta.vendedor)
-                        mapa[key].vendedor = (conta.vendedor || '').toUpperCase().trim();
-                } else {
-                    unmatchedContas++;
-                    mapa[key] = {
-                        numero_nf:        normalizeNF(conta.numero_nf),
-                        origem:           conta.status === 'PAGO' ? 'PAGO' : 'CONTAS_RECEBER',
-                        data_emissao:     conta.data_emissao || null,
-                        valor_nf:         parseFloat(conta.valor) || 0,
-                        tipo_nf:          conta.tipo_nf      || null,
-                        nome_orgao:       conta.orgao        || null,
-                        vendedor:         (conta.vendedor || '').toUpperCase().trim() || null,
-                        status_frete:     null,
-                        transportadora:   null,
-                        valor_frete:      0,
-                        documento:        null,
-                        contato_orgao:    null,
-                        data_coleta:      null,
-                        cidade_destino:   null,
-                        previsao_entrega: null,
-                        ...camposPagamento
-                    };
+                matched++;
+
+                // Ordena por data de pagamento (mais recente primeiro)
+                parclasPagas.sort((a, b) => new Date(b.data_pagamento) - new Date(a.data_pagamento));
+
+                // Total pago somando todas as parcelas
+                const totalPago = parclasPagas.reduce((sum, p) =>
+                    sum + (parseFloat(p.valor_pago) || parseFloat(p.valor) || 0), 0);
+
+                // Data de pagamento mais recente
+                const ultimoPagamento = parclasPagas[0];
+
+                // Informação de parcelas
+                const numParcelas = parclasPagas.length;
+                const totalParcelas = parcelas.length;
+                let infoParcela = null;
+                if (totalParcelas > 1) {
+                    infoParcela = `${numParcelas}/${totalParcelas}`;
                 }
+
+                mapa[key].status_pagamento = 'PAGO';
+                mapa[key].banco            = ultimoPagamento.banco || null;
+                mapa[key].data_vencimento  = ultimoPagamento.data_vencimento || null;
+                mapa[key].data_pagamento   = ultimoPagamento.data_pagamento;
+                mapa[key].valor_pago       = totalPago;
+                mapa[key].numero_parcela   = infoParcela;
+                mapa[key].origem           = 'PAGO';
+                mapa[key].updated_at       = new Date().toISOString();
             }
 
-            console.log(`[vendas] Matches frete+conta: ${matched} | Só frete: ${fretes.length - matched} | Só conta: ${unmatchedContas}`);
+            console.log(`[vendas] Matches frete+conta: ${matched}`);
 
             const registros = Object.values(mapa);
             if (!registros.length)
@@ -259,10 +381,10 @@ module.exports = function (supabase) {
 
             const msg = erros
                 ? `${registros.length} registros processados com ${erros} lote(s) com erro: ${erroMsgs[0]}`
-                : `${registros.length} registros sincronizados (match: ${matched} | só frete: ${fretes.length - matched} | só conta: ${unmatchedContas})`;
+                : `${registros.length} registros sincronizados (${matched} com pagamento confirmado)`;
 
             console.log(`[vendas] ${erros ? '⚠️' : '✅'} ${msg}`);
-            res.json({ success: erros === 0, message: msg, total: registros.length, matched, unmatchedContas });
+            res.json({ success: erros === 0, message: msg, total: registros.length, matched });
 
         } catch (err) {
             console.error('[vendas] ❌ Erro geral na sincronização:', err.message);
