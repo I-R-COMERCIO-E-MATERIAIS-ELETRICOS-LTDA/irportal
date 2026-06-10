@@ -3,6 +3,7 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
+    // ─── Tipos de NF que devem ser ignorados ─────────────────────────────────
     const EXCLUDED_NF_TYPES = [
         'DEVOLUCAO', 'DEVOLVIDA', 'REMESSA_AMOSTRA', 'SIMPLES_REMESSA', 'CANCELADA'
     ];
@@ -15,16 +16,23 @@ module.exports = function (supabase) {
         return EXCLUDED_NF_TYPES.some(ex => n.includes(ex));
     }
 
+    // ─── Normaliza número de NF (remove zeros à esquerda) ────────────────────
     function normalizeNF(numeroNF) {
         if (!numeroNF) return '';
         const str = String(numeroNF).trim().replace(/^0+/, '');
         return str || '0';
     }
 
+    // ─── Chave de junção: APENAS o número da NF normalizado ──────────────────
+    //     O número da NF é o identificador real. Se a NF é a mesma nos dois
+    //     módulos, todos os dados pertencem ao mesmo registro.
     function makeKey(numeroNF) {
         return normalizeNF(numeroNF);
     }
 
+    // ─── Normaliza o status do frete para exibição uniforme ──────────────────
+    //     Banco grava com underscore: AGUARDANDO_COLETA, EM_TRANSITO …
+    //     Frontend espera: EM TRÂNSITO, AGUARDANDO COLETA …
     const STATUS_FRETE_MAP = {
         'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
         'EM_TRANSITO':       'EM TRÂNSITO',
@@ -39,43 +47,25 @@ module.exports = function (supabase) {
         return STATUS_FRETE_MAP[upper] || upper.replace(/_/g, ' ');
     }
 
-    // Extrai informação de parcela do registro de contas_receber
-    function extractParcelaInfo(conta) {
-        // 1) Se status contém "PARCELA" (ex: "1ª PARCELA")
-        if (conta.status && conta.status.toUpperCase().includes('PARCELA')) {
-            return conta.status;
-        }
-        // 2) Se observacoes JSON contém array parcelas
-        if (conta.observacoes && typeof conta.observacoes === 'object') {
-            const obs = conta.observacoes;
-            if (obs.parcelas && Array.isArray(obs.parcelas) && obs.parcelas.length > 0) {
-                // Ex: [{numero:"1ª Parcela", valor:...}] -> "1/?"
-                const parcela = obs.parcelas[0];
-                if (parcela.numero) {
-                    return parcela.numero;
-                }
-                if (parcela.numero_parcela && parcela.total_parcelas) {
-                    return `${parcela.numero_parcela}/${parcela.total_parcelas}`;
-                }
-            }
-        }
-        // 3) Se campos numero_parcela e total_parcelas existirem (não no schema atual, mas por precaução)
-        if (conta.numero_parcela && conta.total_parcelas) {
-            return `${conta.numero_parcela}/${conta.total_parcelas}`;
-        }
-        // 4) Pagamento único
-        if (conta.status === 'PAGO') {
-            return 'Única';
-        }
-        return null;
-    }
-
+    // ─── Remove campos incompatíveis com a tabela vendas ─────────────────────
     function sanitize(record) {
-        const { id, id_controle_frete, id_contas_receber, observacoes, prioridade, created_at, ...safe } = record;
+        const {
+            id,
+            id_controle_frete,
+            id_contas_receber,
+            observacoes,
+            numero_parcela,
+            chave_parcela,
+            prioridade,
+            created_at,
+            ...safe
+        } = record;
         return safe;
     }
 
-    // GET /api/vendas (com suporte a filtro por vendedor)
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /api/vendas
+    // ─────────────────────────────────────────────────────────────────────────
     router.get('/', async (req, res) => {
         try {
             const { mes, ano, vendedor } = req.query;
@@ -98,6 +88,9 @@ module.exports = function (supabase) {
         }
     });
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /api/vendas/:id
+    // ─────────────────────────────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
         if (req.params.id === 'sincronizar') return res.status(405).json({ error: 'Use POST' });
         try {
@@ -111,11 +104,14 @@ module.exports = function (supabase) {
         }
     });
 
+    // ─────────────────────────────────────────────────────────────────────────
     // POST /api/vendas/sincronizar
+    // ─────────────────────────────────────────────────────────────────────────
     router.post('/sincronizar', async (req, res) => {
         try {
             console.log('[vendas] 🔄 Sincronização iniciada...');
 
+            // ── 1. Busca dados das duas fontes ────────────────────────────────
             const { data: fretesRaw, error: errFretes } = await supabase
                 .from('controle_frete')
                 .select('*')
@@ -129,23 +125,27 @@ module.exports = function (supabase) {
 
             if (errContas) throw new Error(`Contas: ${errContas.message}`);
 
+            // ── 2. Filtra tipos de NF excluídos ───────────────────────────────
             const fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
             const contas  = (contasRaw  || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
 
             console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
 
-            // Índice de contas por NF: prioriza PAGO e mais recente
+            // ── 3. Índice de contas por número de NF ─────────────────────────
+            //     Se houver mais de uma conta para a mesma NF (ex: parcelamento),
+            //     prioriza: PAGO > com data_pagamento > mais recente.
             const contasPorNF = {};
             for (const conta of contas) {
                 const key = makeKey(conta.numero_nf);
                 const atual = contasPorNF[key];
-                let substituir = false;
-                if (!atual) substituir = true;
-                else if (conta.status === 'PAGO' && atual.status !== 'PAGO') substituir = true;
-                else if (conta.data_pagamento && (!atual.data_pagamento || new Date(conta.data_pagamento) > new Date(atual.data_pagamento))) substituir = true;
-                if (substituir) contasPorNF[key] = conta;
+                if (!atual
+                    || conta.status === 'PAGO'
+                    || (atual.status !== 'PAGO' && conta.data_pagamento && !atual.data_pagamento)) {
+                    contasPorNF[key] = conta;
+                }
             }
 
+            // ── 4. Constrói mapa indexado apenas pelo número da NF ────────────
             const mapa = {};
 
             for (const frete of fretes) {
@@ -171,24 +171,21 @@ module.exports = function (supabase) {
                     data_vencimento:  null,
                     data_pagamento:   null,
                     valor_pago:       0,
-                    numero_parcela:   null,
                     updated_at:       new Date().toISOString()
                 };
             }
 
+            // ── 5. Mescla dados de pagamento pelo número da NF ────────────────
             let matched = 0;
             let unmatchedContas = 0;
 
             for (const [key, conta] of Object.entries(contasPorNF)) {
-                const parcelaInfo = extractParcelaInfo(conta);
-
                 const camposPagamento = {
                     status_pagamento: conta.status          || null,
                     banco:            conta.banco           || null,
                     data_vencimento:  conta.data_vencimento || null,
                     data_pagamento:   conta.data_pagamento  || null,
                     valor_pago:       conta.valor_pago != null ? parseFloat(conta.valor_pago) : 0,
-                    numero_parcela:   parcelaInfo,
                     updated_at:       new Date().toISOString()
                 };
 
@@ -228,7 +225,7 @@ module.exports = function (supabase) {
                 }
             }
 
-            console.log(`[vendas] Matches: ${matched} | Só frete: ${fretes.length - matched} | Só conta: ${unmatchedContas}`);
+            console.log(`[vendas] Matches frete+conta: ${matched} | Só frete: ${fretes.length - matched} | Só conta: ${unmatchedContas}`);
 
             const registros = Object.values(mapa);
             if (!registros.length)
@@ -236,12 +233,14 @@ module.exports = function (supabase) {
 
             console.log(`[vendas] Total a sincronizar: ${registros.length}`);
 
+            // ── 6. Upsert em lotes ────────────────────────────────────────────
             const CHUNK = 200;
             let erros = 0;
             const erroMsgs = [];
 
             for (let i = 0; i < registros.length; i += CHUNK) {
                 const chunk = registros.slice(i, i + CHUNK).map(sanitize);
+
                 const { error: upsertError } = await supabase
                     .from('vendas')
                     .upsert(chunk, {
