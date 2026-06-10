@@ -22,11 +22,27 @@
                         <span class="status-dot"></span>
                     </div>
                 </div>
+                <div class="header-actions">
+                    <button id="chartIconBtn" class="icon-btn" title="Métricas Individuais">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12v3a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4v-3"></path>
+                            <path d="M12 2v8m0 0-3-3m3 3 3-3"></path>
+                            <line x1="12" y1="12" x2="12" y2="16"></line>
+                            <line x1="9" y1="16" x2="15" y2="16"></line>
+                        </svg>
+                    </button>
+                    <button id="userIconBtn" class="icon-btn" title="Ranking de Vendedores">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <!-- Dashboard Cards -->
             <div class="dashboard-grid">
-                <div class="stat-card stat-card-success">
+                <div class="stat-card stat-card-success" id="cardPago">
                     <div class="stat-icon stat-icon-success">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="20 6 9 17 4 12"></polyline>
@@ -37,7 +53,7 @@
                         <div class="stat-label">Pago</div>
                     </div>
                 </div>
-                <div class="stat-card stat-card-warning">
+                <div class="stat-card stat-card-warning" id="cardAReceber">
                     <div class="stat-icon stat-icon-warning">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -49,7 +65,7 @@
                         <div class="stat-label">A Receber</div>
                     </div>
                 </div>
-                <div class="stat-card stat-card-info">
+                <div class="stat-card stat-card-info" id="cardEntregue">
                     <div class="stat-icon stat-icon-info">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
@@ -62,7 +78,7 @@
                         <div class="stat-label">Entregue</div>
                     </div>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card" id="cardFaturado">
                     <div class="stat-icon stat-icon-default">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="12" y1="1" x2="12" y2="23"></line>
@@ -86,12 +102,13 @@
                     <input type="text" id="search" placeholder="Pesquisar por NF, órgão..." oninput="filterVendas()">
                     
                     <div class="search-bar-filters">
-                        <div class="filter-dropdown-inline">
+                        <div class="filter-dropdown-inline" id="vendedorFilterContainer">
                             <select id="filterVendedor" onchange="filterVendas()">
                                 <option value="">Todos os Vendedores</option>
                                 <option value="ROBERTO">Roberto</option>
                                 <option value="ISAQUE">Isaque</option>
                                 <option value="MIGUEL">Miguel</option>
+                                <option value="ROSEMEIRE">Rosemeire</option>
                             </select>
                             <svg class="dropdown-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polyline points="6 9 12 15 18 9"></polyline>
@@ -174,7 +191,7 @@
                 </div>
             </div>
 
-            <!-- Table Card IGUAL AO CONTROLE DE FRETE -->
+            <!-- Table Card -->
             <div class="card table-card">
                 <div id="vendasContainer"></div>
             </div>
@@ -188,11 +205,41 @@
                 <h3 class="modal-title">NF Nº <span id="modalNumeroNF"></span></h3>
                 <button class="close-modal" onclick="closeInfoModal()">✕</button>
             </div>
-            
             <div class="modal-body" id="modalBody"></div>
-
             <div class="modal-actions">
                 <button type="button" onclick="closeInfoModal()" class="secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE MÉTRICAS (MENSAL/ANUAL) -->
+    <div class="modal-overlay" id="metricsModal">
+        <div class="modal-content metrics-modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Métricas <span id="metricsTitle">Mensais</span></h3>
+                <button class="close-modal" onclick="closeMetricsModal()">✕</button>
+            </div>
+            <div class="modal-body" id="metricsBody"></div>
+            <div class="modal-actions">
+                <button onclick="changeMetricsYear(-1)" id="prevYearMetrics">Ano Anterior</button>
+                <button onclick="changeMetricsYear(1)" id="nextYearMetrics">Próximo Ano</button>
+                <button onclick="closeMetricsModal()" class="secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE RANKING ADMIN -->
+    <div class="modal-overlay" id="rankingModal">
+        <div class="modal-content ranking-modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Ranking de Vendedores</h3>
+                <button class="close-modal" onclick="closeRankingModal()">✕</button>
+            </div>
+            <div class="modal-body" id="rankingBody"></div>
+            <div class="modal-actions">
+                <button onclick="changeRankingYear(-1)" id="prevYearRanking">Ano Anterior</button>
+                <button onclick="changeRankingYear(1)" id="nextYearRanking">Próximo Ano</button>
+                <button onclick="closeRankingModal()" class="secondary">Fechar</button>
             </div>
         </div>
     </div>
