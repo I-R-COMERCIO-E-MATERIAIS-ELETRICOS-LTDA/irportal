@@ -7,11 +7,6 @@ let currentMonth = new Date();
 let allVendas = [];
 let sessionToken = null;
 let calendarYear = new Date().getFullYear();
-let currentUser = null; // { username, name, is_admin, vendedor_nome }
-
-let currentMetricsYear = new Date().getFullYear();
-let currentMetricsType = 'pago'; // 'pago' or 'faturado'
-let currentRankingYear = new Date().getFullYear();
 
 console.log('🚀 Módulo Vendas iniciado');
 
@@ -24,38 +19,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!sessionToken) sessionToken = 'no-auth';
         if (urlParams.get('sessionToken')) sessionStorage.setItem('vendasSession', sessionToken);
     }
-    await loadUser();
     await inicializarApp();
 });
-
-async function loadUser() {
-    try {
-        const response = await fetch(`${API_URL}/me`, {
-            headers: { 'X-Session-Token': sessionToken }
-        });
-        if (response.ok) {
-            currentUser = await response.json();
-            console.log('Usuário logado:', currentUser);
-            if (!currentUser.is_admin) {
-                // Esconde filtro de vendedor
-                const filterContainer = document.getElementById('vendedorFilterContainer');
-                if (filterContainer) filterContainer.style.display = 'none';
-                // Esconde botão de ranking (apenas admin)
-                const rankingBtn = document.getElementById('rankingBtn');
-                if (rankingBtn) rankingBtn.style.display = 'none';
-            } else {
-                const rankingBtn = document.getElementById('rankingBtn');
-                if (rankingBtn) rankingBtn.style.display = 'flex';
-            }
-        } else {
-            console.error('Não foi possível obter dados do usuário');
-            currentUser = { is_admin: false, username: 'unknown', vendedor_nome: null };
-        }
-    } catch (err) {
-        console.error('Erro ao carregar usuário:', err);
-        currentUser = { is_admin: false, username: 'unknown', vendedor_nome: null };
-    }
-}
 
 async function inicializarApp() {
     checkServerStatus();
@@ -65,18 +30,19 @@ async function inicializarApp() {
     setInterval(checkServerStatus, 15000);
     setInterval(() => syncData(), 120000);
     setInterval(loadVendas, 30000);
-
-    document.getElementById('cardPago').addEventListener('click', () => openMetricsModal('pago'));
-    document.getElementById('cardFaturado').addEventListener('click', () => openMetricsModal('faturado'));
 }
 
+// ─── Normaliza status_frete para comparação consistente ───────────────────────
+// Independente de como veio do banco (com underscore, sem acento, etc.)
 function normalizeStatusFrete(status) {
     if (!status) return '';
     return status.toUpperCase().trim()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/_/g, ' ');
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // remove acentos
+        .replace(/_/g, ' ');                                // underscore → espaço
+    // Resultado: 'EM TRANSITO', 'ENTREGUE', 'AGUARDANDO COLETA' etc.
 }
 
+// ─── Helpers de exibição ──────────────────────────────────────────────────────
 function formatDate(d) {
     if (!d) return '-';
     return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
@@ -96,20 +62,7 @@ function showToast(msg, type) {
     setTimeout(() => div.remove(), 3000);
 }
 
-function filterVendasByUser(vendas) {
-    if (!currentUser) return vendas;
-    if (currentUser.is_admin) return vendas;
-    let vendedorFilter = null;
-    if (currentUser.username.toUpperCase() === 'ROBERTO') vendedorFilter = 'ROBERTO';
-    else if (currentUser.username.toUpperCase() === 'ISAQUE') vendedorFilter = 'ISAQUE';
-    else if (currentUser.username.toUpperCase() === 'MIGUEL') vendedorFilter = 'MIGUEL';
-    else if (currentUser.vendedor_nome) vendedorFilter = currentUser.vendedor_nome.toUpperCase();
-    if (vendedorFilter) {
-        return vendas.filter(v => (v.vendedor || '').toUpperCase() === vendedorFilter);
-    }
-    return vendas;
-}
-
+// ─── Navegação de meses ───────────────────────────────────────────────────────
 function updateMonthDisplay() {
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -135,10 +88,12 @@ function toggleCalendar() {
 function renderCalendar() {
     const yearElem = document.getElementById('calendarYear');
     if (yearElem) yearElem.textContent = calendarYear;
+
     const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
                         'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const container = document.getElementById('calendarMonths');
     if (!container) return;
+
     container.innerHTML = monthNames.map((m, i) => {
         const isCurrent = i === currentMonth.getMonth() && calendarYear === currentMonth.getFullYear();
         return `<div class="calendar-month${isCurrent ? ' current' : ''}" onclick="selectMonth(${i})">${m}</div>`;
@@ -154,23 +109,17 @@ function selectMonth(monthIndex) {
     currentMonth = new Date(calendarYear, monthIndex, 1);
     updateMonthDisplay();
     updateDisplay();
-    document.getElementById('calendarModal').classList.remove('show');
+    const modal = document.getElementById('calendarModal');
+    if (modal) modal.classList.remove('show');
 }
 
+// ─── Geração de PDF ───────────────────────────────────────────────────────────
 window.gerarPDF = function () {
-    let vendedorSelecionado = '';
-    if (currentUser && !currentUser.is_admin) {
-        if (currentUser.username.toUpperCase() === 'ROBERTO') vendedorSelecionado = 'ROBERTO';
-        else if (currentUser.username.toUpperCase() === 'ISAQUE') vendedorSelecionado = 'ISAQUE';
-        else if (currentUser.username.toUpperCase() === 'MIGUEL') vendedorSelecionado = 'MIGUEL';
-        else vendedorSelecionado = (currentUser.vendedor_nome || '').toUpperCase();
-    } else {
-        const filterVendedor = document.getElementById('filterVendedor');
-        vendedorSelecionado = filterVendedor ? filterVendedor.value.toUpperCase().trim() : '';
-        if (!vendedorSelecionado) {
-            showToast('Selecione um Vendedor', 'error');
-            return;
-        }
+    const filterVendedor = document.getElementById('filterVendedor');
+    const vendedorSelecionado = filterVendedor ? filterVendedor.value.toUpperCase().trim() : '';
+    if (!vendedorSelecionado) {
+        showToast('Selecione um Vendedor', 'error');
+        return;
     }
 
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
@@ -178,6 +127,7 @@ window.gerarPDF = function () {
 
     const vendasPagas = allVendas.filter(v => {
         if (!v.data_pagamento) return false;
+        // CORREÇÃO: normaliza vendedor para comparação (banco grava em maiúsculo)
         if ((v.vendedor || '').toUpperCase().trim() !== vendedorSelecionado) return false;
         const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
         return dataPagamento.getMonth() === currentMonth.getMonth() &&
@@ -208,7 +158,8 @@ window.gerarPDF = function () {
         formatCurrency(v.valor_pago || v.valor_nf)
     ]);
 
-    const totalPago = vendasPagas.reduce((sum, v) => sum + (parseFloat(v.valor_pago) || parseFloat(v.valor_nf) || 0), 0);
+    const totalPago = vendasPagas.reduce((sum, v) =>
+        sum + (parseFloat(v.valor_pago) || parseFloat(v.valor_nf) || 0), 0);
     const comissao = totalPago * 0.01;
 
     doc.autoTable({
@@ -232,10 +183,12 @@ window.gerarPDF = function () {
     doc.setFont(undefined, 'bold');
     doc.text(`TOTAL PAGO NO MÊS: ${formatCurrency(totalPago)}`, 14, finalY);
     doc.text(`COMISSÃO (1%): ${formatCurrency(comissao)}`, 14, finalY + 7);
+
     doc.save(`COMISSAO_${vendedorSelecionado}_${monthNames[currentMonth.getMonth()]}_${currentMonth.getFullYear()}.pdf`);
     showToast('Relatório gerado com sucesso', 'success');
 };
 
+// ─── Status do servidor ───────────────────────────────────────────────────────
 async function checkServerStatus() {
     try {
         const response = await fetch(`${API_URL}/health`, { method: 'GET', mode: 'cors' });
@@ -261,6 +214,7 @@ async function checkServerStatus() {
     }
 }
 
+// ─── Carrega vendas da API ────────────────────────────────────────────────────
 async function loadVendas() {
     try {
         console.log('🔄 Carregando vendas...');
@@ -284,6 +238,7 @@ async function loadVendas() {
     }
 }
 
+// ─── Sincroniza dados via routes ──────────────────────────────────────────────
 async function syncData() {
     showToast('Sincronizando dados...', 'success');
     try {
@@ -313,42 +268,52 @@ function updateDisplay() {
     updateTable();
 }
 
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 function loadDashboard() {
     const currentYear       = currentMonth.getFullYear();
     const currentMonthIndex = currentMonth.getMonth();
-    const vendasFiltradas = filterVendasByUser(allVendas);
 
     let totalPago      = 0;
     let totalAReceber  = 0;
     let totalEntregue  = 0;
     let totalFaturado  = 0;
 
-    for (const v of vendasFiltradas) {
+    for (const v of allVendas) {
         const valorNF      = parseFloat(v.valor_nf) || 0;
+        // CORREÇÃO: usa normalizeStatusFrete para comparação robusta
         const statusFrete  = normalizeStatusFrete(v.status_frete);
 
+        // FATURADO — pela data de emissão no mês selecionado
         if (v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
-            if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
+            if (dataEmissao.getMonth() === currentMonthIndex &&
+                dataEmissao.getFullYear() === currentYear) {
                 totalFaturado += valorNF;
             }
         }
 
+        // ENTREGUE — NFs com status ENTREGUE cuja emissão foi no mês selecionado
         if (statusFrete === 'ENTREGUE' && v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
-            if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
+            if (dataEmissao.getMonth() === currentMonthIndex &&
+                dataEmissao.getFullYear() === currentYear) {
                 totalEntregue++;
             }
         }
 
+        // PAGO — pela data de pagamento no mês selecionado (independente da emissão)
         if (v.data_pagamento) {
             const dataPagamento = new Date(v.data_pagamento + 'T00:00:00');
-            if (dataPagamento.getMonth() === currentMonthIndex && dataPagamento.getFullYear() === currentYear) {
-                const valorPago = (v.valor_pago != null && !isNaN(parseFloat(v.valor_pago))) ? parseFloat(v.valor_pago) : valorNF;
+            if (dataPagamento.getMonth() === currentMonthIndex &&
+                dataPagamento.getFullYear() === currentYear) {
+                const valorPago = (v.valor_pago != null && !isNaN(parseFloat(v.valor_pago)))
+                    ? parseFloat(v.valor_pago)
+                    : valorNF;
                 totalPago += valorPago;
             }
         }
 
+        // A RECEBER — entregue e não pago (qualquer mês — é saldo em aberto)
         if (statusFrete === 'ENTREGUE' && !v.data_pagamento) {
             totalAReceber += valorNF;
         }
@@ -360,68 +325,73 @@ function loadDashboard() {
     document.getElementById('totalFaturado').textContent  = formatCurrency(totalFaturado);
 }
 
+// ─── Tabela de vendas ─────────────────────────────────────────────────────────
 function updateTable() {
     const container = document.getElementById('vendasContainer');
     if (!container) return;
 
-    let vendasFiltradas = filterVendasByUser(allVendas);
-    vendasFiltradas = vendasFiltradas.filter(v => {
+    const vendedorSelecionado = (document.getElementById('filterVendedor')?.value || '').toUpperCase().trim();
+
+    // Filtra pelo mês de emissão
+    let filtered = allVendas.filter(v => {
         if (!v.data_emissao) return false;
         const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
         return dataEmissao.getMonth() === currentMonth.getMonth() &&
                dataEmissao.getFullYear() === currentMonth.getFullYear();
     });
 
-    const vendedorSelecionado = (document.getElementById('filterVendedor')?.value || '').toUpperCase().trim();
-    if (currentUser && currentUser.is_admin && vendedorSelecionado) {
-        vendasFiltradas = vendasFiltradas.filter(v => (v.vendedor || '').toUpperCase().trim() === vendedorSelecionado);
+    // CORREÇÃO: normaliza vendedor para comparação
+    if (vendedorSelecionado) {
+        filtered = filtered.filter(v =>
+            (v.vendedor || '').toUpperCase().trim() === vendedorSelecionado
+        );
     }
 
-    const search = (document.getElementById('search')?.value || '').toLowerCase();
+    const search      = (document.getElementById('search')?.value || '').toLowerCase();
     const filterStatus = document.getElementById('filterStatus')?.value || '';
 
     if (search) {
-        vendasFiltradas = vendasFiltradas.filter(v =>
+        filtered = filtered.filter(v =>
             (v.numero_nf || '').toLowerCase().includes(search) ||
             (v.nome_orgao || '').toLowerCase().includes(search)
         );
     }
 
+    // CORREÇÃO: usa normalizeStatusFrete para comparação robusta de status
     if (filterStatus === 'PAGO') {
-        vendasFiltradas = vendasFiltradas.filter(v => !!v.data_pagamento);
+        filtered = filtered.filter(v => !!v.data_pagamento);
     } else if (filterStatus === 'ENTREGUE') {
-        vendasFiltradas = vendasFiltradas.filter(v =>
+        filtered = filtered.filter(v =>
             normalizeStatusFrete(v.status_frete) === 'ENTREGUE' && !v.data_pagamento
         );
     } else if (filterStatus === 'EM TRÂNSITO') {
-        vendasFiltradas = vendasFiltradas.filter(v =>
+        filtered = filtered.filter(v =>
             normalizeStatusFrete(v.status_frete) === 'EM TRANSITO'
         );
     }
 
-    vendasFiltradas.sort((a, b) => (parseInt(a.numero_nf) || 0) - (parseInt(b.numero_nf) || 0));
+    filtered.sort((a, b) => (parseInt(a.numero_nf) || 0) - (parseInt(b.numero_nf) || 0));
 
-    if (!vendasFiltradas.length) {
+    if (!filtered.length) {
         container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">Nenhuma venda encontrada</div>';
         return;
     }
 
-    const rows = vendasFiltradas.map(v => {
+    const rows = filtered.map(v => {
         const statusFrete = normalizeStatusFrete(v.status_frete);
-        const status = v.data_pagamento ? 'PAGO' : (statusFrete || 'EM TRANSITO');
+        // Status para exibição: PAGO tem prioridade sobre status do frete
+        const status   = v.data_pagamento ? 'PAGO' : (statusFrete || 'EM TRANSITO');
         const rowClass = status === 'PAGO' ? 'row-pago' : (statusFrete === 'ENTREGUE' ? 'row-entregue' : '');
+        // Usa index no array como referência segura para o modal
         const idx = allVendas.indexOf(v);
-        let parcelaDisplay = '';
-        if (status === 'PAGO' && v.numero_parcela) {
-            parcelaDisplay = `<span class="parcela-info"> (${v.numero_parcela})</span>`;
-        }
-        return `<tr class="${rowClass}" onclick="viewVenda(${idx})" style="cursor:pointer;">
+        return `<tr class="${rowClass}">
             <td><strong>${v.numero_nf || '-'}</strong></td>
             <td>${formatDate(v.data_emissao)}</td>
             <td>${v.vendedor || '-'}</td>
             <td style="word-break:break-word;max-width:220px;">${v.nome_orgao || '-'}</td>
             <td><strong>${formatCurrency(v.valor_nf)}</strong></td>
-            <td>${getStatusBadge(status)}${parcelaDisplay}</td>
+            <td>${getStatusBadge(status)}</td>
+            <td><button class="action-btn view" onclick="viewVenda(${idx})">Ver</button></td>
         </tr>`;
     }).join('');
 
@@ -436,6 +406,7 @@ function updateTable() {
                         <th>Órgão</th>
                         <th>Valor NF</th>
                         <th>Status</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -453,9 +424,12 @@ function getStatusBadge(status) {
     return `<span class="badge ${s.class}">${s.text}</span>`;
 }
 
+// ─── Modal de detalhe da venda ────────────────────────────────────────────────
+// CORREÇÃO: recebe índice do array em vez de ID escapado como string
 function viewVenda(idx) {
     const venda = allVendas[idx];
     if (!venda) return;
+
     document.getElementById('modalNumeroNF').textContent = venda.numero_nf;
     const modalBody = document.getElementById('modalBody');
     if (!modalBody) return;
@@ -472,7 +446,6 @@ function viewVenda(idx) {
                 <p><strong>Emissão:</strong> ${formatDate(venda.data_emissao)}</p>
                 <p><strong>Pagamento:</strong> ${formatDate(venda.data_pagamento)}</p>
                 <p><strong>Banco:</strong> ${venda.banco || '-'}</p>
-                <p><strong>Parcela:</strong> ${venda.numero_parcela || '-'}</p>
             </div>`;
     } else {
         modalBody.innerHTML = `
@@ -489,6 +462,7 @@ function viewVenda(idx) {
                 <p><strong>Previsão Entrega:</strong> ${formatDate(venda.previsao_entrega)}</p>
             </div>`;
     }
+
     document.getElementById('infoModal').classList.add('show');
 }
 
@@ -498,129 +472,4 @@ function closeInfoModal() {
 
 function filterVendas() {
     updateDisplay();
-}
-
-function openMetricsModal(type) {
-    currentMetricsType = type;
-    currentMetricsYear = currentMonth.getFullYear();
-    document.getElementById('metricsTitle').innerText = type === 'pago' ? 'Pagamentos por Mês' : 'Faturamento por Mês';
-    document.getElementById('metricsYearDisplay').innerText = currentMetricsYear;
-    renderMetrics();
-    document.getElementById('metricsModal').classList.add('show');
-}
-
-function renderMetrics() {
-    const vendasFiltradas = filterVendasByUser(allVendas);
-    const meses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    let valores = new Array(12).fill(0);
-    let totalAno = 0;
-
-    for (const v of vendasFiltradas) {
-        let dataReferencia = null;
-        let valor = 0;
-        if (currentMetricsType === 'pago') {
-            if (v.data_pagamento) {
-                dataReferencia = new Date(v.data_pagamento + 'T00:00:00');
-                valor = parseFloat(v.valor_pago) || parseFloat(v.valor_nf) || 0;
-            }
-        } else {
-            if (v.data_emissao) {
-                dataReferencia = new Date(v.data_emissao + 'T00:00:00');
-                valor = parseFloat(v.valor_nf) || 0;
-            }
-        }
-        if (dataReferencia && dataReferencia.getFullYear() === currentMetricsYear) {
-            const mes = dataReferencia.getMonth();
-            valores[mes] += valor;
-            totalAno += valor;
-        }
-    }
-
-    const grid = document.getElementById('metricsGrid');
-    grid.innerHTML = meses.map((mes, i) => `
-        <div class="metric-card">
-            <div class="metric-month">${mes}</div>
-            <div class="metric-value">${formatCurrency(valores[i])}</div>
-        </div>
-    `).join('');
-    document.getElementById('annualTotal').innerHTML = `<div class="annual-card"><strong>Total do Ano</strong><br>${formatCurrency(totalAno)}</div>`;
-}
-
-function changeMetricsYear(delta) {
-    currentMetricsYear += delta;
-    document.getElementById('metricsYearDisplay').innerText = currentMetricsYear;
-    renderMetrics();
-}
-
-function closeMetricsModal() {
-    document.getElementById('metricsModal').classList.remove('show');
-}
-
-function openRankingModal() {
-    if (!currentUser || !currentUser.is_admin) return;
-    currentRankingYear = currentMonth.getFullYear();
-    document.getElementById('rankingYearDisplay').innerText = currentRankingYear;
-    renderRanking();
-    document.getElementById('rankingModal').classList.add('show');
-}
-
-function renderRanking() {
-    const vendasFiltradas = allVendas;
-    const vendedores = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
-    const resultados = {};
-
-    for (const v of vendasFiltradas) {
-        const vendedor = (v.vendedor || '').toUpperCase();
-        if (!vendedores.includes(vendedor)) continue;
-        let pago = 0, faturado = 0;
-        if (v.data_pagamento) {
-            const dataPag = new Date(v.data_pagamento + 'T00:00:00');
-            if (dataPag.getFullYear() === currentRankingYear) {
-                pago += parseFloat(v.valor_pago) || parseFloat(v.valor_nf) || 0;
-            }
-        }
-        if (v.data_emissao) {
-            const dataEmi = new Date(v.data_emissao + 'T00:00:00');
-            if (dataEmi.getFullYear() === currentRankingYear) {
-                faturado += parseFloat(v.valor_nf) || 0;
-            }
-        }
-        if (!resultados[vendedor]) resultados[vendedor] = { pago: 0, faturado: 0 };
-        resultados[vendedor].pago += pago;
-        resultados[vendedor].faturado += faturado;
-    }
-
-    const grid = document.getElementById('rankingGrid');
-    grid.innerHTML = `
-        <div class="ranking-header">
-            <div>Vendedor</div>
-            <div>Pago (R$)</div>
-            <div>Faturado (R$)</div>
-        </div>
-        ${vendedores.map(v => `
-            <div class="ranking-row">
-                <div>${v}</div>
-                <div>${formatCurrency(resultados[v]?.pago || 0)}</div>
-                <div>${formatCurrency(resultados[v]?.faturado || 0)}</div>
-            </div>
-        `).join('')}
-    `;
-}
-
-function changeRankingYear(delta) {
-    currentRankingYear += delta;
-    document.getElementById('rankingYearDisplay').innerText = currentRankingYear;
-    renderRanking();
-}
-
-function closeRankingModal() {
-    document.getElementById('rankingModal').classList.remove('show');
-}
-
-function showUserInfo() {
-    if (currentUser) {
-        showToast(`Usuário: ${currentUser.name || currentUser.username}`, 'success');
-    } else {
-        showToast('Usuário não identificado', 'error');
-    }
 }
