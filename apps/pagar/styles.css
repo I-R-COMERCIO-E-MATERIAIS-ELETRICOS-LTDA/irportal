@@ -188,7 +188,32 @@ button.secondary { background: #6B7280; }
 .btn-close-red:hover { background: #DC2626 !important; }
 button.small { padding: 8px 12px; font-size: 0.85rem; }
 .action-btn { padding: 8px 12px; font-size: 0.85rem; margin: 0 4px; min-width: 70px; }
-.actions-cell { white-space: nowrap; min-width: 300px; }
+.actions-cell { white-space: nowrap; min-width: 300px; display: flex; align-items: center; gap: 4px; flex-wrap: nowrap; }
+
+/* Ícone de alerta (triângulo) na tabela */
+.action-btn.alert-icon {
+    background: transparent;
+    color: #EF4444;
+    border: none;
+    padding: 4px 8px;
+    margin: 0;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    min-width: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+.action-btn.alert-icon:hover {
+    transform: scale(1.15);
+    background: rgba(239, 68, 68, 0.1);
+    border-radius: 4px;
+}
+.action-btn.alert-icon svg {
+    stroke: #EF4444;
+}
 
 /* FLOATING MESSAGES */
 .floating-message { position: fixed; bottom: 24px; right: 24px; padding: 14px 20px; border-radius: 10px; font-weight: 500; font-size: 0.95rem; z-index: 9999999; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); border: 1px solid; animation: slideInBottom 0.3s ease; min-width: 300px; }
@@ -293,7 +318,7 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
     .modal-actions button, .modal-actions-alert button { width: 100%; }
     .tabs-nav { flex-wrap: nowrap; }
     .tab-btn { font-size: 0.8rem; padding: 10px 15px; }
-    .actions-cell { min-width: auto; }
+    .actions-cell { min-width: auto; flex-wrap: wrap; gap: 2px; }
     .info-grid { grid-template-columns: 1fr; }
 }
 
@@ -312,28 +337,4 @@ tr[data-conta-id] {
 }
 tr[data-conta-id]:hover {
     background: var(--table-hover) !important;
-}
-
-/* Ícone de alerta (observações) na tabela */
-.action-btn.alert-icon {
-    background: transparent;
-    color: #EF4444;
-    border: none;
-    padding: 4px 8px;
-    margin: 0 2px;
-    font-size: 1.1rem;
-    cursor: pointer;
-    transition: transform 0.2s ease;
-    min-width: auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-.action-btn.alert-icon:hover {
-    transform: scale(1.2);
-    background: rgba(239, 68, 68, 0.1);
-    border-radius: 4px;
-}
-.action-btn.alert-icon svg {
-    stroke: #EF4444;
 }
