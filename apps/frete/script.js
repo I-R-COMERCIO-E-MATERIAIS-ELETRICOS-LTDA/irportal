@@ -16,7 +16,7 @@ const meses = [
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
 ];
 
-const mesesAbrev = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+const mesesAbrev = ['JAN', 'FEB', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 
 console.log('✅ Controle de Frete iniciado');
 console.log('📍 API URL:', API_URL);
@@ -43,7 +43,6 @@ document.addEventListener('DOMContentLoaded', () => {
 function setupEventDelegation() {
     console.log('🔧 Configurando Event Delegation...');
     
-    // Listener para checkboxes via event delegation
     document.body.addEventListener('change', function(e) {
         if (e.target.type === 'checkbox' && e.target.classList.contains('styled-checkbox')) {
             const row = e.target.closest('tr[data-id]');
@@ -63,53 +62,53 @@ function setupEventDelegation() {
 // ============================================
 window.handleViewClick = function(id) {
     console.log('👁️ Visualizar frete:', id);
-    
     const frete = fretes.find(f => String(f.id) === String(id));
     if (!frete) {
         showToast('Frete não encontrado!', 'error');
         return;
     }
-    
-    mostrarModalVisualizacao(frete);
+    mostrarModalVisualizacao(frete, 0);
+};
+
+window.handleViewObsClick = function(id) {
+    console.log('👁️ Visualizar observações do frete:', id);
+    const frete = fretes.find(f => String(f.id) === String(id));
+    if (!frete) {
+        showToast('Frete não encontrado!', 'error');
+        return;
+    }
+    mostrarModalVisualizacao(frete, 3);
 };
 
 window.handleEditClick = function(id) {
     console.log('✏️ Editar frete:', id);
-    
     const frete = fretes.find(f => String(f.id) === String(id));
     if (!frete) {
         showToast('Frete não encontrado!', 'error');
         return;
     }
-    
     showFormModal(String(id));
 };
 
 window.handleDeleteClick = async function(id) {
     try {
         console.log('🗑️ Tentando excluir frete:', id);
-        
         const idStr = String(id);
         const freteToDelete = fretes.find(f => String(f.id) === idStr);
-        
         if (!freteToDelete) {
             console.error('❌ Frete não encontrado:', id);
             showToast('Frete não encontrado!', 'error');
             return;
         }
-        
         const numeroNF = freteToDelete.numero_nf || 'sem número';
         console.log('📋 Frete encontrado - NF:', numeroNF);
         
-        // Verificar se showConfirm existe
         if (typeof window.showConfirm !== 'function') {
             console.error('❌ showConfirm não está definido!');
             const confirmar = confirm(`Tem certeza que deseja excluir esta NF?`);
             if (!confirmar) return;
         } else {
             console.log('✅ Abrindo modal de confirmação...');
-            
-            // Usar modal de confirmação personalizado
             const confirmar = await window.showConfirm(
                 `Tem certeza que deseja excluir esta NF?`,
                 {
@@ -119,7 +118,6 @@ window.handleDeleteClick = async function(id) {
                     type: 'danger'
                 }
             );
-            
             if (!confirmar) {
                 console.log('❌ Exclusão cancelada pelo usuário');
                 return;
@@ -129,14 +127,12 @@ window.handleDeleteClick = async function(id) {
         console.log('✅ Usuário confirmou exclusão');
         console.log('🗑️ Deletando NF:', numeroNF);
         
-        // Remover da lista local primeiro
         fretes = fretes.filter(f => String(f.id) !== idStr);
         updateAllFilters();
         updateDashboard();
         filterFretes();
         showToast(`NF ${numeroNF} Excluído`, 'error');
         
-        // Deletar no servidor
         if (isOnline || DEVELOPMENT_MODE) {
             fetch(`${API_URL}/fretes/${idStr}`, {
                 method: 'DELETE',
@@ -152,7 +148,6 @@ window.handleDeleteClick = async function(id) {
             })
             .catch(error => {
                 console.error('❌ Erro ao deletar no servidor:', error);
-                // Restaurar o frete se falhar no servidor
                 if (freteToDelete) {
                     fretes.push(freteToDelete);
                     updateAllFilters();
@@ -168,9 +163,7 @@ window.handleDeleteClick = async function(id) {
     }
 };
 
-
 window.handleRowClick = function(event, id) {
-    // Don't open view if clicking checkbox, label, or action buttons
     if (event.target.closest('.checkbox-wrapper') || 
         event.target.closest('.action-btn') ||
         event.target.tagName === 'INPUT' ||
@@ -182,30 +175,22 @@ window.handleRowClick = function(event, id) {
 
 window.handleCheckboxChange = async function(id) {
     console.log('☑️ Checkbox alterado:', id);
-    
     const idStr = String(id);
     const frete = fretes.find(f => String(f.id) === idStr);
-    
     if (!frete) return;
     
     const tiposPermitidos = ['ENVIO', 'SIMPLES_REMESSA', 'REMESSA_AMOSTRA'];
     const tipoNf = frete.tipo_nf || 'ENVIO';
-    
     if (!tiposPermitidos.includes(tipoNf)) return;
     
     const novoStatus = frete.status === 'ENTREGUE' ? 'EM_TRANSITO' : 'ENTREGUE';
-    
-    // Preparar dados para atualização
     const updateData = { status: novoStatus };
     
-    // Se está marcando como ENTREGUE e não tem data_entrega, define a data atual
     if (novoStatus === 'ENTREGUE' && !frete.data_entrega) {
         const hoje = new Date();
         updateData.data_entrega = hoje.toISOString().split('T')[0];
         console.log(`📅 Definindo data_entrega: ${updateData.data_entrega}`);
     }
-    
-    // Se está desmarcando (voltando para EM_TRANSITO), REMOVE a data_entrega
     if (novoStatus === 'EM_TRANSITO') {
         updateData.data_entrega = null;
         console.log('🗑️ Removendo data_entrega (desmarcado)');
@@ -223,20 +208,16 @@ window.handleCheckboxChange = async function(id) {
                 body: JSON.stringify(updateData),
                 mode: 'cors'
             });
-            
             if (!response.ok) throw new Error('Erro ao atualizar');
-            
             const savedData = await response.json();
             const index = fretes.findIndex(f => String(f.id) === idStr);
             if (index !== -1) {
                 fretes[index] = savedData;
-                
                 if (novoStatus === 'ENTREGUE') {
                     showToast(`NF ${savedData.numero_nf} Entregue`, 'success');
                 } else {
                     showToast(`NF ${savedData.numero_nf} desmarcado - voltou ao monitoramento`, 'info');
                 }
-                
                 updateDashboard();
                 filterFretes();
             }
@@ -248,9 +229,9 @@ window.handleCheckboxChange = async function(id) {
 };
 
 // ============================================
-// MODAL DE VISUALIZAÇÃO
+// MODAL DE VISUALIZAÇÃO (com suporte a aba ativa)
 // ============================================
-function mostrarModalVisualizacao(frete) {
+function mostrarModalVisualizacao(frete, activeTabIndex = 0) {
     let observacoesArray = [];
     if (frete.observacoes) {
         try {
@@ -291,13 +272,13 @@ function mostrarModalVisualizacao(frete) {
                 
                 <div class="tabs-container">
                     <div class="tabs-nav">
-                        <button class="tab-btn active" onclick="switchViewTab(0)">Dados da Nota</button>
-                        <button class="tab-btn" onclick="switchViewTab(1)">Órgão</button>
-                        <button class="tab-btn" onclick="switchViewTab(2)">Transporte</button>
-                        <button class="tab-btn" onclick="switchViewTab(3)">Observações</button>
+                        <button class="tab-btn ${activeTabIndex === 0 ? 'active' : ''}" onclick="switchViewTab(0)">Dados da Nota</button>
+                        <button class="tab-btn ${activeTabIndex === 1 ? 'active' : ''}" onclick="switchViewTab(1)">Órgão</button>
+                        <button class="tab-btn ${activeTabIndex === 2 ? 'active' : ''}" onclick="switchViewTab(2)">Transporte</button>
+                        <button class="tab-btn ${activeTabIndex === 3 ? 'active' : ''}" onclick="switchViewTab(3)">Observações</button>
                     </div>
 
-                    <div class="tab-content active" id="view-tab-nota">
+                    <div class="tab-content ${activeTabIndex === 0 ? 'active' : ''}" id="view-tab-nota">
                         <div class="info-section">
                             <h4>Dados da Nota Fiscal</h4>
                             <p><strong>Número NF:</strong> ${frete.numero_nf || '-'}</p>
@@ -308,7 +289,7 @@ function mostrarModalVisualizacao(frete) {
                         </div>
                     </div>
 
-                    <div class="tab-content" id="view-tab-orgao">
+                    <div class="tab-content ${activeTabIndex === 1 ? 'active' : ''}" id="view-tab-orgao">
                         <div class="info-section">
                             <h4>Dados do Órgão</h4>
                             <p><strong>Nome do Órgão:</strong> ${frete.nome_orgao || '-'}</p>
@@ -317,7 +298,7 @@ function mostrarModalVisualizacao(frete) {
                         </div>
                     </div>
 
-                    <div class="tab-content" id="view-tab-transporte">
+                    <div class="tab-content ${activeTabIndex === 2 ? 'active' : ''}" id="view-tab-transporte">
                         <div class="info-section">
                             <h4>Dados do Transporte</h4>
                             <p><strong>Transportadora:</strong> ${displayValue(frete.transportadora)}</p>
@@ -330,7 +311,7 @@ function mostrarModalVisualizacao(frete) {
                         </div>
                     </div>
 
-                    <div class="tab-content" id="view-tab-observacoes">
+                    <div class="tab-content ${activeTabIndex === 3 ? 'active' : ''}" id="view-tab-observacoes">
                         <div class="info-section">
                             <h4>Observações</h4>
                             <div class="observacoes-list-view">
@@ -365,7 +346,6 @@ window.switchViewTab = function(index) {
     document.querySelectorAll('#viewModal .tab-btn').forEach((btn, i) => {
         btn.classList.toggle('active', i === index);
     });
-    
     document.querySelectorAll('#viewModal .tab-content').forEach((content, i) => {
         content.classList.toggle('active', i === index);
     });
@@ -463,7 +443,7 @@ async function checkServerStatus() {
 }
 
 function updateConnectionStatus() {
-    // Status indicator removed
+    // Removido
 }
 
 // ============================================
@@ -524,10 +504,6 @@ async function loadFretes(showMessage = false) {
     }
 }
 
-
-// ============================================
-// CARREGAR TRANSPORTADORAS DA API
-// ============================================
 async function loadTransportadoras() {
     try {
         const response = await fetch(`${API_URL}/transportadoras`, {
@@ -549,7 +525,6 @@ async function loadTransportadoras() {
 
 window.sincronizarDados = async function() {
     console.log('🔄 Sincronizando dados...');
-    
     const syncButtons = document.querySelectorAll('button[onclick="sincronizarDados()"]');
     syncButtons.forEach(btn => {
         const svg = btn.querySelector('svg');
@@ -557,10 +532,8 @@ window.sincronizarDados = async function() {
             svg.style.animation = 'spin 1s linear infinite';
         }
     });
-    
     showToast('Dados sincronizados', 'success');
     await loadFretes(true);
-    
     setTimeout(() => {
         syncButtons.forEach(btn => {
             const svg = btn.querySelector('svg');
@@ -661,7 +634,6 @@ function updateDashboard() {
     
     if (foraPrazo > 0) {
         cardForaPrazo.classList.add('has-alert');
-        
         pulseBadge = document.createElement('div');
         pulseBadge.className = 'pulse-badge';
         pulseBadge.innerHTML = `
@@ -676,7 +648,6 @@ function updateDashboard() {
         cardForaPrazo.classList.remove('has-alert');
     }
 }
-
 
 // ============================================
 // MODAL DE CONFIRMAÇÃO
@@ -706,7 +677,6 @@ function showConfirm(message, options = {}) {
         const cancelBtn = document.getElementById('modalCancelBtn');
         const closeBtn = document.getElementById('confirmModalClose');
 
-        // Forçar display do modal
         if (modal) {
             modal.style.display = 'flex';
             modal.style.opacity = '1';
@@ -728,7 +698,6 @@ function showConfirm(message, options = {}) {
         if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal(false));
         if (closeBtn) closeBtn.addEventListener('click', () => closeModal(false));
         
-        // Fechar ao clicar fora do modal
         if (modal) {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
@@ -746,7 +715,6 @@ function showConfirm(message, options = {}) {
     });
 }
 
-// Exportar para window
 window.showConfirm = showConfirm;
 
 // ============================================
@@ -759,14 +727,12 @@ window.toggleForm = function() {
 
 window.showFormModal = function(editingId = null) {
     console.log('📝 showFormModal chamada com ID:', editingId);
-    
     const isEditing = editingId !== null;
     let frete = null;
     
     if (isEditing) {
         const idStr = String(editingId);
         frete = fretes.find(f => String(f.id) === idStr);
-        
         if (!frete) {
             showToast('Frete não encontrado!', 'error');
             return;
@@ -953,7 +919,6 @@ window.showFormModal = function(editingId = null) {
     document.body.insertAdjacentHTML('beforeend', modalHTML);
     
     const camposMaiusculas = ['numero_nf', 'documento', 'nome_orgao', 'contato_orgao', 'cidade_destino'];
-
     camposMaiusculas.forEach(campoId => {
         const campo = document.getElementById(campoId);
         if (campo) {
@@ -976,37 +941,28 @@ window.showFormModal = function(editingId = null) {
 window.adicionarObservacao = function() {
     const textarea = document.getElementById('novaObservacao');
     const texto = textarea.value.trim();
-    
     if (!texto) {
         showToast('Digite uma observação primeiro', 'error');
         return;
     }
-    
     const observacoesDataField = document.getElementById('observacoesData');
     let observacoes = JSON.parse(observacoesDataField.value || '[]');
-    
-    // Adicionar username à observação
     const username = sessionStorage.getItem('username') || 'Usuário';
-    
     observacoes.push({
         texto: texto,
         timestamp: new Date().toISOString(),
         username: username
     });
-    
     observacoesDataField.value = JSON.stringify(observacoes);
     textarea.value = '';
-    
     atualizarListaObservacoes();
 };
 
 window.removerObservacao = function(index) {
     const observacoesDataField = document.getElementById('observacoesData');
     let observacoes = JSON.parse(observacoesDataField.value || '[]');
-    
     observacoes.splice(index, 1);
     observacoesDataField.value = JSON.stringify(observacoes);
-    
     atualizarListaObservacoes();
 };
 
@@ -1014,7 +970,6 @@ function atualizarListaObservacoes() {
     const observacoesDataField = document.getElementById('observacoesData');
     const observacoes = JSON.parse(observacoesDataField.value || '[]');
     const container = document.getElementById('observacoesList');
-    
     if (observacoes.length === 0) {
         container.innerHTML = '<p style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 2rem;">Nenhuma observação registrada</p>';
     } else {
@@ -1039,7 +994,7 @@ function atualizarListaObservacoes() {
 }
 
 window.handleTipoNfChange = function() {
-    // Placeholder para futura expansão
+    // Placeholder
 };
 
 window.closeFormModal = function(showCancelMessage = false) {
@@ -1047,11 +1002,9 @@ window.closeFormModal = function(showCancelMessage = false) {
     if (modal) {
         const editId = document.getElementById('editId')?.value;
         const isEditing = editId && editId !== '';
-        
         if (showCancelMessage) {
             showToast(isEditing ? 'Atualização Cancelada' : 'Registro Cancelado', 'error');
         }
-        
         modal.style.animation = 'fadeOut 0.2s ease forwards';
         setTimeout(() => modal.remove(), 200);
     }
@@ -1060,7 +1013,6 @@ window.closeFormModal = function(showCancelMessage = false) {
 // ============================================
 // SISTEMA DE ABAS
 // ============================================
-
 window.navigateFormTab = function(direction) {
     const tabButtons = document.querySelectorAll('#formModal .tab-btn');
     const currentActive = Array.from(tabButtons).findIndex(btn => btn.classList.contains('active'));
@@ -1081,15 +1033,12 @@ function updateFormTabNavButtons(currentIndex, totalTabs) {
 window.switchFormTab = function(index) {
     const tabButtons = document.querySelectorAll('#formModal .tab-btn');
     const tabContents = document.querySelectorAll('#formModal .tab-content');
-    
     tabButtons.forEach((btn, i) => {
         btn.classList.toggle('active', i === index);
     });
-    
     tabContents.forEach((content, i) => {
         content.classList.toggle('active', i === index);
     });
-    
     updateFormTabNavButtons(index, tabButtons.length);
 };
 
@@ -1119,12 +1068,6 @@ window.handleSubmit = async function(event) {
         data_entrega: document.getElementById('data_entrega').value || null,
         observacoes: observacoesValue
     };
-
-    // O backend vai calcular o status automaticamente baseado em:
-    // 1. tipo_nf (se for tipo especial, status = null)
-    // 2. data_entrega (se existir, status = ENTREGUE)
-    // 3. padrão (se não tiver data_entrega, status = EM_TRANSITO)
-    // Não enviamos status no formData para deixar o backend decidir
 
     const editId = document.getElementById('editId').value;
 
@@ -1175,7 +1118,6 @@ window.handleSubmit = async function(event) {
         } else {
             fretes.push(savedData);
             showToast(`NF ${formData.numero_nf || savedData.numero_nf} Registrado`, 'success');
-            
             lastDataHash = JSON.stringify(fretes.map(f => f.id));
             updateAllFilters();
             updateDashboard();
@@ -1201,11 +1143,9 @@ function updateAllFilters() {
 }
 
 function updateTransportadoraFilter() {
-    // Use API transportadoras if loaded, else fall back to fretes data
     let transportadoras;
     if (transportadorasList.length > 0) {
         transportadoras = new Set(transportadorasList);
-        // Also add any from fretes not in the list
         fretes.forEach(f => {
             if (f.transportadora?.trim() && f.transportadora !== 'NÃO INFORMADO') {
                 transportadoras.add(f.transportadora.trim());
@@ -1267,7 +1207,6 @@ function updateStatusFilter() {
         if (f.status?.trim()) {
             statusSet.add(f.status.trim());
         }
-        
         const isTipoEnvio = !f.tipo_nf || f.tipo_nf === 'ENVIO';
         if (isTipoEnvio && f.status !== 'ENTREGUE' && f.previsao_entrega) {
             const previsao = new Date(f.previsao_entrega + 'T00:00:00');
@@ -1282,19 +1221,16 @@ function updateStatusFilter() {
     if (select) {
         const currentValue = select.value;
         select.innerHTML = '<option value="">Todos os Status</option>';
-        
         if (temForaDoPrazo) {
             const optionForaPrazo = document.createElement('option');
             optionForaPrazo.value = 'FORA_DO_PRAZO';
             optionForaPrazo.textContent = 'Fora do Prazo';
             select.appendChild(optionForaPrazo);
         }
-        
         const statusMap = {
             'EM_TRANSITO': 'Em Trânsito',
             'ENTREGUE': 'Entregue'
         };
-        
         Array.from(statusSet).sort().forEach(s => {
             const option = document.createElement('option');
             option.value = s;
@@ -1336,7 +1272,6 @@ function filterFretes() {
             filtered = filtered.filter(f => {
                 const isTipoEnvio = !f.tipo_nf || f.tipo_nf === 'ENVIO';
                 if (!isTipoEnvio) return false;
-                
                 if (f.status === 'ENTREGUE') return false;
                 if (!f.previsao_entrega) return false;
                 const previsao = new Date(f.previsao_entrega + 'T00:00:00');
@@ -1359,7 +1294,6 @@ function filterFretes() {
                 f.documento,
                 f.contato_orgao
             ];
-            
             return searchFields.some(field => 
                 field && field.toString().toLowerCase().includes(searchTerm)
             );
@@ -1376,13 +1310,11 @@ function filterFretes() {
 }
 
 // ============================================
-// RENDERIZAÇÃO COM ONCLICK INLINE
+// RENDERIZAÇÃO COM ÍCONE DE OBSERVAÇÃO
 // ============================================
 function renderFretes(fretesToRender) {
     const container = document.getElementById('fretesContainer');
-    
     if (!container) return;
-    
     if (!fretesToRender || fretesToRender.length === 0) {
         container.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-secondary);">Nenhum frete encontrado</div>';
         return;
@@ -1403,22 +1335,39 @@ function renderFretes(fretesToRender) {
                         <th>Data Entrega</th>
                         <th>Valor NF</th>
                         <th>Status</th>
+                        <th style="text-align: center; width: 60px;"></th>
                         <th style="text-align: center;">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
                     ${fretesToRender.map(f => {
                         const isEntregue = f.status === 'ENTREGUE';
-                        
                         const tiposComCheckbox = ['ENVIO', 'SIMPLES_REMESSA', 'REMESSA_AMOSTRA'];
                         const tipoNf = f.tipo_nf || 'ENVIO';
                         const showCheckbox = tiposComCheckbox.includes(tipoNf);
-                        
                         const displayValue = (val) => {
                             if (!val || val === 'NÃO INFORMADO') return '-';
                             return val;
                         };
-                        
+
+                        let temObservacao = false;
+                        if (f.observacoes) {
+                            try {
+                                const obsArray = typeof f.observacoes === 'string' ? JSON.parse(f.observacoes) : f.observacoes;
+                                if (obsArray.length > 0) temObservacao = true;
+                            } catch(e) {}
+                        }
+
+                        const alertIcon = temObservacao 
+                            ? `<button class="action-btn alert-icon" onclick="handleViewObsClick('${f.id}')" title="Ver observações">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                    <line x1="12" y1="9" x2="12" y2="13" />
+                                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                                </svg>
+                               </button>`
+                            : '';
+
                         return `
                         <tr class="${isEntregue ? 'row-entregue' : ''}" data-id="${f.id}" style="cursor: pointer;" onclick="handleRowClick(event, '${f.id}')">
                             <td style="text-align: center; padding: 8px;">
@@ -1441,6 +1390,7 @@ function renderFretes(fretesToRender) {
                             <td style="white-space: nowrap;">${f.data_entrega ? formatDate(f.data_entrega) : '-'}</td>
                             <td><strong>R$ ${f.valor_nf ? parseFloat(f.valor_nf).toFixed(2) : '0,00'}</strong></td>
                             <td>${getStatusBadgeForRender(f)}</td>
+                            <td style="text-align: center;">${alertIcon}</td>
                             <td class="actions-cell" style="text-align: center; white-space: nowrap;">
                                 <button class="action-btn edit" onclick="handleEditClick('${f.id}')" title="Editar">Editar</button>
                                 <button class="action-btn delete" onclick="handleDeleteClick('${f.id}')" title="Excluir">Excluir</button>
@@ -1476,7 +1426,6 @@ function getStatusBadgeForRender(frete) {
         const tipoLabel = getTipoNfLabel(frete.tipo_nf);
         return `<span class="badge badge-especial">${tipoLabel.toUpperCase()}</span>`;
     }
-    
     const tiposEspeciais = ['CANCELADA'];
     if (tiposEspeciais.includes(frete.tipo_nf)) {
         const tipoLabel = getTipoNfLabel(frete.tipo_nf);
@@ -1487,19 +1436,15 @@ function getStatusBadgeForRender(frete) {
         const tipoLabel = getTipoNfLabel(frete.tipo_nf);
         return `<span class="badge badge-especial">${tipoLabel.toUpperCase()}</span>`;
     }
-    
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    
     if (frete.status !== 'ENTREGUE' && frete.previsao_entrega) {
         const previsao = new Date(frete.previsao_entrega + 'T00:00:00');
         previsao.setHours(0, 0, 0, 0);
-        
         if (previsao < hoje) {
             return '<span class="badge devolvido">FORA DO PRAZO</span>';
         }
     }
-    
     return getStatusBadge(frete.status);
 }
 
@@ -1512,7 +1457,6 @@ function getStatusBadge(status) {
         'REMESSA_AMOSTRA': { class: 'cancelado', text: 'Remessa de Amostra' },
         'CANCELADO': { class: 'cancelado', text: 'Cancelada' }
     };
-    
     const s = statusMap[status] || { class: 'transito', text: status };
     return `<span class="badge ${s.class}">${s.text}</span>`;
 }
@@ -1529,13 +1473,10 @@ function formatDate(dateString) {
 function showToast(message, type) {
     const oldMessages = document.querySelectorAll('.floating-message');
     oldMessages.forEach(msg => msg.remove());
-    
     const messageDiv = document.createElement('div');
     messageDiv.className = `floating-message ${type}`;
     messageDiv.textContent = message;
-    
     document.body.appendChild(messageDiv);
-    
     setTimeout(() => {
         messageDiv.style.animation = 'slideOutBottom 0.3s ease forwards';
         setTimeout(() => messageDiv.remove(), 300);
@@ -1548,24 +1489,17 @@ function showToast(message, type) {
 function verificarNotasAtrasadas() {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    
     const tiposComStatus = ['ENVIO', 'SIMPLES_REMESSA', 'REMESSA_AMOSTRA'];
     const notasAtrasadas = fretes.filter(f => {
         const tipo = f.tipo_nf || 'ENVIO';
         if (!tiposComStatus.includes(tipo)) return false;
-        
         if (f.status === 'ENTREGUE') return false;
-        
         if (!f.previsao_entrega) return false;
-        
         const previsao = new Date(f.previsao_entrega + 'T00:00:00');
         previsao.setHours(0, 0, 0, 0);
-        
         return previsao < hoje;
     });
-    
     if (notasAtrasadas.length === 0) return;
-    
     notasAtrasadas.sort((a, b) => {
         const dataA = new Date(a.previsao_entrega);
         const dataB = new Date(b.previsao_entrega);
@@ -1583,28 +1517,23 @@ let alertModalData = [];
 window.showAlertModal = function() {
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-    
     const tiposComStatus = ['ENVIO', 'SIMPLES_REMESSA', 'REMESSA_AMOSTRA'];
     alertModalData = fretes.filter(f => {
         const tipo = f.tipo_nf || 'ENVIO';
         if (!tiposComStatus.includes(tipo)) return false;
         if (f.status === 'ENTREGUE') return false;
         if (!f.previsao_entrega) return false;
-        
         const previsao = new Date(f.previsao_entrega + 'T00:00:00');
         previsao.setHours(0, 0, 0, 0);
         return previsao < hoje;
     });
-    
     alertModalData.sort((a, b) => {
         const dataA = new Date(a.previsao_entrega);
         const dataB = new Date(b.previsao_entrega);
         return dataA - dataB;
     });
-    
     alertModalPage = 1;
     renderAlertModalPage();
-    
     const alertModal = document.getElementById('alertModal');
     if (alertModal) {
         alertModal.style.display = 'flex';
@@ -1614,9 +1543,7 @@ window.showAlertModal = function() {
 function renderAlertModalPage() {
     const modalBody = document.getElementById('alertModalBody');
     if (!modalBody) return;
-    
     const foraDoPrazo = alertModalData;
-    
     if (foraDoPrazo.length === 0) {
         modalBody.innerHTML = `
             <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
@@ -1631,11 +1558,9 @@ function renderAlertModalPage() {
         `;
         return;
     }
-    
     const totalPages = Math.ceil(foraDoPrazo.length / ALERT_PAGE_SIZE);
     const start = (alertModalPage - 1) * ALERT_PAGE_SIZE;
     const pageData = foraDoPrazo.slice(start, start + ALERT_PAGE_SIZE);
-    
     modalBody.innerHTML = `
         <div style="overflow-x: auto;">
             <table style="font-size: 0.85rem;">
@@ -1688,9 +1613,6 @@ window.addEventListener('beforeunload', () => {
     sessionStorage.removeItem('alertShown');
 });
 
-// ============================================
-// LOG FINAL
-// ============================================
 console.log('✅ Script completo carregado com sucesso!');
 console.log('🔧 Funções exportadas para window:', {
     toggleForm: typeof window.toggleForm,
