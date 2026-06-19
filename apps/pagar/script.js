@@ -1280,6 +1280,7 @@ function renderContas(lista) {
                 <th>Banco</th>
                 <th>Data Pagamento</th>
                 <th>Status</th>
+                <th style="text-align:center;width:60px;"></th> <!-- Coluna para ícone de observação -->
                 <th style="text-align:center;">Ações</th>
             </tr>
         </thead>
@@ -1298,7 +1299,7 @@ function renderContas(lista) {
                     } catch(e) {}
                 }
 
-                // Ícone de alerta com tamanho e padding iguais aos dos botões
+                // Ícone de alerta na coluna dedicada
                 const alertIcon = temObservacao 
                     ? `<button class="action-btn alert-icon" data-action="view-obs" data-id="${contaId}" title="Ver observações">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1318,8 +1319,8 @@ function renderContas(lista) {
                     <td>${c.banco || '-'}</td>
                     <td style="white-space:nowrap;">${c.data_pagamento ? formatDate(c.data_pagamento) : '-'}</td>
                     <td>${getStatusBadge(getStatusDinamico(c))}</td>
+                    <td style="text-align:center;">${alertIcon}</td>
                     <td class="actions-cell">
-                        ${alertIcon}
                         <button class="action-btn edit" data-action="edit" data-id="${contaId}">Editar</button>
                         <button class="action-btn delete" data-action="delete" data-id="${contaId}">Excluir</button>
                     </td>
