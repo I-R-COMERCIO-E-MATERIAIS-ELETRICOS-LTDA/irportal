@@ -907,6 +907,35 @@ button.small {
 }
 
 /* ============================================
+   ÍCONE DE ALERTA (OBSERVAÇÕES)
+   ============================================ */
+.action-btn.alert-icon {
+    background: transparent;
+    color: #EF4444;
+    border: none;
+    padding: 8px 12px;
+    margin: 0;
+    min-width: 70px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    line-height: 1.2;
+}
+.action-btn.alert-icon:hover {
+    background: rgba(239, 68, 68, 0.1);
+    transform: scale(1.05);
+}
+.action-btn.alert-icon svg {
+    stroke: #EF4444;
+    width: 20px;
+    height: 20px;
+}
+
+/* ============================================
    FLOATING MESSAGES
    ============================================ */
 .floating-message {
