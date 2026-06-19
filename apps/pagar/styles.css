@@ -187,9 +187,23 @@ button.secondary { background: #6B7280; }
 .btn-close-red { background: var(--btn-delete) !important; }
 .btn-close-red:hover { background: #DC2626 !important; }
 button.small { padding: 8px 12px; font-size: 0.85rem; }
-.action-btn { padding: 8px 12px; font-size: 0.85rem; margin: 0 4px; min-width: 70px; }
 
-/* Célula de ações - agora com flex para manter alinhamento */
+/* Ações - alinhamento perfeito */
+.action-btn {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    margin: 0 4px;
+    min-width: 70px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    line-height: 1.2;
+    white-space: nowrap;
+}
 .actions-cell {
     display: flex;
     align-items: center;
@@ -200,29 +214,32 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
     white-space: nowrap;
 }
 
-/* Ícone de alerta (triângulo) na tabela */
+/* Ícone de alerta - mesmo padding e tamanho dos botões */
 .action-btn.alert-icon {
     background: transparent;
     color: #EF4444;
     border: none;
-    padding: 4px 6px;
-    margin: 0;
-    font-size: 1.1rem;
+    padding: 8px 12px;
+    margin: 0 4px;
+    min-width: 70px;
+    font-size: 0.85rem;
     cursor: pointer;
-    transition: transform 0.2s ease;
-    min-width: auto;
+    transition: all 0.2s ease;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    border-radius: 6px;
+    line-height: 1.2;
 }
 .action-btn.alert-icon:hover {
-    transform: scale(1.15);
     background: rgba(239, 68, 68, 0.1);
-    border-radius: 4px;
+    transform: scale(1.05);
 }
 .action-btn.alert-icon svg {
     stroke: #EF4444;
+    width: 20px;
+    height: 20px;
 }
 
 /* FLOATING MESSAGES */
@@ -330,6 +347,8 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
     .tab-btn { font-size: 0.8rem; padding: 10px 15px; }
     .actions-cell { min-width: auto; flex-wrap: wrap; gap: 2px; }
     .action-btn { padding: 6px 10px; font-size: 0.75rem; min-width: 50px; }
+    .action-btn.alert-icon { padding: 6px 10px; min-width: 50px; }
+    .action-btn.alert-icon svg { width: 16px; height: 16px; }
     .info-grid { grid-template-columns: 1fr; }
 }
 
