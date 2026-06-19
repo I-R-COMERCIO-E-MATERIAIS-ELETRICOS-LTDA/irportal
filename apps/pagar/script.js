@@ -109,10 +109,9 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('📄 DOM carregado');
     
     document.addEventListener('click', function(e) {
-        // Botões com data-action
         const btn = e.target.closest('[data-action]');
         if (btn) {
-            e.stopPropagation(); // Evita que o clique na linha seja acionado
+            e.stopPropagation();
             const action = btn.dataset.action;
             const id = btn.dataset.id;
             console.log(`🎯 Ação: ${action}, ID: ${id}`);
@@ -145,7 +144,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         
-        // Clique na linha (exceto se for em botão)
         const row = e.target.closest('tr[data-conta-id]');
         if (row && !e.target.closest('.action-btn') && !e.target.closest('.check-btn')) {
             const contaId = row.dataset.contaId;
@@ -620,7 +618,6 @@ window.showFormModal = async function(editingId = null) {
             showMessage('Conta não encontrada!', 'error');
             return;
         }
-        // Verificar se é um ID temporário (não sincronizado)
         if (String(editingId).startsWith('temp_')) {
             showMessage('Aguarde a sincronização completa para editar esta conta.', 'warning');
             return;
@@ -1064,7 +1061,6 @@ window.togglePago = async function(id) {
     const conta = contas.find(c => String(c.id || c.tempId) === idStr);
     if (!conta) return;
     
-    // Se for ID temporário, não permite alternar (aguardar sincronização)
     if (idStr.startsWith('temp_')) {
         showMessage('Aguarde a sincronização completa para alterar o status.', 'warning');
         return;
@@ -1106,7 +1102,6 @@ window.deleteConta = async function(id) {
     const conta = contas.find(c => String(c.id || c.tempId) === idStr);
     if (!conta) return;
     
-    // Se for temporário, remove apenas localmente
     if (idStr.startsWith('temp_')) {
         if (confirm('Tem certeza que deseja excluir esta conta (não sincronizada)?')) {
             contas = contas.filter(c => String(c.id || c.tempId) !== idStr);
@@ -1142,11 +1137,9 @@ window.viewConta = function(id, activeTab = 'dados') {
     const conta = contas.find(c => String(c.id || c.tempId) === idStr);
     if (!conta) { showMessage('Conta não encontrada!', 'error'); return; }
 
-    // Prepara informações para as abas
     const parcelaInfo = conta.parcela_numero && conta.parcela_total ? `<div class="info-item"><span class="info-label">Parcela:</span><span class="info-value">${conta.parcela_numero}ª de ${conta.parcela_total}</span></div>` : '';
     const documentoInfo = conta.documento ? `<div class="info-item"><span class="info-label">Documento:</span><span class="info-value">${conta.documento}</span></div>` : '';
 
-    // Dados Gerais
     const dadosHTML = `
         <div class="info-grid">
             ${documentoInfo}
@@ -1160,7 +1153,6 @@ window.viewConta = function(id, activeTab = 'dados') {
         </div>
     `;
 
-    // Observações
     let observacoesHTML = '';
     if (conta.observacoes) {
         try {
@@ -1192,7 +1184,6 @@ window.viewConta = function(id, activeTab = 'dados') {
         </div>
     `;
 
-    // Monta o modal com abas
     const modalHTML = `
         <div class="modal-overlay" id="viewModal">
             <div class="modal-content modal-view">
@@ -1299,7 +1290,6 @@ function renderContas(lista) {
                 const isPago = c.status === 'PAGO'; 
                 const contaId = c.id || c.tempId;
 
-                // Verifica se há observações
                 let temObservacao = false;
                 if (c.observacoes) {
                     try {
@@ -1308,7 +1298,6 @@ function renderContas(lista) {
                     } catch(e) {}
                 }
 
-                // Ícone de alerta triangular (atenção) - sem margens para não deslocar
                 const alertIcon = temObservacao 
                     ? `<button class="action-btn alert-icon" data-action="view-obs" data-id="${contaId}" title="Ver observações">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1328,7 +1317,7 @@ function renderContas(lista) {
                     <td>${c.banco || '-'}</td>
                     <td style="white-space:nowrap;">${c.data_pagamento ? formatDate(c.data_pagamento) : '-'}</td>
                     <td>${getStatusBadge(getStatusDinamico(c))}</td>
-                    <td class="actions-cell" style="text-align:center;">
+                    <td class="actions-cell">
                         ${alertIcon}
                         <button class="action-btn edit" data-action="edit" data-id="${contaId}">Editar</button>
                         <button class="action-btn delete" data-action="delete" data-id="${contaId}">Excluir</button>
