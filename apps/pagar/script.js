@@ -124,6 +124,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 case 'view':
                     window.viewConta(id);
                     break;
+                case 'view-obs':
+                    window.viewConta(id, 'observacoes');
+                    break;
                 case 'edit':
                     window.editConta(id);
                     break;
@@ -1132,38 +1135,111 @@ window.deleteConta = async function(id) {
 };
 
 // ============================================
-// VISUALIZAÇÃO (modal)
+// VISUALIZAÇÃO (modal com abas)
 // ============================================
-window.viewConta = function(id) {
+window.viewConta = function(id, activeTab = 'dados') {
     const idStr = String(id);
     const conta = contas.find(c => String(c.id || c.tempId) === idStr);
     if (!conta) { showMessage('Conta não encontrada!', 'error'); return; }
+
+    // Prepara informações para as abas
     const parcelaInfo = conta.parcela_numero && conta.parcela_total ? `<div class="info-item"><span class="info-label">Parcela:</span><span class="info-value">${conta.parcela_numero}ª de ${conta.parcela_total}</span></div>` : '';
     const documentoInfo = conta.documento ? `<div class="info-item"><span class="info-label">Documento:</span><span class="info-value">${conta.documento}</span></div>` : '';
-    let observacoesInfo = '';
+
+    // Dados Gerais
+    const dadosHTML = `
+        <div class="info-grid">
+            ${documentoInfo}
+            <div class="info-item info-item-full"><span class="info-label">Descrição:</span><span class="info-value">${conta.descricao}</span></div>
+            ${parcelaInfo}
+            <div class="info-item"><span class="info-label">Valor:</span><span class="info-value info-highlight">R$ ${parseFloat(conta.valor).toFixed(2)}</span></div>
+            <div class="info-item"><span class="info-label">Vencimento:</span><span class="info-value">${formatDate(conta.data_vencimento)}</span></div>
+            <div class="info-item"><span class="info-label">Forma de Pagamento:</span><span class="info-value">${conta.forma_pagamento}</span></div>
+            <div class="info-item"><span class="info-label">Banco:</span><span class="info-value">${conta.banco}</span></div>
+            <div class="info-item"><span class="info-label">${conta.data_pagamento ? 'Data do Pagamento:' : 'Status:'}</span><span class="info-value">${conta.data_pagamento ? formatDate(conta.data_pagamento) : 'Não pago'}</span></div>
+        </div>
+    `;
+
+    // Observações
+    let observacoesHTML = '';
     if (conta.observacoes) {
         try {
             const obsArray = typeof conta.observacoes === 'string' ? JSON.parse(conta.observacoes) : conta.observacoes;
             if (obsArray.length > 0) {
-                observacoesInfo = `<div class="info-item info-item-full"><span class="info-label">Observações:</span><div class="info-value">${obsArray.map(o => `<div style="margin-bottom:8px;"><small>${new Date(o.timestamp).toLocaleString('pt-BR')}</small><br>${o.texto}</div>`).join('')}</div></div>`;
+                observacoesHTML = obsArray.map(o => `
+                    <div class="observacao-item">
+                        <div class="observacao-header">
+                            <span class="observacao-data">${new Date(o.timestamp).toLocaleString('pt-BR')}</span>
+                        </div>
+                        <p class="observacao-texto">${o.texto}</p>
+                    </div>
+                `).join('');
+            } else {
+                observacoesHTML = '<p style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 2rem;">Nenhuma observação registrada</p>';
             }
         } catch(e) {
-            observacoesInfo = `<div class="info-item info-item-full"><span class="info-label">Observações:</span><span class="info-value">${conta.observacoes}</span></div>`;
+            observacoesHTML = `<p style="color: var(--text-secondary);">${conta.observacoes}</p>`;
         }
+    } else {
+        observacoesHTML = '<p style="color: var(--text-secondary); font-style: italic; text-align: center; padding: 2rem;">Nenhuma observação registrada</p>';
     }
-    const modal = `<div class="modal-overlay" id="viewModal"><div class="modal-content modal-view"><button class="modal-close-x" onclick="window.closeViewModal()" title="Fechar">✕</button><div class="modal-header"><h3 class="modal-title">Detalhes da Conta</h3></div><div class="info-grid">${documentoInfo}<div class="info-item info-item-full"><span class="info-label">Descrição:</span><span class="info-value">${conta.descricao}</span></div>${parcelaInfo}<div class="info-item"><span class="info-label">Valor:</span><span class="info-value info-highlight">R$ ${parseFloat(conta.valor).toFixed(2)}</span></div><div class="info-item"><span class="info-label">Vencimento:</span><span class="info-value">${formatDate(conta.data_vencimento)}</span></div><div class="info-item"><span class="info-label">Forma de Pagamento:</span><span class="info-value">${conta.forma_pagamento}</span></div><div class="info-item"><span class="info-label">Banco:</span><span class="info-value">${conta.banco}</span></div><div class="info-item"><span class="info-label">${conta.data_pagamento ? 'Data do Pagamento:' : 'Status:'}</span><span class="info-value">${conta.data_pagamento ? formatDate(conta.data_pagamento) : 'Não pago'}</span></div>${observacoesInfo}</div><div class="modal-actions"><button class="secondary" onclick="window.closeViewModal()">Fechar</button></div></div></div>`;
-    document.body.insertAdjacentHTML('beforeend', modal);
+
+    const observacoesContainer = `
+        <div class="observacoes-container" style="padding: 0;">
+            <div class="observacoes-list" style="max-height: 400px; overflow-y: auto; padding: 0; background: transparent; border: none;">
+                ${observacoesHTML}
+            </div>
+        </div>
+    `;
+
+    // Monta o modal com abas
+    const modalHTML = `
+        <div class="modal-overlay" id="viewModal">
+            <div class="modal-content modal-view">
+                <button class="modal-close-x" onclick="window.closeViewModal()" title="Fechar">✕</button>
+                <div class="modal-header">
+                    <h3 class="modal-title">Detalhes da Conta</h3>
+                </div>
+                <div class="tabs-container">
+                    <div class="tabs-nav">
+                        <button type="button" class="tab-btn ${activeTab === 'dados' ? 'active' : ''}" onclick="window.switchViewTab(0)">Dados Gerais</button>
+                        <button type="button" class="tab-btn ${activeTab === 'observacoes' ? 'active' : ''}" onclick="window.switchViewTab(1)">Observações</button>
+                    </div>
+                    <div class="tab-content ${activeTab === 'dados' ? 'active' : ''}" id="viewTabDados">
+                        ${dadosHTML}
+                    </div>
+                    <div class="tab-content ${activeTab === 'observacoes' ? 'active' : ''}" id="viewTabObservacoes">
+                        ${observacoesContainer}
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button class="secondary" onclick="window.closeViewModal()">Fechar</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
     const modalEl = document.getElementById('viewModal');
     modalEl.style.display = 'flex';
     setTimeout(() => modalEl.classList.add('show'), 10);
 };
 
-window.closeViewModal = function() { 
-    const modal = document.getElementById('viewModal'); 
-    if (modal) { 
+window.switchViewTab = function(index) {
+    const modal = document.getElementById('viewModal');
+    if (!modal) return;
+    const tabs = modal.querySelectorAll('.tabs-nav .tab-btn');
+    const contents = modal.querySelectorAll('.tab-content');
+    tabs.forEach((btn, i) => btn.classList.toggle('active', i === index));
+    contents.forEach((content, i) => content.classList.toggle('active', i === index));
+};
+
+window.closeViewModal = function() {
+    const modal = document.getElementById('viewModal');
+    if (modal) {
         modal.classList.remove('show');
-        setTimeout(() => modal.remove(), 300); 
-    } 
+        setTimeout(() => modal.remove(), 300);
+    }
 };
 
 // ============================================
@@ -1221,7 +1297,28 @@ function renderContas(lista) {
                 const numParcelas = c.parcela_numero && c.parcela_total ? `${c.parcela_numero}/${c.parcela_total}` : '-'; 
                 const syncIndicator = (!c.id && c.tempId) ? '<span style="color:orange;font-size:0.8em;" title="Sincronizando...">⟳</span> ' : ''; 
                 const isPago = c.status === 'PAGO'; 
-                const contaId = c.id || c.tempId; 
+                const contaId = c.id || c.tempId;
+
+                // Verifica se há observações
+                let temObservacao = false;
+                if (c.observacoes) {
+                    try {
+                        const obsArray = typeof c.observacoes === 'string' ? JSON.parse(c.observacoes) : c.observacoes;
+                        if (obsArray.length > 0) temObservacao = true;
+                    } catch(e) {}
+                }
+
+                // Ícone de atenção (se houver observações)
+                const alertIcon = temObservacao 
+                    ? `<button class="action-btn alert-icon" data-action="view-obs" data-id="${contaId}" title="Ver observações">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <circle cx="12" cy="12" r="10" />
+                            <line x1="12" y1="8" x2="12" y2="12" />
+                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                        </svg>
+                       </button>`
+                    : '';
+
                 return `<tr data-conta-id="${contaId}" class="${isPago ? 'row-pago' : ''}">
                     <td style="text-align:center;padding:8px;"><button class="check-btn ${isPago ? 'checked' : ''}" data-action="toggle" data-id="${contaId}"></button></td>
                     <td>${syncIndicator}${c.descricao}</td>
@@ -1231,7 +1328,8 @@ function renderContas(lista) {
                     <td>${c.banco || '-'}</td>
                     <td style="white-space:nowrap;">${c.data_pagamento ? formatDate(c.data_pagamento) : '-'}</td>
                     <td>${getStatusBadge(getStatusDinamico(c))}</td>
-                    <td class="actions-cell" style="text-align:center;">
+                    <td class="actions-cell" style="text-align:center; white-space:nowrap;">
+                        ${alertIcon}
                         <button class="action-btn edit" data-action="edit" data-id="${contaId}">Editar</button>
                         <button class="action-btn delete" data-action="delete" data-id="${contaId}">Excluir</button>
                     </td>
