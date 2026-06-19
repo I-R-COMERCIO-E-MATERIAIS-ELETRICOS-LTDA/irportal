@@ -249,7 +249,6 @@ function mostrarModalVisualizacao(frete, activeTabIndex = 0) {
                 <div class="observacao-header">
                     <div class="observacao-info">
                         <span class="observacao-data">${new Date(obs.timestamp).toLocaleString('pt-BR')}</span>
-                        ${obs.username ? `<span class="observacao-username">• ${obs.username}</span>` : ''}
                     </div>
                 </div>
                 <p class="observacao-texto">${obs.texto}</p>
@@ -759,7 +758,6 @@ window.showFormModal = function(editingId = null) {
                 <div class="observacao-header">
                     <div class="observacao-info">
                         <span class="observacao-data">${new Date(obs.timestamp).toLocaleString('pt-BR')}</span>
-                        ${obs.username ? `<span class="observacao-username">• ${obs.username}</span>` : ''}
                     </div>
                     <button type="button" class="btn-remove-obs" onclick="removerObservacao(${idx})" title="Remover">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -947,11 +945,10 @@ window.adicionarObservacao = function() {
     }
     const observacoesDataField = document.getElementById('observacoesData');
     let observacoes = JSON.parse(observacoesDataField.value || '[]');
-    const username = sessionStorage.getItem('username') || 'Usuário';
     observacoes.push({
         texto: texto,
-        timestamp: new Date().toISOString(),
-        username: username
+        timestamp: new Date().toISOString()
+        // Username removido
     });
     observacoesDataField.value = JSON.stringify(observacoes);
     textarea.value = '';
@@ -978,7 +975,6 @@ function atualizarListaObservacoes() {
                 <div class="observacao-header">
                     <div class="observacao-info">
                         <span class="observacao-data">${new Date(obs.timestamp).toLocaleString('pt-BR')}</span>
-                        ${obs.username ? `<span class="observacao-username">• ${obs.username}</span>` : ''}
                     </div>
                     <button type="button" class="btn-remove-obs" onclick="removerObservacao(${idx})" title="Remover">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
