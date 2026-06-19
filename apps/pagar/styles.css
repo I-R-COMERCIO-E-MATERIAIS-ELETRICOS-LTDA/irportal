@@ -188,7 +188,7 @@ button.secondary { background: #6B7280; }
 .btn-close-red:hover { background: #DC2626 !important; }
 button.small { padding: 8px 12px; font-size: 0.85rem; }
 
-/* Ações - alinhamento perfeito */
+/* Ações */
 .action-btn {
     padding: 8px 12px;
     font-size: 0.85rem;
@@ -210,17 +210,16 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
     justify-content: center;
     gap: 4px;
     flex-wrap: nowrap;
-    min-width: 200px;
     white-space: nowrap;
 }
 
-/* Ícone de alerta - mesmo padding e tamanho dos botões */
+/* Ícone de alerta - coluna dedicada */
 .action-btn.alert-icon {
     background: transparent;
     color: #EF4444;
     border: none;
     padding: 8px 12px;
-    margin: 0 4px;
+    margin: 0;
     min-width: 70px;
     font-size: 0.85rem;
     cursor: pointer;
@@ -228,7 +227,6 @@ button.small { padding: 8px 12px; font-size: 0.85rem; }
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
     border-radius: 6px;
     line-height: 1.2;
 }
