@@ -92,7 +92,7 @@ function changeMonth(direction) {
     updateDisplay();
     loadCotacoes();
 }
-function updateDisplay() { updateMonthDisplay(); renderTable(); updateDashboard(); }
+function updateDisplay() { updateMonthDisplay(); renderTable(); }
 function updateMonthDisplay() {
     const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
     const el = document.getElementById('currentMonth');
@@ -142,14 +142,6 @@ async function loadCotacoes() {
     } catch (e) { if (e.name === 'AbortError') return; isOnline = false; setTimeout(() => loadCotacoes(), 5000); }
 }
 
-function updateDashboard() {
-    const total = cotacoes.length;
-    const aprovadas = cotacoes.filter(c => c.negocioFechado === true).length;
-    const reprovadas = cotacoes.filter(c => c.negocioFechado === false).length;
-    if (document.getElementById('totalCotacoes')) document.getElementById('totalCotacoes').textContent = total;
-    if (document.getElementById('totalAprovadas')) document.getElementById('totalAprovadas').textContent = aprovadas;
-    if (document.getElementById('totalReprovadas')) document.getElementById('totalReprovadas').textContent = reprovadas;
-}
 function filterCotacoes() { renderTable(); }
 function updateResponsavelSelect() {
     const responsaveis = new Set();
@@ -174,13 +166,33 @@ function renderTable() {
     if (filterResp) filtered = filtered.filter(c => c.responsavel === filterResp);
     if (filterStatus === 'aprovada') filtered = filtered.filter(c => c.negocioFechado === true);
     if (filterStatus === 'reprovada') filtered = filtered.filter(c => c.negocioFechado === false);
-    if (filtered.length === 0) { if (currentFetchController) return; container.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`; return; }
+    if (filtered.length === 0) { if (currentFetchController) return; container.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`; return; }
     container.innerHTML = filtered.map(c => {
         const aprovada = c.negocioFechado === true;
-        const reprovada = c.negocioFechado === false;
-        const statusClass = aprovada ? 'fechada' : (reprovada ? 'aberta' : '');
-        const statusText  = aprovada ? 'APROVADA' : (reprovada ? 'REPROVADA' : 'PENDENTE');
-        return `<tr data-id="${c.id}" class="${aprovada ? 'row-fechada' : ''}" style="cursor:pointer;" onclick="viewCotacao(${c.id})"><td style="text-align:center;"><div class="checkbox-wrapper"><input type="checkbox" class="styled-checkbox" id="check-${c.id}" ${aprovada ? 'checked' : ''} onchange="toggleStatus(${c.id}, this.checked)" onclick="event.stopPropagation()"><label for="check-${c.id}" class="checkbox-label-styled" onclick="event.stopPropagation()"></label></div></td><td>${formatarData(c.dataCotacao)}</td><td><strong>${c.transportadora || '-'}</strong></td><td>${c.destino || '-'}</td><td style="max-width:120px;word-break:break-word;white-space:normal;">${c.documento || c.numeroCotacao || '-'}</td><td>${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</td><td><span class="badge ${statusClass}">${statusText}</span></td><td onclick="event.stopPropagation()"><div class="actions" style="display:flex;gap:6px;justify-content:center;"><button onclick="editCotacao(${c.id})" class="action-btn" style="background:#6B7280;margin:0;">Editar</button><button onclick="showDeleteModal(${c.id})" class="action-btn" style="background:#EF4444;margin:0;">Excluir</button></div></td></tr>`;
+        const reprovada = c.negocioFechado === false; // agora tudo que não for aprovado é reprovado
+        const statusClass = aprovada ? 'fechada' : 'reprovada';
+        const statusText  = aprovada ? 'APROVADA' : 'REPROVADA';
+        return `<tr data-id="${c.id}" class="${aprovada ? 'row-fechada' : ''}" style="cursor:pointer;" onclick="viewCotacao(${c.id})">
+            <td class="col-checkbox" style="text-align:center;">
+                <div class="checkbox-wrapper">
+                    <input type="checkbox" class="styled-checkbox" id="check-${c.id}" ${aprovada ? 'checked' : ''} onchange="toggleStatus(${c.id}, this.checked)" onclick="event.stopPropagation()">
+                    <label for="check-${c.id}" class="checkbox-label-styled" onclick="event.stopPropagation()"></label>
+                </div>
+            </td>
+            <td class="col-codigo"><strong>${c.codigo || '-'}</strong></td>
+            <td class="col-data">${formatarData(c.dataCotacao)}</td>
+            <td class="col-transportadora"><strong>${c.transportadora || '-'}</strong></td>
+            <td class="col-destino">${c.destino || '-'}</td>
+            <td class="col-documento" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.documento || c.numeroCotacao || '-'}</td>
+            <td class="col-valor">${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</td>
+            <td class="col-status"><span class="badge ${statusClass}">${statusText}</span></td>
+            <td class="col-acoes" onclick="event.stopPropagation()">
+                <div class="actions" style="display:flex;gap:6px;justify-content:center;">
+                    <button onclick="editCotacao(${c.id})" class="action-btn" style="background:#6B7280;margin:0;">Editar</button>
+                    <button onclick="showDeleteModal(${c.id})" class="action-btn" style="background:#EF4444;margin:0;">Excluir</button>
+                </div>
+            </td>
+        </tr>`;
     }).join('');
 }
 
@@ -239,7 +251,7 @@ function editCotacao(id) {
     if (!c) return;
     editingId = id;
     document.getElementById('formTitle').textContent = `Editar Cotação`;
-    const saveBtn = document.getElementById('btnFormSave'); if (saveBtn) saveBtn.textContent = 'Atualizar';  // <--- Atualizar
+    const saveBtn = document.getElementById('btnFormSave'); if (saveBtn) saveBtn.textContent = 'Atualizar';
     resetForm();
     updateTransportadoraSelects();
     document.getElementById('dataCotacao').value = c.dataCotacao || '';
@@ -320,11 +332,29 @@ function viewCotacao(id) {
     document.getElementById('modalDocumento').textContent = c.documento || c.numeroCotacao || `#${id}`;
     const aprovada = c.negocioFechado === true;
     const reprovada = c.negocioFechado === false;
-    const statusClass = aprovada ? 'fechada' : (reprovada ? 'aberta' : '');
-    const statusText  = aprovada ? 'APROVADA' : (reprovada ? 'REPROVADA' : 'PENDENTE');
-    document.getElementById('info-tab-geral').innerHTML = `<div class="info-section"><h4>Informações Gerais</h4><div class="info-row"><span class="info-label">Data:</span><span class="info-value">${formatarData(c.dataCotacao)}</span></div><div class="info-row"><span class="info-label">Documento:</span><span class="info-value">${c.documento || '-'}</span></div><div class="info-row"><span class="info-label">Nº Cotação:</span><span class="info-value">${c.numeroCotacao || '-'}</span></div><div class="info-row"><span class="info-label">Destino:</span><span class="info-value">${c.destino || '-'}</span></div><div class="info-row"><span class="info-label">Responsável:</span><span class="info-value">${c.responsavel || '-'}</span></div><div class="info-row"><span class="info-label">Vendedor:</span><span class="info-value">${c.vendedor || '-'}</span></div><div class="info-row"><span class="info-label">Status:</span><span class="badge ${statusClass}">${statusText}</span></div></div>`;
-    document.getElementById('info-tab-transportadora').innerHTML = `<div class="info-section"><h4>Transportadora</h4><div class="info-row"><span class="info-label">Transportadora:</span><span class="info-value">${c.transportadora || '-'}</span></div><div class="info-row"><span class="info-label">Resp. Transp.:</span><span class="info-value">${c.responsavelTransportadora || '-'}</span></div><div class="info-row"><span class="info-label">Canal Comunicação:</span><span class="info-value">${c.canalComunicacao || '-'}</span></div><div class="info-row"><span class="info-label">Código Coleta:</span><span class="info-value">${c.codigoColeta || '-'}</span></div></div>`;
-    document.getElementById('info-tab-detalhes').innerHTML = `<div class="info-section"><h4>Detalhes da Cotação</h4><div class="info-row"><span class="info-label">Valor do Frete:</span><span class="info-value">${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</span></div><div class="info-row"><span class="info-label">Previsão Entrega:</span><span class="info-value">${c.previsaoEntrega ? formatarData(c.previsaoEntrega) : '-'}</span></div><div class="info-row"><span class="info-label">Observações:</span><span class="info-value">${c.observacoes || '-'}</span></div></div>`;
+    const statusClass = aprovada ? 'fechada' : 'reprovada';
+    const statusText  = aprovada ? 'APROVADA' : 'REPROVADA';
+    document.getElementById('info-tab-geral').innerHTML = `<div class="info-section"><h4>Informações Gerais</h4>
+        <div class="info-row"><span class="info-label">Código:</span><span class="info-value">${c.codigo || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Data:</span><span class="info-value">${formatarData(c.dataCotacao)}</span></div>
+        <div class="info-row"><span class="info-label">Documento:</span><span class="info-value">${c.documento || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Nº Cotação:</span><span class="info-value">${c.numeroCotacao || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Destino:</span><span class="info-value">${c.destino || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Responsável:</span><span class="info-value">${c.responsavel || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Vendedor:</span><span class="info-value">${c.vendedor || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Status:</span><span class="badge ${statusClass}">${statusText}</span></div>
+    </div>`;
+    document.getElementById('info-tab-transportadora').innerHTML = `<div class="info-section"><h4>Transportadora</h4>
+        <div class="info-row"><span class="info-label">Transportadora:</span><span class="info-value">${c.transportadora || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Resp. Transp.:</span><span class="info-value">${c.responsavelTransportadora || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Canal Comunicação:</span><span class="info-value">${c.canalComunicacao || '-'}</span></div>
+        <div class="info-row"><span class="info-label">Código Coleta:</span><span class="info-value">${c.codigoColeta || '-'}</span></div>
+    </div>`;
+    document.getElementById('info-tab-detalhes').innerHTML = `<div class="info-section"><h4>Detalhes da Cotação</h4>
+        <div class="info-row"><span class="info-label">Valor do Frete:</span><span class="info-value">${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</span></div>
+        <div class="info-row"><span class="info-label">Previsão Entrega:</span><span class="info-value">${c.previsaoEntrega ? formatarData(c.previsaoEntrega) : '-'}</span></div>
+        <div class="info-row"><span class="info-label">Observações:</span><span class="info-value">${c.observacoes || '-'}</span></div>
+    </div>`;
     currentInfoTabIndex = 0;
     switchInfoTab('info-tab-geral');
     document.getElementById('infoModal').classList.add('show');
