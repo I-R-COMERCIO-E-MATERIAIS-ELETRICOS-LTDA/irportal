@@ -43,6 +43,7 @@ module.exports = function (supabase) {
             payload.createdat = payload.createdat || new Date().toISOString();
             payload.timestamp = payload.timestamp || new Date().toISOString();
             payload.updatedat = new Date().toISOString();
+            // codigo será gerado pelo banco (default da sequência)
             const { data, error } = await supabase.from('cotacoes').insert([payload]).select().single();
             if (error) throw error;
             res.status(201).json(data);
@@ -53,7 +54,9 @@ module.exports = function (supabase) {
         try {
             const payload = { ...req.body };
             payload.updatedat = new Date().toISOString();
-            delete payload.id; delete payload.createdat;
+            delete payload.id;
+            delete payload.createdat;
+            delete payload.codigo; // não permitir alteração do código
             const { data, error } = await supabase.from('cotacoes').update(payload).eq('id', req.params.id).select().single();
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Cotação não encontrada' });
@@ -66,6 +69,7 @@ module.exports = function (supabase) {
             const payload = { ...req.body };
             payload.updatedat = new Date().toISOString();
             delete payload.id;
+            delete payload.codigo; // não permitir alteração do código
             const { data, error } = await supabase.from('cotacoes').update(payload).eq('id', req.params.id).select().single();
             if (error) throw error;
             if (!data) return res.status(404).json({ error: 'Cotação não encontrada' });
@@ -81,7 +85,7 @@ module.exports = function (supabase) {
         } catch (err) { res.status(500).json({ error: 'Erro ao excluir cotação' }); }
     });
 
-    // Importação em lote (via API, se necessário)
+    // Importação em lote
     router.post('/import', async (req, res) => {
         try {
             const cotacoes = req.body;
@@ -109,6 +113,7 @@ module.exports = function (supabase) {
                     timestamp: cotacao.timestamp || new Date().toISOString(),
                     updatedat: new Date().toISOString()
                 };
+                // codigo será gerado automaticamente
                 const { data, error } = await supabase.from('cotacoes').insert([payload]).select().single();
                 if (error) throw error;
                 inseridas.push(data);
