@@ -449,7 +449,7 @@ h2 {
     color: var(--primary);
 }
 
-/* DASHBOARD REMOVIDO – não há mais estatísticas */
+/* DASHBOARD REMOVIDO */
 
 table {
     width: 100%;
@@ -478,6 +478,8 @@ td {
     border-bottom: 1px solid var(--border-color);
     font-size: 0.9rem;
     color: var(--text-primary);
+    vertical-align: top; /* alinha ao topo quando quebra */
+    /* As regras abaixo são sobrescritas para colunas específicas */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -506,13 +508,27 @@ tbody tr.row-fechada:hover {
     background: rgba(22, 163, 74, 0.18) !important;
 }
 
-/* Larguras das colunas da tabela principal */
+/* Larguras das colunas e regras de quebra */
 .col-checkbox { width: 5%; }
 .col-codigo   { width: 6%; }
 .col-data     { width: 10%; }
-.col-transportadora { width: 15%; }
+.col-transportadora {
+    width: 15%;
+    white-space: normal !important;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    overflow: visible;
+    text-overflow: clip;
+}
 .col-destino  { width: 15%; }
-.col-documento { width: 22%; }  /* Aumentado */
+.col-documento {
+    width: 22%;
+    white-space: normal !important;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    overflow: visible;
+    text-overflow: clip;
+}
 .col-valor    { width: 10%; }
 .col-status   { width: 10%; }
 .col-acoes    { width: 7%; }
