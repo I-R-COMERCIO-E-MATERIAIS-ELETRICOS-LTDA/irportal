@@ -169,7 +169,7 @@ function renderTable() {
     if (filtered.length === 0) { if (currentFetchController) return; container.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`; return; }
     container.innerHTML = filtered.map(c => {
         const aprovada = c.negocioFechado === true;
-        const reprovada = c.negocioFechado === false; // agora tudo que não for aprovado é reprovado
+        const reprovada = c.negocioFechado === false;
         const statusClass = aprovada ? 'fechada' : 'reprovada';
         const statusText  = aprovada ? 'APROVADA' : 'REPROVADA';
         return `<tr data-id="${c.id}" class="${aprovada ? 'row-fechada' : ''}" style="cursor:pointer;" onclick="viewCotacao(${c.id})">
@@ -183,7 +183,7 @@ function renderTable() {
             <td class="col-data">${formatarData(c.dataCotacao)}</td>
             <td class="col-transportadora"><strong>${c.transportadora || '-'}</strong></td>
             <td class="col-destino">${c.destino || '-'}</td>
-            <td class="col-documento" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.documento || c.numeroCotacao || '-'}</td>
+            <td class="col-documento">${c.documento || c.numeroCotacao || '-'}</td>
             <td class="col-valor">${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</td>
             <td class="col-status"><span class="badge ${statusClass}">${statusText}</span></td>
             <td class="col-acoes" onclick="event.stopPropagation()">
