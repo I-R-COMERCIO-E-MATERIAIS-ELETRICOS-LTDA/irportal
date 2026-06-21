@@ -166,7 +166,7 @@ function renderTable() {
     if (filterResp) filtered = filtered.filter(c => c.responsavel === filterResp);
     if (filterStatus === 'aprovada') filtered = filtered.filter(c => c.negocioFechado === true);
     if (filterStatus === 'reprovada') filtered = filtered.filter(c => c.negocioFechado === false);
-    if (filtered.length === 0) { if (currentFetchController) return; container.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`; return; }
+    if (filtered.length === 0) { if (currentFetchController) return; container.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`; return; }
     container.innerHTML = filtered.map(c => {
         const aprovada = c.negocioFechado === true;
         return `<tr data-id="${c.id}" class="${aprovada ? 'row-fechada' : ''}" style="cursor:pointer;" onclick="viewCotacao(${c.id})">
@@ -183,9 +183,9 @@ function renderTable() {
             <td class="col-documento">${c.documento || c.numeroCotacao || '-'}</td>
             <td class="col-valor">${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</td>
             <td class="col-acoes" onclick="event.stopPropagation()">
-                <div class="actions" style="display:flex;gap:6px;justify-content:center;">
-                    <button onclick="editCotacao(${c.id})" class="action-btn" style="background:#6B7280;margin:0;">Editar</button>
-                    <button onclick="showDeleteModal(${c.id})" class="action-btn" style="background:#EF4444;margin:0;">Excluir</button>
+                <div class="actions-cell">
+                    <button onclick="editCotacao(${c.id})" class="action-btn edit">Editar</button>
+                    <button onclick="showDeleteModal(${c.id})" class="action-btn delete">Excluir</button>
                 </div>
             </td>
         </tr>`;
