@@ -451,11 +451,17 @@ h2 {
 
 /* DASHBOARD REMOVIDO */
 
+.table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 table {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
+    border-collapse: collapse;
     table-layout: fixed;
+    min-width: 900px; /* garante espaço mínimo para todas as colunas */
 }
 
 thead {
@@ -463,25 +469,45 @@ thead {
 }
 
 th {
-    padding: 14px 16px;
+    padding: 12px 12px;
     text-align: left;
     font-weight: 600;
     color: var(--th-color);
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     border-bottom: 1px solid var(--th-border);
 }
 
 td {
-    padding: 14px 16px;
+    padding: 12px 12px;
     border-bottom: 1px solid var(--border-color);
     font-size: 0.9rem;
     color: var(--text-primary);
     vertical-align: top;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Larguras das colunas – soma 100% */
+.col-checkbox { width: 4%; text-align: center; }
+.col-codigo   { width: 6%; }
+.col-data     { width: 8%; }
+.col-transportadora { width: 14%; }
+.col-destino  { width: 12%; }
+.col-documento { width: 30%; }
+.col-valor    { width: 8%; }
+.col-acoes    { width: 18%; white-space: nowrap; }
+
+/* Para colunas que não devem quebrar linha */
+.col-codigo, .col-data, .col-valor, .col-checkbox {
     white-space: nowrap;
+}
+
+/* Para colunas com quebra de linha */
+.col-transportadora, .col-destino, .col-documento {
+    white-space: normal;
+    word-break: break-word;
 }
 
 tbody tr {
@@ -507,34 +533,11 @@ tbody tr.row-fechada:hover {
     background: rgba(22, 163, 74, 0.18) !important;
 }
 
-/* Larguras das colunas (sem status) */
-.col-checkbox { width: 5%; }
-.col-codigo   { width: 7%; }
-.col-data     { width: 10%; }
-.col-transportadora {
-    width: 18%;
-    white-space: normal !important;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    overflow: visible;
-    text-overflow: clip;
-}
-.col-destino  { width: 16%; }
-.col-documento {
-    width: 27%;
-    white-space: normal !important;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    overflow: visible;
-    text-overflow: clip;
-}
-.col-valor    { width: 10%; }
-.col-acoes    { width: 7%; }
-
 .checkbox-wrapper {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    height: 100%;
 }
 
 .styled-checkbox {
@@ -549,13 +552,14 @@ tbody tr.row-fechada:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     border: 2px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 6px;
     cursor: pointer;
     transition: all 0.2s ease;
     background: var(--input-bg);
+    font-size: 0.9rem;
 }
 
 .checkbox-label-styled:hover {
@@ -575,6 +579,43 @@ tbody tr.row-fechada:hover {
     font-weight: 700;
 }
 
+/* Botões de ação */
+.action-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    margin: 0 2px;
+    min-width: 60px;
+    border-radius: 6px;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+}
+
+.action-btn.edit {
+    background: var(--btn-edit);
+}
+.action-btn.delete {
+    background: var(--btn-delete);
+}
+.action-btn:hover {
+    opacity: 0.8;
+    transform: scale(0.97);
+}
+
+.actions-cell {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+}
+
+/* Formulário e demais estilos (mantidos) */
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -695,33 +736,6 @@ button.cancel-close {
 button.small {
     padding: 8px 12px;
     font-size: 0.85rem;
-}
-
-.action-btn {
-    padding: 8px 12px;
-    font-size: 0.85rem;
-    margin: 0 4px;
-    min-width: 70px;
-}
-
-.actions-cell {
-    white-space: nowrap;
-    min-width: 260px;
-}
-
-.form-group-small {
-    max-width: 200px;
-}
-
-.stock-warning {
-    background: rgba(239, 68, 68, 0.1);
-    border: 1px solid #EF4444;
-    color: #DC2626;
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin-bottom: 1rem;
-    font-weight: 600;
-    font-size: 0.9rem;
 }
 
 .floating-message {
@@ -1134,7 +1148,7 @@ button.small {
     }
     
     th, td {
-        padding: 10px 8px;
+        padding: 8px 6px;
     }
     
     button {
@@ -1172,8 +1186,10 @@ button.small {
         padding: 10px 15px;
     }
     
-    .actions-cell {
-        min-width: auto;
+    .action-btn {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+        min-width: 45px;
     }
 }
 
