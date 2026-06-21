@@ -449,18 +449,94 @@ h2 {
     color: var(--primary);
 }
 
-/* DASHBOARD REMOVIDO – não há mais estatísticas */
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
 
-/* ===== TABELA ===== */
-.table-responsive {
-    width: 100%;
-    overflow-x: auto;
+.stat-card {
+    background: var(--bg-card);
+    padding: 1.25rem;
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--card-shadow);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.stat-icon-default {
+    background: rgba(107, 114, 128, 0.1);
+}
+
+.stat-icon-success {
+    background: rgba(34, 197, 94, 0.1);
+    color: #22C55E;
+}
+
+.stat-icon-warning {
+    background: rgba(255, 82, 29, 0.1);
+    color: #ff521d;
+}
+
+.stat-icon-info {
+    background: rgba(59, 130, 246, 0.1);
+    color: #3B82F6;
+}
+
+.stat-content {
+    flex: 1;
+}
+
+.stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-bottom: 0.25rem;
+}
+
+.stat-value-success {
+    color: #22C55E;
+}
+
+.stat-value-warning {
+    color: #ff521d;
+}
+
+.stat-value-info {
+    color: #3B82F6;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
 }
 
 table {
     width: 100%;
-    border-collapse: collapse;
-    table-layout: auto; /* ajusta colunas ao conteúdo */
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 thead {
@@ -468,41 +544,21 @@ thead {
 }
 
 th {
-    padding: 12px 12px;
+    padding: 14px 16px;
     text-align: left;
     font-weight: 600;
     color: var(--th-color);
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     border-bottom: 1px solid var(--th-border);
 }
 
 td {
-    padding: 12px 12px;
+    padding: 14px 16px;
     border-bottom: 1px solid var(--border-color);
     font-size: 0.9rem;
     color: var(--text-primary);
-    vertical-align: top;
-}
-
-/* Larguras sugeridas – apenas orientação, não forçadas */
-.col-checkbox { width: 4%; text-align: center; white-space: nowrap; }
-.col-codigo   { width: 6%; white-space: nowrap; }
-.col-data     { width: 8%; white-space: nowrap; }
-.col-transportadora { width: 14%; }
-.col-destino  { width: 12%; }
-.col-documento { width: 32%; }
-.col-valor    { width: 8%; white-space: nowrap; }
-.col-acoes    { width: 16%; white-space: nowrap; }
-
-/* Quebra de linha apenas nas colunas que precisam */
-.col-transportadora,
-.col-destino,
-.col-documento {
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    white-space: normal;
 }
 
 tbody tr {
@@ -528,45 +584,10 @@ tbody tr.row-fechada:hover {
     background: rgba(22, 163, 74, 0.18) !important;
 }
 
-/* Botões de ação – sem quebra */
-.actions-cell {
-    display: flex;
-    gap: 0.3rem;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
-}
-
-.action-btn {
-    padding: 6px 12px;
-    font-size: 0.8rem;
-    border-radius: 6px;
-    font-weight: 500;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    color: white;
-    white-space: nowrap;
-}
-
-.action-btn.edit {
-    background: var(--btn-edit);
-}
-
-.action-btn.delete {
-    background: var(--btn-delete);
-}
-
-.action-btn:hover {
-    opacity: 0.8;
-    transform: scale(0.97);
-}
-
-/* Checkbox */
 .checkbox-wrapper {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    height: 100%;
 }
 
 .styled-checkbox {
@@ -581,14 +602,13 @@ tbody tr.row-fechada:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 40px;
+    height: 40px;
     border: 2px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s ease;
     background: var(--input-bg);
-    font-size: 0.9rem;
 }
 
 .checkbox-label-styled:hover {
@@ -608,7 +628,27 @@ tbody tr.row-fechada:hover {
     font-weight: 700;
 }
 
-/* Formulário e demais estilos (mantidos) */
+.badge {
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.badge.aberta {
+    background: rgba(255, 82, 29, 0.1);
+    color: #ff521d;
+    border: 1px solid rgba(255, 82, 29, 0.2);
+}
+
+.badge.fechada {
+    background: rgba(34, 197, 94, 0.1);
+    color: #16A34A;
+    border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
 .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -709,6 +749,7 @@ button.success, button.save, button[type="submit"], .action-btn.success {
     background: var(--btn-save);
 }
 
+/* Botão Salvar/Atualizar na cor verde */
 .btn-save-green {
     background: #22C55E !important;
     color: white !important;
@@ -729,6 +770,34 @@ button.cancel-close {
 button.small {
     padding: 8px 12px;
     font-size: 0.85rem;
+}
+
+.action-btn {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    margin: 0 4px;
+    min-width: 70px;
+}
+
+.actions-cell {
+    white-space: nowrap;
+    min-width: 260px;
+}
+
+.form-group-small {
+    max-width: 200px;
+}
+
+/* AVISO REMOVIDO, mas mantido por segurança */
+.stock-warning {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid #EF4444;
+    color: #DC2626;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    font-size: 0.9rem;
 }
 
 .floating-message {
@@ -1136,12 +1205,16 @@ button.small {
         width: 100%;
     }
     
+    .dashboard-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
     table {
         font-size: 0.85rem;
     }
     
     th, td {
-        padding: 8px 6px;
+        padding: 10px 8px;
     }
     
     button {
@@ -1179,10 +1252,8 @@ button.small {
         padding: 10px 15px;
     }
     
-    .action-btn {
-        font-size: 0.7rem;
-        padding: 4px 8px;
-        min-width: 45px;
+    .actions-cell {
+        min-width: auto;
     }
 }
 
