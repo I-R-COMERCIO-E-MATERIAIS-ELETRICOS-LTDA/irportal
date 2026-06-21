@@ -449,19 +449,18 @@ h2 {
     color: var(--primary);
 }
 
-/* DASHBOARD REMOVIDO */
+/* DASHBOARD REMOVIDO – não há mais estatísticas */
 
+/* ===== TABELA ===== */
 .table-responsive {
     width: 100%;
     overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
-    table-layout: fixed;
-    min-width: 900px; /* garante espaço mínimo para todas as colunas */
+    table-layout: auto; /* ajusta colunas ao conteúdo */
 }
 
 thead {
@@ -485,29 +484,25 @@ td {
     font-size: 0.9rem;
     color: var(--text-primary);
     vertical-align: top;
-    word-wrap: break-word;
-    overflow-wrap: break-word;
 }
 
-/* Larguras das colunas – soma 100% */
-.col-checkbox { width: 4%; text-align: center; }
-.col-codigo   { width: 6%; }
-.col-data     { width: 8%; }
+/* Larguras sugeridas – apenas orientação, não forçadas */
+.col-checkbox { width: 4%; text-align: center; white-space: nowrap; }
+.col-codigo   { width: 6%; white-space: nowrap; }
+.col-data     { width: 8%; white-space: nowrap; }
 .col-transportadora { width: 14%; }
 .col-destino  { width: 12%; }
-.col-documento { width: 30%; }
-.col-valor    { width: 8%; }
-.col-acoes    { width: 18%; white-space: nowrap; }
+.col-documento { width: 32%; }
+.col-valor    { width: 8%; white-space: nowrap; }
+.col-acoes    { width: 16%; white-space: nowrap; }
 
-/* Para colunas que não devem quebrar linha */
-.col-codigo, .col-data, .col-valor, .col-checkbox {
-    white-space: nowrap;
-}
-
-/* Para colunas com quebra de linha */
-.col-transportadora, .col-destino, .col-documento {
+/* Quebra de linha apenas nas colunas que precisam */
+.col-transportadora,
+.col-destino,
+.col-documento {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
     white-space: normal;
-    word-break: break-word;
 }
 
 tbody tr {
@@ -533,6 +528,40 @@ tbody tr.row-fechada:hover {
     background: rgba(22, 163, 74, 0.18) !important;
 }
 
+/* Botões de ação – sem quebra */
+.actions-cell {
+    display: flex;
+    gap: 0.3rem;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+}
+
+.action-btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    border-radius: 6px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: white;
+    white-space: nowrap;
+}
+
+.action-btn.edit {
+    background: var(--btn-edit);
+}
+
+.action-btn.delete {
+    background: var(--btn-delete);
+}
+
+.action-btn:hover {
+    opacity: 0.8;
+    transform: scale(0.97);
+}
+
+/* Checkbox */
 .checkbox-wrapper {
     display: inline-flex;
     align-items: center;
@@ -577,42 +606,6 @@ tbody tr.row-fechada:hover {
     color: white;
     font-size: 1rem;
     font-weight: 700;
-}
-
-/* Botões de ação */
-.action-btn {
-    padding: 6px 12px;
-    font-size: 0.8rem;
-    margin: 0 2px;
-    min-width: 60px;
-    border-radius: 6px;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.3rem;
-    border: none;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    color: white;
-}
-
-.action-btn.edit {
-    background: var(--btn-edit);
-}
-.action-btn.delete {
-    background: var(--btn-delete);
-}
-.action-btn:hover {
-    opacity: 0.8;
-    transform: scale(0.97);
-}
-
-.actions-cell {
-    display: flex;
-    gap: 0.3rem;
-    flex-wrap: nowrap;
-    justify-content: flex-start;
 }
 
 /* Formulário e demais estilos (mantidos) */
