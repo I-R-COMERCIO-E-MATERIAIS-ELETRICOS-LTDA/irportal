@@ -166,12 +166,9 @@ function renderTable() {
     if (filterResp) filtered = filtered.filter(c => c.responsavel === filterResp);
     if (filterStatus === 'aprovada') filtered = filtered.filter(c => c.negocioFechado === true);
     if (filterStatus === 'reprovada') filtered = filtered.filter(c => c.negocioFechado === false);
-    if (filtered.length === 0) { if (currentFetchController) return; container.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`; return; }
+    if (filtered.length === 0) { if (currentFetchController) return; container.innerHTML = `<tr><td colspan="9" style="text-align:center;padding:2rem;">Nenhuma cotação encontrada</td></tr>`; return; }
     container.innerHTML = filtered.map(c => {
         const aprovada = c.negocioFechado === true;
-        const reprovada = c.negocioFechado === false;
-        const statusClass = aprovada ? 'fechada' : 'reprovada';
-        const statusText  = aprovada ? 'APROVADA' : 'REPROVADA';
         return `<tr data-id="${c.id}" class="${aprovada ? 'row-fechada' : ''}" style="cursor:pointer;" onclick="viewCotacao(${c.id})">
             <td class="col-checkbox" style="text-align:center;">
                 <div class="checkbox-wrapper">
@@ -185,7 +182,6 @@ function renderTable() {
             <td class="col-destino">${c.destino || '-'}</td>
             <td class="col-documento">${c.documento || c.numeroCotacao || '-'}</td>
             <td class="col-valor">${c.valorFrete ? formatarMoeda(c.valorFrete) : '-'}</td>
-            <td class="col-status"><span class="badge ${statusClass}">${statusText}</span></td>
             <td class="col-acoes" onclick="event.stopPropagation()">
                 <div class="actions" style="display:flex;gap:6px;justify-content:center;">
                     <button onclick="editCotacao(${c.id})" class="action-btn" style="background:#6B7280;margin:0;">Editar</button>
@@ -331,9 +327,7 @@ function viewCotacao(id) {
     if (!c) return;
     document.getElementById('modalDocumento').textContent = c.documento || c.numeroCotacao || `#${id}`;
     const aprovada = c.negocioFechado === true;
-    const reprovada = c.negocioFechado === false;
-    const statusClass = aprovada ? 'fechada' : 'reprovada';
-    const statusText  = aprovada ? 'APROVADA' : 'REPROVADA';
+    const statusText = aprovada ? 'APROVADA' : 'REPROVADA';
     document.getElementById('info-tab-geral').innerHTML = `<div class="info-section"><h4>Informações Gerais</h4>
         <div class="info-row"><span class="info-label">Código:</span><span class="info-value">${c.codigo || '-'}</span></div>
         <div class="info-row"><span class="info-label">Data:</span><span class="info-value">${formatarData(c.dataCotacao)}</span></div>
@@ -342,7 +336,7 @@ function viewCotacao(id) {
         <div class="info-row"><span class="info-label">Destino:</span><span class="info-value">${c.destino || '-'}</span></div>
         <div class="info-row"><span class="info-label">Responsável:</span><span class="info-value">${c.responsavel || '-'}</span></div>
         <div class="info-row"><span class="info-label">Vendedor:</span><span class="info-value">${c.vendedor || '-'}</span></div>
-        <div class="info-row"><span class="info-label">Status:</span><span class="badge ${statusClass}">${statusText}</span></div>
+        <div class="info-row"><span class="info-label">Status:</span><span class="info-value">${statusText}</span></div>
     </div>`;
     document.getElementById('info-tab-transportadora').innerHTML = `<div class="info-section"><h4>Transportadora</h4>
         <div class="info-row"><span class="info-label">Transportadora:</span><span class="info-value">${c.transportadora || '-'}</span></div>
