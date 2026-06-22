@@ -172,37 +172,57 @@ tbody tr.row-pago:hover { background:rgba(34,197,94,0.18)!important; }
     height: 20px;
 }
 
-/* Botão DESCONTO - estilo translúcido e sem ícones */
+/* ============================================
+   BOTÃO DESCONTO — translúcido, mesmas
+   proporções dos demais campos do form-grid
+   ============================================ */
+.btn-desconto-label {
+    /* label "fantasma" só para alinhar a altura do botão
+       com o eixo dos outros inputs da mesma linha */
+    visibility: hidden;
+}
 .btn-desconto {
-    background: rgba(255, 255, 255, 0.1) !important;
-    color: var(--text-primary) !important;
-    border: 1px solid var(--border-color) !important;
-    padding: 12px 16px !important;
-    border-radius: 8px !important;
-    font-size: 0.95rem !important;
-    font-weight: 600 !important;
-    cursor: pointer;
-    transition: all 0.2s ease;
+    /* mesmas dimensões dos inputs/selects da aba */
     width: 100%;
-    height: 44px;
+    height: 46px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    font-family: inherit;
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
-    letter-spacing: 0.3px;
+    cursor: pointer;
+    margin: 0;
+    box-shadow: none;
+
+    /* estado padrão: translúcido, nem muito visível nem invisível */
+    background: rgba(120, 120, 128, 0.12);
+    border: 1px solid rgba(120, 120, 128, 0.25);
+    color: var(--text-secondary);
+    opacity: 0.85;
+    transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, opacity 0.2s ease;
 }
 .btn-desconto:hover {
-    background: rgba(255, 255, 255, 0.2) !important;
-    border-color: var(--text-secondary) !important;
+    background: rgba(120, 120, 128, 0.2);
+    border-color: rgba(120, 120, 128, 0.4);
+    color: var(--text-primary);
+    opacity: 1;
+    transform: none;
 }
 .btn-desconto.ativo {
-    background: #22C55E !important;
-    color: #FFFFFF !important;
-    border-color: #22C55E !important;
+    /* estado confirmado: preenchido em verde, como já era */
+    background: var(--success-color);
+    border-color: var(--success-color);
+    color: #FFFFFF;
+    opacity: 1;
 }
 .btn-desconto.ativo:hover {
-    background: #16A34A !important;
-    border-color: #16A34A !important;
+    background: #16A34A;
+    border-color: #16A34A;
 }
 
 .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1.2rem; margin-bottom:1.5rem; }
