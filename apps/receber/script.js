@@ -518,7 +518,7 @@ window.toggleDesconto = function() {
     const btn = document.getElementById('btnDesconto');
     if (btn) {
         btn.classList.toggle('ativo', _descontoConfirmado);
-        btn.textContent = _descontoConfirmado ? 'DESCONTO CONFIRMADO ✓' : 'CONFIRMAR DESCONTO';
+        btn.textContent = _descontoConfirmado ? 'DESCONTO CONFIRMADO' : 'CONFIRMAR DESCONTO';
         if (_descontoConfirmado) {
             showToast('Desconto confirmado. O pagamento será aceito mesmo com valor inferior.', 'info');
         } else {
