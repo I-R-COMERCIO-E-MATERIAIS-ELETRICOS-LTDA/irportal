@@ -6,13 +6,23 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── LISTAR CONTAS A RECEBER ─────────────────────────────────────────────────
-    // Suporte a query params: ?mes=1&ano=2026 para filtrar por mês/ano
+    // ─── LISTAR CONTAS A RECEBER (com paginação e filtros) ──────────────
     router.get('/', async (req, res) => {
         try {
-            const { mes, ano } = req.query;
-            let query = supabase.from('contas_receber').select('*');
+            // Parâmetros de paginação e filtros
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 15;
+            const offset = (page - 1) * limit;
+            const mes = req.query.mes;
+            const ano = req.query.ano;
+            const vendedor = req.query.vendedor;
+            const banco = req.query.banco;
+            const status = req.query.status;
 
+            // Montar query base
+            let query = supabase.from('contas_receber').select('*', { count: 'exact' });
+
+            // Filtro por data (mês/ano)
             if (mes && ano) {
                 const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
                 const ultimoDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
@@ -20,10 +30,33 @@ module.exports = function (supabase) {
                 query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
             }
 
-            const { data, error } = await query.order('data_emissao', { ascending: false });
+            // Filtros adicionais
+            if (vendedor) {
+                query = query.eq('vendedor', vendedor);
+            }
+            if (banco) {
+                query = query.eq('banco', banco);
+            }
+            if (status) {
+                query = query.eq('status', status);
+            }
+
+            // Ordenação e paginação
+            const { data, count, error } = await query
+                .order('data_emissao', { ascending: false })
+                .range(offset, offset + limit - 1);
 
             if (error) throw error;
-            res.json(data);
+
+            const totalPages = Math.ceil(count / limit);
+
+            res.json({
+                data: data || [],
+                total: count || 0,
+                page,
+                limit,
+                totalPages
+            });
         } catch (err) {
             console.error('Erro ao listar contas a receber:', err.message);
             res.status(500).json({ error: 'Erro ao listar contas a receber' });
