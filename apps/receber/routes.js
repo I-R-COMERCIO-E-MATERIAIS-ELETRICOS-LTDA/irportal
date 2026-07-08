@@ -7,12 +7,20 @@ module.exports = function (supabase) {
     const router = express.Router();
 
     // ─── LISTAR CONTAS A RECEBER ─────────────────────────────────────────────────
+    // Suporte a query params: ?mes=1&ano=2026 para filtrar por mês/ano
     router.get('/', async (req, res) => {
         try {
-            const { data, error } = await supabase
-                .from('contas_receber')
-                .select('*')
-                .order('data_emissao', { ascending: false });
+            const { mes, ano } = req.query;
+            let query = supabase.from('contas_receber').select('*');
+
+            if (mes && ano) {
+                const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
+                const ultimoDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
+                const fim = `${ano}-${String(mes).padStart(2, '0')}-${ultimoDia}`;
+                query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
+            }
+
+            const { data, error } = await query.order('data_emissao', { ascending: false });
 
             if (error) throw error;
             res.json(data);
@@ -141,7 +149,6 @@ module.exports = function (supabase) {
         try {
             const updates = { ...req.body, updated_at: new Date().toISOString() };
 
-            // Se vier observacoes no patch, normalizar também
             if (updates.observacoes !== undefined) {
                 updates.observacoes = normalizarObservacoes(updates.observacoes);
             }
@@ -236,15 +243,11 @@ module.exports = function (supabase) {
 };
 
 // ─── NORMALIZAR OBSERVAÇÕES ──────────────────────────────────────────────────
-// Garante que o campo observacoes seja sempre salvo no formato objeto:
-// { notas: [{texto, data}], parcelas: [{numero, valor, data}] }
-// Suporta migração do formato legado (array direto de notas).
 function normalizarObservacoes(observacoes) {
     if (!observacoes) return { notas: [], parcelas: [] };
 
     let parsed = observacoes;
 
-    // Se vier como string, fazer parse
     if (typeof parsed === 'string') {
         try {
             parsed = JSON.parse(parsed);
@@ -253,7 +256,6 @@ function normalizarObservacoes(observacoes) {
         }
     }
 
-    // Formato já correto: objeto com notas e/ou parcelas
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         return {
             notas: Array.isArray(parsed.notas) ? parsed.notas : [],
@@ -261,7 +263,6 @@ function normalizarObservacoes(observacoes) {
         };
     }
 
-    // Formato legado: array direto de notas de texto
     if (Array.isArray(parsed)) {
         const notas = parsed
             .filter(n => n && typeof n === 'object' && n.texto && n.texto !== '[]')
@@ -273,14 +274,11 @@ function normalizarObservacoes(observacoes) {
 }
 
 // ─── SINCRONIZAÇÃO COM TABELA VENDAS ────────────────────────────────────────
-// Lê parcelas do campo observacoes (formato {notas, parcelas})
-// e sincroniza cada parcela individualmente na tabela vendas.
 async function sincronizarVendas(supabase, conta) {
     if (!conta || !conta.numero_nf || !conta.vendedor) return;
 
     const statusPagamento = conta.status || 'A RECEBER';
 
-    // Extrair parcelas do campo observacoes
     let parcelas = [];
     let valorPago = parseFloat(conta.valor_pago) || 0;
 
@@ -307,7 +305,6 @@ async function sincronizarVendas(supabase, conta) {
     const tipoNf = tipoNfMap[conta.tipo_nf] || conta.tipo_nf || null;
 
     if (parcelas.length > 0) {
-        // ── PAGAMENTO PARCELADO: sincronizar cada parcela como uma linha separada em vendas ──
         for (let i = 0; i < parcelas.length; i++) {
             const p = parcelas[i];
             const numeroParc = p.numero || `${i + 1}ª Parcela`;
@@ -323,7 +320,6 @@ async function sincronizarVendas(supabase, conta) {
                 vendedor: conta.vendedor,
                 banco: conta.banco || null,
                 data_vencimento: conta.data_vencimento || null,
-                // Cada parcela tem sua própria data e valor de pagamento
                 data_pagamento: p.data || null,
                 valor_pago: parseFloat(p.valor) || 0,
                 status_pagamento: statusPagamento,
@@ -333,7 +329,6 @@ async function sincronizarVendas(supabase, conta) {
                 updated_at: new Date().toISOString()
             };
 
-            // Verificar se essa parcela já existe por chave_parcela
             const { data: existente } = await supabase
                 .from('vendas')
                 .select('id')
@@ -352,8 +347,6 @@ async function sincronizarVendas(supabase, conta) {
             }
         }
 
-        // Remover linhas de parcelas antigas que não existem mais
-        // (ex: usuário tinha 3 parcelas e reduziu para 2)
         const chavesAtuais = parcelas.map((_, i) => `${conta.id}_parcela_${i + 1}`);
         await supabase
             .from('vendas')
@@ -363,8 +356,6 @@ async function sincronizarVendas(supabase, conta) {
             .not('chave_parcela', 'is', null);
 
     } else {
-        // ── PAGAMENTO ÚNICO (sem parcelas) ──
-        // Determinar data_pagamento: última data de parcela ou campo direto
         let dataPagamento = conta.data_pagamento || null;
 
         const payload = {
@@ -386,7 +377,6 @@ async function sincronizarVendas(supabase, conta) {
             updated_at: new Date().toISOString()
         };
 
-        // Verificar se já existe entrada única (sem chave_parcela) para essa conta
         const { data: existente } = await supabase
             .from('vendas')
             .select('id')
@@ -401,7 +391,6 @@ async function sincronizarVendas(supabase, conta) {
                 .eq('id_contas_receber', conta.id)
                 .is('chave_parcela', null);
         } else {
-            // Verificar por numero_nf + vendedor como fallback
             const { data: porNF } = await supabase
                 .from('vendas')
                 .select('id, origem')
@@ -423,7 +412,6 @@ async function sincronizarVendas(supabase, conta) {
             }
         }
 
-        // Limpar parcelas antigas dessa conta (se havia parcelas antes e agora não tem mais)
         await supabase
             .from('vendas')
             .delete()
