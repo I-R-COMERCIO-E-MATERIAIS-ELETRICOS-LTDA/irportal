@@ -10,7 +10,12 @@ let isOnline = false;
 let sessionToken = null;
 let currentMonth = new Date().getMonth();
 let currentYear = new Date().getFullYear();
-let showAllMonths = false;
+let showAllMonths = false;          // Indica se está visualizando "Todos" (sem filtro de mês)
+let currentPage = 1;
+const ITEMS_PER_PAGE = 15;
+let totalRegistros = 0;
+let totalPages = 0;
+
 let _editingParcelasTemp = [];
 let _descontoConfirmado = false;
 
@@ -134,7 +139,29 @@ async function loadContas(showMsg = false) {
     }
 
     try {
-        const response = await fetch(`${API_URL}/receber?_t=${Date.now()}`, {
+        const params = new URLSearchParams();
+        params.append('page', currentPage);
+        params.append('limit', ITEMS_PER_PAGE);
+
+        // Filtros de data (mês/ano) ou "Todos"
+        if (!showAllMonths) {
+            // Mês específico
+            params.append('mes', currentMonth + 1); // backend espera 1-12
+            params.append('ano', currentYear);
+        }
+
+        // Filtros de vendedor, banco e status
+        const vendedor = document.getElementById('filterVendedor')?.value || '';
+        const banco = document.getElementById('filterBanco')?.value || '';
+        const status = document.getElementById('filterStatus')?.value || '';
+
+        if (vendedor) params.append('vendedor', vendedor);
+        if (banco) params.append('banco', banco);
+        if (status) params.append('status', status);
+
+        const url = `${API_URL}/receber?${params.toString()}`;
+
+        const response = await fetch(url, {
             method: 'GET',
             headers: {
                 'X-Session-Token': sessionToken,
@@ -155,12 +182,19 @@ async function loadContas(showMsg = false) {
             return;
         }
 
-        contas = await response.json();
-        console.log(`✅ ${contas.length} contas carregadas`);
+        const result = await response.json();
+        contas = result.data || [];
+        totalRegistros = result.total || 0;
+        totalPages = result.totalPages || 0;
 
+        console.log(`✅ Página ${currentPage} de ${totalPages} – ${contas.length} registros carregados`);
+
+        // Atualiza os filtros (dropdowns) baseados nos dados carregados (somente os da página)
+        // Isso pode não ser perfeito, mas mantém a consistência com os dados atuais.
         updateFilters();
         updateDashboard();
         filterContas();
+        renderPagination();
     } catch (error) {
         console.error('❌ Erro ao carregar contas:', error);
         if (showMsg) showToast('Erro ao sincronizar dados', 'error');
@@ -190,8 +224,9 @@ function updateMonthDisplay() {
             el.textContent = `${meses[currentMonth]} ${currentYear}`;
         }
     }
-    updateDashboard();
-    filterContas();
+    // Resetar página para 1 ao mudar a exibição
+    currentPage = 1;
+    loadContas();
 }
 
 window.changeMonth = function (direction) {
@@ -220,24 +255,20 @@ function updateDashboard() {
         c.data_vencimento < hoje
     ).length;
 
-    const filtered = getContasFiltradas();
-    const pago = filtered
+    const pago = contas
         .filter(c => !isContaEspecial(c) && isStatusPago(c.status))
         .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
 
-    const receberUniversal = contas
+    const receber = contas
         .filter(c => !isContaEspecial(c) && c.status === 'A RECEBER')
         .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
 
-    const receberMes = filtered
-        .filter(c => !isContaEspecial(c) && c.status === 'A RECEBER')
-        .reduce((s, c) => s + parseFloat(c.valor || 0), 0);
-    const faturado = pago + receberMes;
+    const faturado = pago + receber;
 
     const fmt = v => `R$ ${v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const el = id => document.getElementById(id);
     if (el('statPago'))     el('statPago').textContent     = fmt(pago);
-    if (el('statReceber'))  el('statReceber').textContent  = fmt(receberUniversal);
+    if (el('statReceber'))  el('statReceber').textContent  = fmt(receber);
     if (el('statFaturado')) el('statFaturado').textContent = fmt(faturado);
     if (el('statVencido'))  el('statVencido').textContent  = alerta;
 
@@ -251,17 +282,8 @@ function isStatusPago(status) {
     return status === 'PAGO' || /parcela/i.test(status);
 }
 
-function getContasFiltradas(applyMonthFilter = true) {
-    if (!applyMonthFilter) return contas;
-    return contas.filter(c => {
-        if (!c.data_emissao) return false;
-        if (showAllMonths) return new Date(c.data_emissao + 'T00:00:00').getFullYear() === currentYear;
-        const d = new Date(c.data_emissao + 'T00:00:00');
-        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-    });
-}
-
 function updateFilters() {
+    // Atualiza dropdowns com base nos dados atuais (contas)
     const vendedores = new Set(contas.map(c => c.vendedor).filter(Boolean));
     const selVend = document.getElementById('filterVendedor');
     if (selVend) {
@@ -281,20 +303,23 @@ function updateFilters() {
 }
 
 window.filterContas = function () {
+    // Aplica filtros locais (já que os dados vieram com os filtros do backend, essa função pode ser simplificada,
+    // mas mantemos a lógica de filtro local para consistência)
     const search   = (document.getElementById('search')?.value || '').toLowerCase();
     const vendedor = document.getElementById('filterVendedor')?.value || '';
     const banco    = document.getElementById('filterBanco')?.value || '';
     const status   = document.getElementById('filterStatus')?.value || '';
-    let filtered = getContasFiltradas();
-    if (vendedor) filtered = filtered.filter(c => c.vendedor === vendedor);
-    if (banco)    filtered = filtered.filter(c => c.banco === banco);
-    if (status)   filtered = filtered.filter(c => c.status === status);
+
+    let filtered = contas; // Já está paginado e com filtros aplicados no backend
+
+    // Aplicar filtros adicionais localmente (search e possíveis override)
     if (search) {
         filtered = filtered.filter(c =>
             [c.numero_nf, c.orgao, c.vendedor, c.banco, c.status]
                 .some(f => f && f.toString().toLowerCase().includes(search))
         );
     }
+    // Ordenação
     filtered.sort((a, b) => (parseInt(a.numero_nf) || 0) - (parseInt(b.numero_nf) || 0));
     renderContas(filtered);
     updateDashboard();
@@ -404,6 +429,39 @@ function buildObservacoesJson(notas, parcelas) {
 }
 
 // ============================================
+// PAGINAÇÃO
+// ============================================
+function renderPagination() {
+    const container = document.getElementById('paginationContainer');
+    if (!container) return;
+
+    if (totalPages <= 1) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '<div class="pagination-controls">';
+    html += `<button class="page-btn" onclick="goToPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹</button>`;
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === currentPage) {
+            html += `<button class="page-btn active">${i}</button>`;
+        } else {
+            html += `<button class="page-btn" onclick="goToPage(${i})">${i}</button>`;
+        }
+    }
+    html += `<button class="page-btn" onclick="goToPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>›</button>`;
+    html += `</div>`;
+
+    container.innerHTML = html;
+}
+
+window.goToPage = function(page) {
+    if (page < 1 || page > totalPages) return;
+    currentPage = page;
+    loadContas();
+};
+
+// ============================================
 // HANDLERS DE CLIQUE
 // ============================================
 window.handleRowClick = function(event, id) {
@@ -430,7 +488,7 @@ window.handleEditClick = function(id) {
 };
 
 // ============================================
-// MODAL VER
+// MODAL VER (sem alterações, apenas referência)
 // ============================================
 function showViewModal(c, activeTabIndex = 0) {
     const hoje = new Date().toISOString().split('T')[0];
@@ -468,7 +526,7 @@ function updateViewNavButtons() { const idx = getCurrentViewTabIndex(); const pr
 window.navigateViewTab = function(direction) { const tabs = ['vtab-geral','vtab-valores','vtab-parcelas','vtab-obs']; const currentIdx = getCurrentViewTabIndex(); const newIdx = currentIdx + direction; if (newIdx < 0 || newIdx >= tabs.length) return; const newTabId = tabs[newIdx]; const btn = document.querySelector(`#viewModal .tab-btn:nth-child(${newIdx+1})`); switchViewTab(newTabId, btn); };
 
 // ============================================
-// MODAL DE FORMULÁRIO
+// MODAL DE FORMULÁRIO (sem alterações, mantido)
 // ============================================
 window.toggleForm = function() { showFormModal(null); };
 window.showFormModal = function(editingId = null, focusPagamento = false, focusValores = false) {
@@ -595,7 +653,8 @@ async function salvarConta(id, data, silencioso = false) {
         const saved = await r.json();
         if (id) { const idx = contas.findIndex(x => String(x.id) === String(id)); if (idx !== -1) contas[idx] = saved; }
         else contas.push(saved);
-        updateFilters(); updateDashboard(); filterContas();
+        // Após salvar, recarregar a página atual para atualizar a lista
+        await loadContas();
         if (!silencioso) { showToast(id ? `NF ${data.numero_nf||''} atualizada` : `NF ${data.numero_nf||''} registrada`, 'success'); closeFormModal(); }
     } catch (err) { console.error('❌ Erro:', err); showToast(`Erro: ${err.message}`, 'error'); }
 }
@@ -631,6 +690,8 @@ window.togglePagamento = async function(id, checked) {
             updateDashboard();
             filterContas();
             showToast(`Pagamento da NF ${conta.numero_nf} revertido`, 'info');
+            // Recarregar a página para sincronizar
+            await loadContas();
         } catch (e) {
             showToast('Erro ao reverter pagamento', 'error');
         }
@@ -748,6 +809,8 @@ window.handleDeleteClick = async function(id) {
             try {
                 const r = await fetch(`${API_URL}/receber/${id}`, { method: 'DELETE', headers: { 'X-Session-Token': sessionToken } });
                 if (!r.ok) throw new Error('Erro no servidor');
+                // Recarregar a página atual após exclusão
+                await loadContas();
             } catch {
                 contas.push(conta);
                 filterContas();
