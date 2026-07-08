@@ -13,6 +13,7 @@ let currentMonth = new Date();
 let transportadorasCache = [];
 let currentFetchController = null;
 let pendingDeleteId = null;
+let isLoading = false; // novo indicador de carregamento
 
 const infoTabs = ['info-tab-geral', 'info-tab-transportadora', 'info-tab-detalhes'];
 let currentInfoTabIndex = 0;
@@ -90,6 +91,10 @@ async function syncData() {
 function changeMonth(direction) {
     currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + direction, 1);
     updateDisplay();
+    // Limpa os dados antigos imediatamente e exibe indicador de carregamento
+    cotacoes = [];
+    isLoading = true;
+    renderTable();
     loadCotacoes();
 }
 function updateDisplay() { updateMonthDisplay(); renderTable(); }
@@ -130,16 +135,19 @@ async function loadCotacoes() {
     const signal = currentFetchController.signal;
     const mes = currentMonth.getMonth();
     const ano = currentMonth.getFullYear();
+    isLoading = true;
+    renderTable(); // exibe "Carregando..."
     try {
         const response = await fetch(`${API_URL}/cotacoes?mes=${mes}&ano=${ano}`, { headers: { 'X-Session-Token': sessionToken }, cache: 'no-cache', signal });
         if (response.status === 401) { sessionStorage.removeItem('cotacoesSession'); mostrarTelaAcessoNegado('SUA SESSÃO EXPIROU'); return; }
-        if (!response.ok) { isOnline = false; setTimeout(() => loadCotacoes(), 5000); return; }
+        if (!response.ok) { isOnline = false; isLoading = false; setTimeout(() => loadCotacoes(), 5000); return; }
         cotacoes = await response.json();
         isOnline = true;
+        isLoading = false;
         currentFetchController = null;
         updateDisplay();
         updateResponsavelSelect();
-    } catch (e) { if (e.name === 'AbortError') return; isOnline = false; setTimeout(() => loadCotacoes(), 5000); }
+    } catch (e) { if (e.name === 'AbortError') return; isOnline = false; isLoading = false; setTimeout(() => loadCotacoes(), 5000); }
 }
 
 function filterCotacoes() { renderTable(); }
@@ -156,6 +164,13 @@ function updateResponsavelSelect() {
 function renderTable() {
     const container = document.getElementById('cotacoesContainer');
     if (!container) return;
+    
+    // Exibe mensagem de carregamento
+    if (isLoading && cotacoes.length === 0) {
+        container.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;">Carregando...</td></tr>`;
+        return;
+    }
+    
     const search = (document.getElementById('search')?.value || '').toLowerCase();
     const filterTransp = document.getElementById('filterTransportadora')?.value || '';
     const filterResp = document.getElementById('filterResponsavel')?.value || '';
