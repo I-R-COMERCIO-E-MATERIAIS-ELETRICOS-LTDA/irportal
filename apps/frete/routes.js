@@ -5,7 +5,6 @@ const express = require('express');
 
 module.exports = function (supabase) {
     const router = express.Router();
-
     // ─── FUNÇÃO AUXILIAR PARA RANGE DE DATAS ────────────────────────────────────
     function buildDateRange(mes, ano) {
         const m = parseInt(mes);
