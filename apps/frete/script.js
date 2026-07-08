@@ -403,6 +403,8 @@ function inicializarApp() {
 // ============================================
 async function checkServerStatus() {
     try {
+        const mes = currentMonth.getMonth() + 1;
+        const ano = currentMonth.getFullYear();
         const headers = {
             'Accept': 'application/json'
         };
@@ -411,7 +413,8 @@ async function checkServerStatus() {
             headers['X-Session-Token'] = sessionToken;
         }
 
-        const response = await fetch(`${API_URL}/fretes`, {
+        // Busca apenas 1 registro do mês atual para verificar conectividade
+        const response = await fetch(`${API_URL}/fretes?mes=${mes}&ano=${ano}&limit=1`, {
             method: 'GET',
             headers: headers,
             mode: 'cors'
@@ -446,9 +449,15 @@ function updateConnectionStatus() {
 }
 
 // ============================================
-// CARREGAMENTO DE DADOS
+// CARREGAMENTO DE DADOS (APENAS DO MÊS ATUAL)
 // ============================================
-async function loadFretes(showMessage = false) {
+async function loadFretes(showMessage = false, mes, ano) {
+    // Se não forem passados, usa o mês atual
+    if (mes === undefined || ano === undefined) {
+        mes = currentMonth.getMonth() + 1;
+        ano = currentMonth.getFullYear();
+    }
+
     if (!isOnline && !DEVELOPMENT_MODE) {
         if (showMessage) {
             showToast('Sistema offline. Não foi possível sincronizar.', 'error');
@@ -458,7 +467,8 @@ async function loadFretes(showMessage = false) {
 
     try {
         const timestamp = new Date().getTime();
-        const response = await fetch(`${API_URL}/fretes?_t=${timestamp}`, {
+        const url = `${API_URL}/fretes?mes=${mes}&ano=${ano}&_t=${timestamp}`;
+        const response = await fetch(url, {
             method: 'GET',
             headers: { 
                 'X-Session-Token': sessionToken,
@@ -485,7 +495,7 @@ async function loadFretes(showMessage = false) {
         fretes = data;
         lastDataHash = JSON.stringify(fretes.map(f => f.id));
         
-        console.log(`✅ ${fretes.length} fretes carregados`);
+        console.log(`✅ ${fretes.length} fretes carregados para ${meses[mes-1]} ${ano}`);
         
         updateAllFilters();
         updateDashboard();
@@ -558,8 +568,8 @@ function updateDisplay() {
     if (display) {
         display.textContent = `${meses[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
     }
-    updateDashboard();
-    filterFretes();
+    // Recarrega os dados do mês atual ao mudar a exibição
+    loadFretes();
 }
 
 window.changeMonth = function(direction) {
@@ -568,7 +578,7 @@ window.changeMonth = function(direction) {
 };
 
 // ============================================
-// DASHBOARD ATUALIZADO
+// DASHBOARD ATUALIZADO (somente mês atual)
 // ============================================
 function updateDashboard() {
     const statEntregues = document.getElementById('statEntregues');
@@ -582,31 +592,23 @@ function updateDashboard() {
         return;
     }
     
-    const fretesMesAtual = fretes.filter(f => {
-        const data = new Date(f.data_emissao + 'T00:00:00');
-        return data.getMonth() === currentMonth.getMonth() && data.getFullYear() === currentMonth.getFullYear();
-    });
-
+    // Como fretes já contém apenas os registros do mês atual,
+    // usamos diretamente a lista.
     const tiposComStatus = ['ENVIO', 'SIMPLES_REMESSA', 'REMESSA_AMOSTRA'];
-    const fretesComStatusMesAtual = fretesMesAtual.filter(f => {
+    const fretesComStatus = fretes.filter(f => {
         const tipo = f.tipo_nf || 'ENVIO';
         return tiposComStatus.includes(tipo);
     });
     
-    const fretesComStatusTodos = fretes.filter(f => {
-        const tipo = f.tipo_nf || 'ENVIO';
-        return tiposComStatus.includes(tipo);
-    });
-    
-    const fretesEnvio = fretesMesAtual.filter(f => !f.tipo_nf || f.tipo_nf === 'ENVIO');
+    const fretesEnvio = fretes.filter(f => !f.tipo_nf || f.tipo_nf === 'ENVIO');
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     
-    const entregues = fretesComStatusMesAtual.filter(f => f.status === 'ENTREGUE').length;
-    const transito = fretesComStatusMesAtual.filter(f => f.status === 'EM_TRANSITO').length;
+    const entregues = fretesComStatus.filter(f => f.status === 'ENTREGUE').length;
+    const transito = fretesComStatus.filter(f => f.status === 'EM_TRANSITO').length;
     
-    const foraPrazo = fretesComStatusTodos.filter(f => {
+    const foraPrazo = fretesComStatus.filter(f => {
         if (f.status === 'ENTREGUE') return false;
         if (!f.previsao_entrega) return false;
         const previsao = new Date(f.previsao_entrega + 'T00:00:00');
@@ -1112,12 +1114,9 @@ window.handleSubmit = async function(event) {
             await loadFretes(false);
             showToast(`NF ${formData.numero_nf || savedData.numero_nf} Atualizado`, 'success');
         } else {
-            fretes.push(savedData);
+            // Adiciona o novo registro à lista local e recarrega o mês atual
+            await loadFretes(false);
             showToast(`NF ${formData.numero_nf || savedData.numero_nf} Registrado`, 'success');
-            lastDataHash = JSON.stringify(fretes.map(f => f.id));
-            updateAllFilters();
-            updateDashboard();
-            filterFretes();
         }
         
         closeFormModal();
@@ -1238,7 +1237,7 @@ function updateStatusFilter() {
 }
 
 // ============================================
-// FILTROS E RENDERIZAÇÃO
+// FILTROS E RENDERIZAÇÃO (sem filtro de mês)
 // ============================================
 function filterFretes() {
     const searchTerm = document.getElementById('search')?.value.toLowerCase() || '';
@@ -1248,10 +1247,7 @@ function filterFretes() {
     
     let filtered = [...fretes];
 
-    filtered = filtered.filter(f => {
-        const dataEmissao = new Date(f.data_emissao + 'T00:00:00');
-        return dataEmissao.getMonth() === currentMonth.getMonth() && dataEmissao.getFullYear() === currentMonth.getFullYear();
-    });
+    // Não filtra por mês porque os dados já são do mês atual
 
     if (filterTransportadora) {
         filtered = filtered.filter(f => f.transportadora === filterTransportadora);
