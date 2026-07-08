@@ -5,53 +5,40 @@ const express = require('express');
 
 module.exports = function (supabase) {
     const router = express.Router();
-    // ─── FUNÇÃO AUXILIAR PARA RANGE DE DATAS ────────────────────────────────────
-    function buildDateRange(mes, ano) {
-        const m = parseInt(mes);
-        const y = parseInt(ano);
-        if (isNaN(m) || isNaN(y)) return null;
-        // Formata a data como YYYY-MM-DD (apenas a parte da data)
-        const start = new Date(y, m, 1);
-        const end = new Date(y, m + 1, 0);
-        return {
-            start: start.toISOString().split('T')[0],
-            end: end.toISOString().split('T')[0]
-        };
-    }
 
-    // ─── LISTAR FRETES (COM FILTRO POR MÊS/ANO) ──────────────────────────────
+    // ─── LISTAR FRETES COM FILTRO POR MÊS/ANO ────────────────────────────────
     router.get('/', async (req, res) => {
         try {
-            const { mes, ano } = req.query;
-            console.log(`📥 GET /fretes - mes=${mes}, ano=${ano}`);
-
+            const { mes, ano, limit } = req.query;
             let query = supabase.from('controle_frete').select('*');
 
-            // Se mes e ano forem fornecidos, aplica o filtro
-            if (mes !== undefined && ano !== undefined) {
-                const range = buildDateRange(mes, ano);
-                if (range) {
-                    console.log(`🔍 Filtrando data_emissao entre ${range.start} e ${range.end}`);
-                    query = query
-                        .gte('data_emissao', range.start)
-                        .lte('data_emissao', range.end);
-                } else {
-                    console.warn('⚠️ Mes ou ano inválidos, ignorando filtro');
+            // Filtro por mês/ano (data_emissao)
+            if (mes && ano) {
+                const mesNum = parseInt(mes);
+                const anoNum = parseInt(ano);
+                if (!isNaN(mesNum) && !isNaN(anoNum) && mesNum >= 1 && mesNum <= 12) {
+                    const startDate = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
+                    const endDate = new Date(anoNum, mesNum, 1);
+                    endDate.setMonth(endDate.getMonth() + 1);
+                    const endDateStr = endDate.toISOString().split('T')[0];
+                    query = query.gte('data_emissao', startDate).lt('data_emissao', endDateStr);
                 }
-            } else {
-                console.log('ℹ️ Nenhum filtro de mês/ano fornecido, retornando todos os registros');
             }
 
-            // Ordenação padrão
-            query = query.order('data_emissao', { ascending: false });
+            // Limite opcional (para health check)
+            if (limit) {
+                const limitNum = parseInt(limit);
+                if (!isNaN(limitNum) && limitNum > 0) {
+                    query = query.limit(limitNum);
+                }
+            }
 
-            const { data, error } = await query;
+            const { data, error } = await query.order('data_emissao', { ascending: false });
+
             if (error) throw error;
-
-            console.log(`✅ Retornados ${data.length} fretes`);
             res.json(data);
         } catch (err) {
-            console.error('❌ Erro ao listar fretes:', err.message);
+            console.error('Erro ao listar fretes:', err.message);
             res.status(500).json({ error: 'Erro ao listar fretes' });
         }
     });
@@ -70,7 +57,7 @@ module.exports = function (supabase) {
 
             res.json(data);
         } catch (err) {
-            console.error('❌ Erro ao buscar frete:', err.message);
+            console.error('Erro ao buscar frete:', err.message);
             res.status(500).json({ error: 'Erro ao buscar frete' });
         }
     });
@@ -142,7 +129,7 @@ module.exports = function (supabase) {
 
             res.status(201).json(data);
         } catch (err) {
-            console.error('❌ Erro ao criar frete:', err.message);
+            console.error('Erro ao criar frete:', err.message);
             res.status(500).json({ error: 'Erro ao criar frete', details: err.message });
         }
     });
@@ -213,7 +200,7 @@ module.exports = function (supabase) {
 
             res.json(data);
         } catch (err) {
-            console.error('❌ Erro ao atualizar frete:', err.message);
+            console.error('Erro ao atualizar frete:', err.message);
             res.status(500).json({ error: 'Erro ao atualizar frete', details: err.message });
         }
     });
@@ -238,7 +225,7 @@ module.exports = function (supabase) {
 
             res.json(data);
         } catch (err) {
-            console.error('❌ Erro ao fazer patch no frete:', err.message);
+            console.error('Erro ao fazer patch no frete:', err.message);
             res.status(500).json({ error: 'Erro ao atualizar frete', details: err.message });
         }
     });
@@ -272,7 +259,7 @@ module.exports = function (supabase) {
 
             res.json({ success: true, message: 'Frete excluído com sucesso' });
         } catch (err) {
-            console.error('❌ Erro ao deletar frete:', err.message);
+            console.error('Erro ao deletar frete:', err.message);
             res.status(500).json({ error: 'Erro ao deletar frete' });
         }
     });
