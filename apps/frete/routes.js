@@ -6,15 +6,29 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── LISTAR FRETES ──────────────────────────────────────────────────────────
+    // ─── LISTAR FRETES (COM FILTRO POR MÊS/ANO) ──────────────────────────────
     router.get('/', async (req, res) => {
         try {
-            const { data, error } = await supabase
-                .from('controle_frete')
-                .select('*')
-                .order('data_emissao', { ascending: false });
+            const { mes, ano } = req.query;
+            let query = supabase.from('controle_frete').select('*');
 
+            // Se mes e ano forem fornecidos, filtra pela data_emissao
+            if (mes !== undefined && ano !== undefined) {
+                const m = parseInt(mes);
+                const y = parseInt(ano);
+                if (!isNaN(m) && !isNaN(y)) {
+                    const start = new Date(y, m, 1).toISOString().split('T')[0];
+                    const end = new Date(y, m + 1, 0).toISOString().split('T')[0];
+                    query = query.gte('data_emissao', start).lte('data_emissao', end);
+                }
+            }
+
+            // Ordenação padrão
+            query = query.order('data_emissao', { ascending: false });
+
+            const { data, error } = await query;
             if (error) throw error;
+
             res.json(data);
         } catch (err) {
             console.error('Erro ao listar fretes:', err.message);
