@@ -403,8 +403,6 @@ function inicializarApp() {
 // ============================================
 async function checkServerStatus() {
     try {
-        const mes = currentMonth.getMonth() + 1;
-        const ano = currentMonth.getFullYear();
         const headers = {
             'Accept': 'application/json'
         };
@@ -413,8 +411,7 @@ async function checkServerStatus() {
             headers['X-Session-Token'] = sessionToken;
         }
 
-        // Busca apenas 1 registro do mês atual para verificar conectividade
-        const response = await fetch(`${API_URL}/fretes?mes=${mes}&ano=${ano}&limit=1`, {
+        const response = await fetch(`${API_URL}/fretes`, {
             method: 'GET',
             headers: headers,
             mode: 'cors'
@@ -449,15 +446,9 @@ function updateConnectionStatus() {
 }
 
 // ============================================
-// CARREGAMENTO DE DADOS (APENAS DO MÊS ATUAL)
+// CARREGAMENTO DE DADOS
 // ============================================
-async function loadFretes(showMessage = false, mes, ano) {
-    // Se não forem passados, usa o mês atual
-    if (mes === undefined || ano === undefined) {
-        mes = currentMonth.getMonth() + 1;
-        ano = currentMonth.getFullYear();
-    }
-
+async function loadFretes(showMessage = false) {
     if (!isOnline && !DEVELOPMENT_MODE) {
         if (showMessage) {
             showToast('Sistema offline. Não foi possível sincronizar.', 'error');
@@ -467,8 +458,7 @@ async function loadFretes(showMessage = false, mes, ano) {
 
     try {
         const timestamp = new Date().getTime();
-        const url = `${API_URL}/fretes?mes=${mes}&ano=${ano}&_t=${timestamp}`;
-        const response = await fetch(url, {
+        const response = await fetch(`${API_URL}/fretes?_t=${timestamp}`, {
             method: 'GET',
             headers: { 
                 'X-Session-Token': sessionToken,
@@ -495,7 +485,7 @@ async function loadFretes(showMessage = false, mes, ano) {
         fretes = data;
         lastDataHash = JSON.stringify(fretes.map(f => f.id));
         
-        console.log(`✅ ${fretes.length} fretes carregados para ${meses[mes-1]} ${ano}`);
+        console.log(`✅ ${fretes.length} fretes carregados`);
         
         updateAllFilters();
         updateDashboard();
@@ -568,8 +558,8 @@ function updateDisplay() {
     if (display) {
         display.textContent = `${meses[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
     }
-    // Recarrega os dados do mês atual ao mudar a exibição
-    loadFretes();
+    updateDashboard();
+    filterFretes();
 }
 
 window.changeMonth = function(direction) {
@@ -578,7 +568,7 @@ window.changeMonth = function(direction) {
 };
 
 // ============================================
-// DASHBOARD ATUALIZADO (somente mês atual)
+// DASHBOARD ATUALIZADO
 // ============================================
 function updateDashboard() {
     const statEntregues = document.getElementById('statEntregues');
@@ -592,23 +582,31 @@ function updateDashboard() {
         return;
     }
     
-    // Como fretes já contém apenas os registros do mês atual,
-    // usamos diretamente a lista.
+    const fretesMesAtual = fretes.filter(f => {
+        const data = new Date(f.data_emissao + 'T00:00:00');
+        return data.getMonth() === currentMonth.getMonth() && data.getFullYear() === currentMonth.getFullYear();
+    });
+
     const tiposComStatus = ['ENVIO', 'SIMPLES_REMESSA', 'REMESSA_AMOSTRA'];
-    const fretesComStatus = fretes.filter(f => {
+    const fretesComStatusMesAtual = fretesMesAtual.filter(f => {
         const tipo = f.tipo_nf || 'ENVIO';
         return tiposComStatus.includes(tipo);
     });
     
-    const fretesEnvio = fretes.filter(f => !f.tipo_nf || f.tipo_nf === 'ENVIO');
+    const fretesComStatusTodos = fretes.filter(f => {
+        const tipo = f.tipo_nf || 'ENVIO';
+        return tiposComStatus.includes(tipo);
+    });
+    
+    const fretesEnvio = fretesMesAtual.filter(f => !f.tipo_nf || f.tipo_nf === 'ENVIO');
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     
-    const entregues = fretesComStatus.filter(f => f.status === 'ENTREGUE').length;
-    const transito = fretesComStatus.filter(f => f.status === 'EM_TRANSITO').length;
+    const entregues = fretesComStatusMesAtual.filter(f => f.status === 'ENTREGUE').length;
+    const transito = fretesComStatusMesAtual.filter(f => f.status === 'EM_TRANSITO').length;
     
-    const foraPrazo = fretesComStatus.filter(f => {
+    const foraPrazo = fretesComStatusTodos.filter(f => {
         if (f.status === 'ENTREGUE') return false;
         if (!f.previsao_entrega) return false;
         const previsao = new Date(f.previsao_entrega + 'T00:00:00');
@@ -1114,9 +1112,12 @@ window.handleSubmit = async function(event) {
             await loadFretes(false);
             showToast(`NF ${formData.numero_nf || savedData.numero_nf} Atualizado`, 'success');
         } else {
-            // Adiciona o novo registro à lista local e recarrega o mês atual
-            await loadFretes(false);
+            fretes.push(savedData);
             showToast(`NF ${formData.numero_nf || savedData.numero_nf} Registrado`, 'success');
+            lastDataHash = JSON.stringify(fretes.map(f => f.id));
+            updateAllFilters();
+            updateDashboard();
+            filterFretes();
         }
         
         closeFormModal();
@@ -1237,7 +1238,7 @@ function updateStatusFilter() {
 }
 
 // ============================================
-// FILTROS E RENDERIZAÇÃO (sem filtro de mês)
+// FILTROS E RENDERIZAÇÃO
 // ============================================
 function filterFretes() {
     const searchTerm = document.getElementById('search')?.value.toLowerCase() || '';
@@ -1247,7 +1248,10 @@ function filterFretes() {
     
     let filtered = [...fretes];
 
-    // Não filtra por mês porque os dados já são do mês atual
+    filtered = filtered.filter(f => {
+        const dataEmissao = new Date(f.data_emissao + 'T00:00:00');
+        return dataEmissao.getMonth() === currentMonth.getMonth() && dataEmissao.getFullYear() === currentMonth.getFullYear();
+    });
 
     if (filterTransportadora) {
         filtered = filtered.filter(f => f.transportadora === filterTransportadora);
@@ -1551,64 +1555,4 @@ function renderAlertModalPage() {
         return;
     }
     const totalPages = Math.ceil(foraDoPrazo.length / ALERT_PAGE_SIZE);
-    const start = (alertModalPage - 1) * ALERT_PAGE_SIZE;
-    const pageData = foraDoPrazo.slice(start, start + ALERT_PAGE_SIZE);
-    modalBody.innerHTML = `
-        <div style="overflow-x: auto;">
-            <table style="font-size: 0.85rem;">
-                <thead>
-                    <tr>
-                        <th style="padding: 8px 10px;">Nº NF</th>
-                        <th style="padding: 8px 10px;">Emissão</th>
-                        <th style="padding: 8px 10px;">Órgão</th>
-                        <th style="padding: 8px 10px;">Vendedor</th>
-                        <th style="padding: 8px 10px;">Previsão</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${pageData.map(f => `
-                        <tr>
-                            <td style="padding: 8px 10px;"><strong>${f.numero_nf || '-'}</strong></td>
-                            <td style="padding: 8px 10px; white-space: nowrap;">${formatDate(f.data_emissao)}</td>
-                            <td style="padding: 8px 10px; max-width: 160px; word-break: break-word; white-space: normal;">${f.nome_orgao || '-'}</td>
-                            <td style="padding: 8px 10px; white-space: nowrap;">${f.vendedor && f.vendedor !== 'NÃO INFORMADO' ? f.vendedor : '-'}</td>
-                            <td style="padding: 8px 10px; white-space: nowrap; color: #EF4444; font-weight: 600;">${formatDate(f.previsao_entrega)}</td>
-                        </tr>
-                    `).join('')}
-                </tbody>
-            </table>
-        </div>
-        ${totalPages > 1 ? `
-        <div class="alert-pagination">
-            <button class="alert-page-btn" onclick="changeAlertPage(-1)" ${alertModalPage === 1 ? 'disabled' : ''}>‹</button>
-            <span class="alert-page-info">${alertModalPage} / ${totalPages}</span>
-            <button class="alert-page-btn" onclick="changeAlertPage(1)" ${alertModalPage === totalPages ? 'disabled' : ''}>›</button>
-        </div>
-        ` : ''}
-    `;
-}
-
-window.changeAlertPage = function(direction) {
-    const totalPages = Math.ceil(alertModalData.length / ALERT_PAGE_SIZE);
-    alertModalPage = Math.max(1, Math.min(totalPages, alertModalPage + direction));
-    renderAlertModalPage();
-};
-
-window.closeAlertModal = function() {
-    const alertModal = document.getElementById('alertModal');
-    if (alertModal) {
-        alertModal.style.display = 'none';
-    }
-};
-
-window.addEventListener('beforeunload', () => {
-    sessionStorage.removeItem('alertShown');
-});
-
-console.log('✅ Script completo carregado com sucesso!');
-console.log('🔧 Funções exportadas para window:', {
-    toggleForm: typeof window.toggleForm,
-    showFormModal: typeof window.showFormModal,
-    handleEditClick: typeof window.handleEditClick,
-    handleSubmit: typeof window.handleSubmit
-});
+    const start = (alertModalPage
