@@ -6,34 +6,13 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
-    // ─── LISTAR FRETES COM FILTRO POR MÊS/ANO ────────────────────────────────
+    // ─── LISTAR FRETES ──────────────────────────────────────────────────────────
     router.get('/', async (req, res) => {
         try {
-            const { mes, ano, limit } = req.query;
-            let query = supabase.from('controle_frete').select('*');
-
-            // Filtro por mês/ano (data_emissao)
-            if (mes && ano) {
-                const mesNum = parseInt(mes);
-                const anoNum = parseInt(ano);
-                if (!isNaN(mesNum) && !isNaN(anoNum) && mesNum >= 1 && mesNum <= 12) {
-                    const startDate = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
-                    const endDate = new Date(anoNum, mesNum, 1);
-                    endDate.setMonth(endDate.getMonth() + 1);
-                    const endDateStr = endDate.toISOString().split('T')[0];
-                    query = query.gte('data_emissao', startDate).lt('data_emissao', endDateStr);
-                }
-            }
-
-            // Limite opcional (para health check)
-            if (limit) {
-                const limitNum = parseInt(limit);
-                if (!isNaN(limitNum) && limitNum > 0) {
-                    query = query.limit(limitNum);
-                }
-            }
-
-            const { data, error } = await query.order('data_emissao', { ascending: false });
+            const { data, error } = await supabase
+                .from('controle_frete')
+                .select('*')
+                .order('data_emissao', { ascending: false });
 
             if (error) throw error;
             res.json(data);
