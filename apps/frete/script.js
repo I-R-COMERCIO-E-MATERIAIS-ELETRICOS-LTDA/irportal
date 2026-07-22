@@ -173,6 +173,68 @@ window.handleRowClick = function(event, id) {
     window.handleViewClick(id);
 };
 
+// ============================================
+// MODAL DE DATA DE ENTREGA (Novo)
+// ============================================
+function showDatePickerModal(defaultDate = null) {
+    return new Promise((resolve) => {
+        const today = new Date().toISOString().split('T')[0];
+        const value = defaultDate || today;
+
+        const modalHTML = `
+            <div class="modal-overlay" id="datePickerModal" style="display: flex; z-index: 10002;">
+                <div class="modal-content confirm-modal-content" style="max-width: 420px;">
+                    <button class="close-modal" id="datePickerClose">✕</button>
+                    <div style="padding: 1.5rem 0.25rem 0.5rem; text-align: center;">
+                        <p style="font-size: 1.05rem; margin-bottom: 1rem; font-weight: 600;">Informe a data de entrega</p>
+                        <input type="date" id="datePickerInput" value="${value}" style="text-align: center; font-size: 1.1rem; padding: 10px; width: 100%; max-width: 220px;">
+                    </div>
+                    <div class="modal-actions modal-actions-no-border">
+                        <button type="button" id="datePickerConfirm" style="background: #22C55E; min-width: 140px;">Confirmar</button>
+                        <button type="button" id="datePickerCancel" class="cancel-close" style="min-width: 100px;">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        const modal = document.getElementById('datePickerModal');
+        const input = document.getElementById('datePickerInput');
+        const confirmBtn = document.getElementById('datePickerConfirm');
+        const cancelBtn = document.getElementById('datePickerCancel');
+        const closeBtn = document.getElementById('datePickerClose');
+
+        const closeModal = (result) => {
+            if (modal) {
+                modal.style.animation = 'fadeOut 0.2s ease forwards';
+                setTimeout(() => { modal.remove(); resolve(result); }, 200);
+            } else {
+                resolve(result);
+            }
+        };
+
+        confirmBtn.addEventListener('click', () => {
+            const date = input.value;
+            if (!date) {
+                showToast('Selecione uma data válida', 'error');
+                return;
+            }
+            closeModal(date);
+        });
+
+        cancelBtn.addEventListener('click', () => closeModal(null));
+        closeBtn.addEventListener('click', () => closeModal(null));
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal(null);
+        });
+
+        input.focus();
+    });
+}
+
+// ============================================
+// HANDLE CHECKBOX (com modal de data)
+// ============================================
 window.handleCheckboxChange = async function(id) {
     console.log('☑️ Checkbox alterado:', id);
     const idStr = String(id);
@@ -183,18 +245,55 @@ window.handleCheckboxChange = async function(id) {
     const tipoNf = frete.tipo_nf || 'ENVIO';
     if (!tiposPermitidos.includes(tipoNf)) return;
     
-    const novoStatus = frete.status === 'ENTREGUE' ? 'EM_TRANSITO' : 'ENTREGUE';
-    const updateData = { status: novoStatus };
+    // Se o status atual é ENTREGUE, queremos desmarcar (reverter)
+    if (frete.status === 'ENTREGUE') {
+        // Reverter para EM_TRANSITO sem modal
+        const updateData = { status: 'EM_TRANSITO', data_entrega: null };
+        
+        if (isOnline || DEVELOPMENT_MODE) {
+            try {
+                const response = await fetch(`${API_URL}/fretes/${idStr}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Token': sessionToken,
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(updateData),
+                    mode: 'cors'
+                });
+                if (!response.ok) throw new Error('Erro ao atualizar');
+                const savedData = await response.json();
+                const index = fretes.findIndex(f => String(f.id) === idStr);
+                if (index !== -1) {
+                    fretes[index] = savedData;
+                    showToast(`NF ${savedData.numero_nf} desmarcado - voltou ao monitoramento`, 'info');
+                    updateDashboard();
+                    filterFretes();
+                }
+            } catch (error) {
+                console.error('❌ Erro ao atualizar status:', error);
+                showToast('Erro ao atualizar status', 'error');
+                // Reverter checkbox visualmente
+                const cb = document.getElementById(`check-${idStr}`);
+                if (cb) cb.checked = true;
+            }
+        }
+        return;
+    }
     
-    if (novoStatus === 'ENTREGUE' && !frete.data_entrega) {
-        const hoje = new Date();
-        updateData.data_entrega = hoje.toISOString().split('T')[0];
-        console.log(`📅 Definindo data_entrega: ${updateData.data_entrega}`);
+    // Caso contrário, está marcando como ENTREGUE -> abrir modal para data
+    const dataEscolhida = await showDatePickerModal(frete.data_entrega || undefined);
+    if (dataEscolhida === null) {
+        // Usuário cancelou: desmarcar o checkbox
+        const cb = document.getElementById(`check-${idStr}`);
+        if (cb) cb.checked = false;
+        showToast('Entrega cancelada', 'error');
+        return;
     }
-    if (novoStatus === 'EM_TRANSITO') {
-        updateData.data_entrega = null;
-        console.log('🗑️ Removendo data_entrega (desmarcado)');
-    }
+    
+    // Atualizar com a data escolhida
+    const updateData = { status: 'ENTREGUE', data_entrega: dataEscolhida };
     
     if (isOnline || DEVELOPMENT_MODE) {
         try {
@@ -213,17 +312,16 @@ window.handleCheckboxChange = async function(id) {
             const index = fretes.findIndex(f => String(f.id) === idStr);
             if (index !== -1) {
                 fretes[index] = savedData;
-                if (novoStatus === 'ENTREGUE') {
-                    showToast(`NF ${savedData.numero_nf} Entregue`, 'success');
-                } else {
-                    showToast(`NF ${savedData.numero_nf} desmarcado - voltou ao monitoramento`, 'info');
-                }
+                showToast(`NF ${savedData.numero_nf} entregue em ${formatDate(savedData.data_entrega)}`, 'success');
                 updateDashboard();
                 filterFretes();
             }
         } catch (error) {
             console.error('❌ Erro ao atualizar status:', error);
             showToast('Erro ao atualizar status', 'error');
+            // Reverter checkbox
+            const cb = document.getElementById(`check-${idStr}`);
+            if (cb) cb.checked = false;
         }
     }
 };
@@ -285,6 +383,7 @@ function mostrarModalVisualizacao(frete, activeTabIndex = 0) {
                             <p><strong>Documento:</strong> ${displayValue(frete.documento)}</p>
                             <p><strong>Valor NF:</strong> R$ ${frete.valor_nf ? parseFloat(frete.valor_nf).toFixed(2) : '0,00'}</p>
                             <p><strong>Tipo NF:</strong> ${getTipoNfLabel(frete.tipo_nf)}</p>
+                            <p><strong>Vendedor:</strong> ${displayValue(frete.vendedor)}</p>
                         </div>
                     </div>
 
@@ -293,7 +392,7 @@ function mostrarModalVisualizacao(frete, activeTabIndex = 0) {
                             <h4>Dados do Órgão</h4>
                             <p><strong>Nome do Órgão:</strong> ${frete.nome_orgao || '-'}</p>
                             <p><strong>Contato:</strong> ${displayValue(frete.contato_orgao)}</p>
-                            <p><strong>Vendedor Responsável:</strong> ${displayValue(frete.vendedor)}</p>
+                            <p><strong>Cidade-UF (Destino):</strong> ${displayValue(frete.cidade_destino)}</p>
                         </div>
                     </div>
 
@@ -303,10 +402,10 @@ function mostrarModalVisualizacao(frete, activeTabIndex = 0) {
                             <p><strong>Transportadora:</strong> ${displayValue(frete.transportadora)}</p>
                             <p><strong>Valor do Frete:</strong> R$ ${frete.valor_frete ? parseFloat(frete.valor_frete).toFixed(2) : '0,00'}</p>
                             <p><strong>Data Coleta:</strong> ${frete.data_coleta ? formatDate(frete.data_coleta) : '-'}</p>
-                            <p><strong>Destino:</strong> ${displayValue(frete.cidade_destino)}</p>
                             <p><strong>Previsão Entrega:</strong> ${frete.previsao_entrega ? formatDate(frete.previsao_entrega) : '-'}</p>
                             <p><strong>Data Entrega:</strong> ${frete.data_entrega ? formatDate(frete.data_entrega) : '-'}</p>
                             <p><strong>Status:</strong> ${getStatusBadgeForRender(frete)}</p>
+                            ${frete.cotacao ? `<p><strong>Cotação:</strong> ${frete.cotacao}</p>` : ''}
                         </div>
                     </div>
 
@@ -717,7 +816,7 @@ function showConfirm(message, options = {}) {
 window.showConfirm = showConfirm;
 
 // ============================================
-// FORMULÁRIO COM OBSERVAÇÕES
+// FORMULÁRIO COM OBSERVAÇÕES (ABAS REORGANIZADAS)
 // ============================================
 window.toggleForm = function() {
     console.log('🆕 Abrindo formulário para novo frete');
@@ -791,6 +890,7 @@ window.showFormModal = function(editingId = null) {
                         <input type="hidden" id="editId" value="${editingId || ''}">
                         <input type="hidden" id="observacoesData" value='${JSON.stringify(observacoesArray)}'>
                         
+                        <!-- ABA DADOS DA NOTA (inclui vendedor) -->
                         <div class="tab-content active" id="tab-nota">
                             <div class="form-grid">
                                 <div class="form-group">
@@ -820,19 +920,6 @@ window.showFormModal = function(editingId = null) {
                                         <option value="DEVOLVIDA" ${frete?.tipo_nf === 'DEVOLVIDA' ? 'selected' : ''}>Devolvida</option>
                                     </select>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div class="tab-content" id="tab-orgao">
-                            <div class="form-grid">
-                                <div class="form-group">
-                                    <label for="nome_orgao">Nome do Órgão *</label>
-                                    <input type="text" id="nome_orgao" value="${frete?.nome_orgao || ''}" required>
-                                </div>
-                                <div class="form-group">
-                                    <label for="contato_orgao">Contato do Órgão</label>
-                                    <input type="text" id="contato_orgao" value="${frete?.contato_orgao || ''}">
-                                </div>
                                 <div class="form-group">
                                     <label for="vendedor">Vendedor Responsável</label>
                                     <select id="vendedor">
@@ -845,6 +932,25 @@ window.showFormModal = function(editingId = null) {
                             </div>
                         </div>
 
+                        <!-- ABA ÓRGÃO (inclui cidade destino) -->
+                        <div class="tab-content" id="tab-orgao">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="nome_orgao">Nome do Órgão *</label>
+                                    <input type="text" id="nome_orgao" value="${frete?.nome_orgao || ''}" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="contato_orgao">Contato do Órgão</label>
+                                    <input type="text" id="contato_orgao" value="${frete?.contato_orgao || ''}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cidade_destino">Cidade-UF (Destino)</label>
+                                    <input type="text" id="cidade_destino" value="${frete?.cidade_destino || ''}" placeholder="Ex: São Paulo-SP">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ABA TRANSPORTE (substitui cidade destino por cotação) -->
                         <div class="tab-content" id="tab-transporte">
                             <div class="form-grid">
                                 <div class="form-group">
@@ -863,16 +969,16 @@ window.showFormModal = function(editingId = null) {
                                     <input type="date" id="data_coleta" value="${frete?.data_coleta || ''}" required>
                                 </div>
                                 <div class="form-group">
-                                    <label for="cidade_destino">Cidade-UF (Destino)</label>
-                                    <input type="text" id="cidade_destino" value="${frete?.cidade_destino || ''}" placeholder="Ex: São Paulo-SP">
-                                </div>
-                                <div class="form-group">
                                     <label for="previsao_entrega">Previsão de Entrega</label>
                                     <input type="date" id="previsao_entrega" value="${frete?.previsao_entrega || ''}">
                                 </div>
                                 <div class="form-group">
                                     <label for="data_entrega">Data de Entrega</label>
                                     <input type="date" id="data_entrega" value="${frete?.data_entrega || ''}">
+                                </div>
+                                <div class="form-group">
+                                    <label for="cotacao">Cotação</label>
+                                    <input type="text" id="cotacao" value="${frete?.cotacao || ''}" placeholder="Ex: 123">
                                 </div>
                             </div>
                         </div>
@@ -1039,7 +1145,7 @@ window.switchFormTab = function(index) {
 };
 
 // ============================================
-// SUBMIT
+// SUBMIT (inclui cotacao)
 // ============================================
 window.handleSubmit = async function(event) {
     if (event) event.preventDefault();
@@ -1062,6 +1168,7 @@ window.handleSubmit = async function(event) {
         cidade_destino: document.getElementById('cidade_destino').value.trim() || 'NÃO INFORMADO',
         previsao_entrega: document.getElementById('previsao_entrega').value || null,
         data_entrega: document.getElementById('data_entrega').value || null,
+        cotacao: document.getElementById('cotacao').value.trim() || null, // Novo campo
         observacoes: observacoesValue
     };
 
@@ -1288,7 +1395,8 @@ function filterFretes() {
                 f.cidade_destino,
                 f.vendedor,
                 f.documento,
-                f.contato_orgao
+                f.contato_orgao,
+                f.cotacao
             ];
             return searchFields.some(field => 
                 field && field.toString().toLowerCase().includes(searchTerm)
