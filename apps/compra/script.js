@@ -124,7 +124,228 @@ function inicializarApp() {
     loadUltimoNumero();
     loadFornecedoresGlobal();
     setInterval(() => loadOrdensDirectly(), 10000);
+    adicionarBotaoDuplicar(); // 👈 adiciona o botão "++ Duplicar Ordem"
 }
+
+// ============================================
+// BOTÃO DUPLICAR ORDEM
+// ============================================
+function adicionarBotaoDuplicar() {
+    // Procura pelo botão "Nova Ordem" existente
+    const btnNovo = document.querySelector('.btn-new-order-header, button[onclick*="openFormModal"]');
+    if (!btnNovo) {
+        // Se não encontrar, tenta inserir no header
+        const headerRight = document.querySelector('.header .header-left + *') || document.querySelector('.header');
+        if (headerRight) {
+            const btnDuplicar = document.createElement('button');
+            btnDuplicar.className = 'btn-duplicar-order-header';
+            btnDuplicar.innerHTML = '++ Duplicar Ordem';
+            btnDuplicar.onclick = abrirModalDuplicar;
+            btnDuplicar.style.cssText = `
+                background: #8B5CF6;
+                color: white;
+                border: none;
+                padding: 0.65rem 1.5rem;
+                border-radius: 8px;
+                cursor: pointer;
+                font-size: 0.9rem;
+                font-weight: 600;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                gap: 0.5rem;
+                transition: all 0.3s ease;
+                box-shadow: 0 1px 3px rgba(139, 92, 246, 0.3);
+                white-space: nowrap;
+                margin-left: 0.5rem;
+            `;
+            btnDuplicar.onmouseover = () => { btnDuplicar.style.background = '#7C3AED'; btnDuplicar.style.transform = 'translateY(-1px)'; };
+            btnDuplicar.onmouseout = () => { btnDuplicar.style.background = '#8B5CF6'; btnDuplicar.style.transform = 'none'; };
+            headerRight.appendChild(btnDuplicar);
+        }
+        return;
+    }
+    // Se encontrou, insere ao lado dele
+    const parent = btnNovo.parentNode;
+    const btnDuplicar = document.createElement('button');
+    btnDuplicar.className = 'btn-duplicar-order-header';
+    btnDuplicar.innerHTML = '++ Duplicar Ordem';
+    btnDuplicar.onclick = abrirModalDuplicar;
+    btnDuplicar.style.cssText = `
+        background: #8B5CF6;
+        color: white;
+        border: none;
+        padding: 0.65rem 1.5rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 1px 3px rgba(139, 92, 246, 0.3);
+        white-space: nowrap;
+        margin-left: 0.5rem;
+    `;
+    btnDuplicar.onmouseover = () => { btnDuplicar.style.background = '#7C3AED'; btnDuplicar.style.transform = 'translateY(-1px)'; };
+    btnDuplicar.onmouseout = () => { btnDuplicar.style.background = '#8B5CF6'; btnDuplicar.style.transform = 'none'; };
+    parent.insertBefore(btnDuplicar, btnNovo.nextSibling);
+}
+
+// ============================================
+// MODAL DE DUPLICAÇÃO
+// ============================================
+function abrirModalDuplicar() {
+    // Remove modal existente se houver
+    const existing = document.getElementById('duplicarModal');
+    if (existing) existing.remove();
+
+    const modalHTML = `
+        <div class="modal-overlay" id="duplicarModal" style="display: flex; z-index: 10001;">
+            <div class="modal-content confirm-modal-content" style="max-width: 420px; min-height: 220px;">
+                <button class="close-modal" onclick="fecharModalDuplicar()">✕</button>
+                <div style="padding: 1.5rem 0.25rem 0.5rem; text-align: center;">
+                    <p style="font-size: 1.05rem; margin-bottom: 1rem; font-weight: 600;">Digite o número da ordem a ser duplicada</p>
+                    <input type="text" id="numeroOrdemDuplicar" placeholder="Ex: 1250" style="text-align: center; font-size: 1.1rem; padding: 10px; width: 100%; max-width: 200px;">
+                    <div id="duplicarErro" style="color: #EF4444; font-size: 0.9rem; margin-top: 0.5rem; display: none;">Esta ordem de compra ainda não existe.</div>
+                </div>
+                <div class="modal-actions modal-actions-no-border" style="justify-content: center;">
+                    <button type="button" id="btnDuplicarConfirmar" style="background: #8B5CF6; min-width: 140px;">Duplicar</button>
+                    <button type="button" onclick="fecharModalDuplicar()" class="secondary" style="min-width: 100px;">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    const input = document.getElementById('numeroOrdemDuplicar');
+    if (input) {
+        input.focus();
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') confirmarDuplicacao();
+        });
+    }
+    document.getElementById('btnDuplicarConfirmar').addEventListener('click', confirmarDuplicacao);
+}
+
+function fecharModalDuplicar() {
+    const modal = document.getElementById('duplicarModal');
+    if (modal) {
+        modal.style.animation = 'fadeOut 0.2s ease forwards';
+        setTimeout(() => modal.remove(), 200);
+    }
+}
+
+// ============================================
+// CONFIRMAR DUPLICAÇÃO
+// ============================================
+async function confirmarDuplicacao() {
+    const input = document.getElementById('numeroOrdemDuplicar');
+    const numero = input?.value.trim();
+    if (!numero) {
+        showToast('Digite um número de ordem válido', 'error');
+        return;
+    }
+
+    // Buscar a ordem original
+    const original = ordens.find(o => String(o.numero_ordem || o.numeroOrdem) === numero);
+    if (!original) {
+        // Exibir mensagem de erro em vermelho
+        const erroDiv = document.getElementById('duplicarErro');
+        if (erroDiv) {
+            erroDiv.style.display = 'block';
+            erroDiv.textContent = 'Esta ordem de compra ainda não existe.';
+            setTimeout(() => { erroDiv.style.display = 'none'; }, 3000);
+        } else {
+            showToast('Esta ordem de compra ainda não existe.', 'error');
+        }
+        input.value = '';
+        input.focus();
+        return;
+    }
+
+    // Fechar modal
+    fecharModalDuplicar();
+
+    // Criar uma cópia dos dados (sem id)
+    const dadosCopia = {
+        numeroOrdem: original.numero_ordem || original.numeroOrdem,
+        responsavel: original.responsavel || '',
+        dataOrdem: original.data_ordem || original.dataOrdem || new Date().toISOString().split('T')[0],
+        razaoSocial: original.razao_social || original.razaoSocial || '',
+        nomeFantasia: original.nome_fantasia || original.nomeFantasia || '',
+        cnpj: original.cnpj || '',
+        enderecoFornecedor: original.endereco_fornecedor || original.enderecoFornecedor || '',
+        site: original.site || '',
+        contato: original.contato || '',
+        telefone: original.telefone || '',
+        email: original.email || '',
+        items: (original.items || []).map(item => ({
+            item: item.item || 0,
+            especificacao: item.especificacao || '',
+            quantidade: item.quantidade || 0,
+            unidade: item.unidade || 'UN',
+            valorUnitario: item.valorUnitario || item.valor_unitario || 0,
+            ipi: item.ipi || '',
+            st: item.st || '',
+            valorTotal: item.valorTotal || item.valor_total || 'R$ 0,00'
+        })),
+        valorTotal: original.valor_total || original.valorTotal || 'R$ 0,00',
+        frete: original.frete || 'CIF',
+        localEntrega: original.local_entrega || original.localEntrega || 'RUA TADORNA Nº 472, SALA 2, NOVO HORIZONTE - SERRA/ES  |  CEP: 29.163-318',
+        prazoEntrega: original.prazo_entrega || original.prazoEntrega || 'IMEDIATO',
+        transporte: original.transporte || 'FORNECEDOR',
+        formaPagamento: original.forma_pagamento || original.formaPagamento || '',
+        prazoPagamento: original.prazo_pagamento || original.prazoPagamento || '',
+        dadosBancarios: original.dados_bancarios || original.dadosBancarios || '',
+        status: 'aberta'
+    };
+
+    try {
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        };
+        if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
+
+        const response = await fetch(`${API_URL}/ordens`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(dadosCopia),
+            mode: 'cors'
+        });
+
+        if (!DEVELOPMENT_MODE && response.status === 401) {
+            sessionStorage.removeItem('ordemCompraSession');
+            mostrarTelaAcessoNegado('Sua sessão expirou');
+            return;
+        }
+
+        if (!response.ok) {
+            let errorMessage = 'Erro ao duplicar ordem';
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorData.message || errorMessage;
+            } catch (e) {}
+            throw new Error(errorMessage);
+        }
+
+        const novaOrdem = await response.json();
+        ordens.push(novaOrdem);
+        lastDataHash = JSON.stringify(ordens.map(o => o.id));
+        updateDisplay();
+        await loadUltimoNumero();
+        showToast(`Ordem Nº ${novaOrdem.numero_ordem || novaOrdem.numeroOrdem} duplicada com sucesso!`, 'success');
+    } catch (error) {
+        console.error('Erro ao duplicar:', error);
+        showToast(`Erro: ${error.message}`, 'error');
+    }
+}
+
+// ============================================
+// FUNÇÕES EXISTENTES (mantidas)
+// ============================================
 
 async function loadOrdensDirectly() {
     if (currentFetchController) currentFetchController.abort();
@@ -837,7 +1058,7 @@ function showToast(message, type = 'success') {
 }
 
 // ============================================
-// GERAÇÃO DE PDF (COMPLETA)
+// GERAÇÃO DE PDF (COMPLETA) - mantida igual
 // ============================================
 function generatePDF(id) {
     const ordem = ordens.find(o => String(o.id) === String(id));
