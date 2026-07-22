@@ -1520,16 +1520,16 @@ function abrirModalEmissaoNF(id) {
             <div class="modal-content modal-delete" style="max-width:420px; min-height:280px;">
                 <button class="close-modal" onclick="fecharModalEmissaoNF('${id}')">✕</button>
                 <div style="margin-bottom:1.5rem; padding: 0 0.25rem; margin-top:1rem;">
-                    <p style="font-size:1.05rem; margin-bottom:1rem; font-weight:600;">Informe o número da NF para emitir o pedido ${pedido.codigo}</p>
+                    <p style="font-size:1.05rem; margin-bottom:1rem; font-weight:600;">Informe o número da NF para confirmar a emissão do pedido ${pedido.codigo}</p>
                     <input type="text"
                            id="emissaoNFInput"
-                           placeholder="Número da NF"
+                           placeholder="Ex: 3000"
                            value="${nfExistente}"
                            style="text-align:center; font-size:1.1rem; font-weight:600; letter-spacing:1px;"
                            onkeydown="if(event.key==='Enter') confirmarEmissaoComNF('${id}')">
                 </div>
                 <div class="modal-actions modal-actions-no-border">
-                    <button type="button" onclick="confirmarEmissaoComNF('${id}')" style="background:#22C55E; min-width:140px;">Emitir</button>
+                    <button type="button" onclick="confirmarEmissaoComNF('${id}')" style="background:#22C55E; min-width:140px;">Confirmar</button>
                     <button type="button" onclick="fecharModalEmissaoNF('${id}')" class="cancel-close" style="min-width:100px;">Cancelar</button>
                 </div>
             </div>
