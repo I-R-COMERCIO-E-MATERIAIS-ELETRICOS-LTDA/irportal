@@ -50,6 +50,23 @@ function getLabelEspecial(conta) {
 }
 
 // ============================================
+// DISTRIBUIÇÃO POR MÊS — BASEADA NA DATA DE EMISSÃO
+// ============================================
+// Regra de negócio: a conta pertence ao mês/ano em que a NF foi EMITIDA
+// (data_emissao), não ao mês em que foi paga, vencida ou criada.
+// Esse filtro é aplicado no cliente para garantir a distribuição correta
+// independentemente do que a API retornar.
+function pertenceAoPeriodo(conta, mes, ano) {
+    if (!conta.data_emissao) return false;
+    const partes = String(conta.data_emissao).split('-');
+    if (partes.length < 2) return false;
+    const anoEmissao = parseInt(partes[0], 10);
+    const mesEmissao = parseInt(partes[1], 10) - 1; // mes vem 1-based na string (YYYY-MM-DD)
+    if (Number.isNaN(anoEmissao) || Number.isNaN(mesEmissao)) return false;
+    return mesEmissao === mes && anoEmissao === ano;
+}
+
+// ============================================
 // INICIALIZAÇÃO
 // ============================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -158,8 +175,13 @@ async function loadContas(mes = currentMonth, ano = currentYear, showMsg = false
             return;
         }
 
-        contas = await response.json();
-        console.log(`✅ ${contas.length} contas carregadas para ${meses[mes]} ${ano}`);
+        const dados = await response.json();
+
+        // Garante que cada conta apareça exatamente no mês/ano da sua
+        // DATA DE EMISSÃO, independentemente de como a API filtrou/retornou.
+        contas = dados.filter(c => pertenceAoPeriodo(c, mes, ano));
+
+        console.log(`✅ ${contas.length} contas carregadas para ${meses[mes]} ${ano} (filtradas pela data de emissão)`);
 
         updateFilters();
         updateDashboard();
@@ -576,8 +598,26 @@ async function salvarConta(id, data, silencioso = false) {
         if (!DEVELOPMENT_MODE && r.status === 401) { sessionStorage.removeItem('receberSession'); mostrarTelaAcessoNegado('Sua sessão expirou'); return; }
         if (!r.ok) { const err = await r.json(); throw new Error(err.details || err.error || 'Erro ao salvar'); }
         const saved = await r.json();
-        if (id) { const idx = contas.findIndex(x => String(x.id) === String(id)); if (idx !== -1) contas[idx] = saved; }
-        else contas.push(saved);
+
+        // Só mantém a conta na lista atual se a data de emissão do registro
+        // salvo ainda pertencer ao mês/ano que está sendo exibido.
+        const pertenceAoMesAtual = pertenceAoPeriodo(saved, currentMonth, currentYear);
+        const idx = contas.findIndex(x => String(x.id) === String(id));
+
+        if (id) {
+            if (idx !== -1) {
+                if (pertenceAoMesAtual) {
+                    contas[idx] = saved;
+                } else {
+                    contas.splice(idx, 1);
+                }
+            } else if (pertenceAoMesAtual) {
+                contas.push(saved);
+            }
+        } else if (pertenceAoMesAtual) {
+            contas.push(saved);
+        }
+
         updateFilters(); updateDashboard(); filterContas();
         if (!silencioso) { showToast(id ? `NF ${data.numero_nf||''} atualizada` : `NF ${data.numero_nf||''} registrada`, 'success'); closeFormModal(); }
     } catch (err) { console.error('❌ Erro:', err); showToast(`Erro: ${err.message}`, 'error'); }
