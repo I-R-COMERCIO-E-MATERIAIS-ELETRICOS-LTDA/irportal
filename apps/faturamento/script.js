@@ -694,6 +694,7 @@ function updateTable() {
                 </th>
                 <th>Nº Pedido</th>
                 <th>Razão Social</th>
+                <th>Nº NF</th>
                 <th>Data Emissão</th>
                 <th>Valor Total</th>
                 <th>Status</th>
@@ -705,6 +706,7 @@ function updateTable() {
             <tr>
                 <th>Nº Pedido</th>
                 <th>Razão Social</th>
+                <th>Nº NF</th>
                 <th>Data Emissão</th>
                 <th>Valor Total</th>
                 <th>Status</th>
@@ -716,7 +718,7 @@ function updateTable() {
 
     if (filtered.length === 0) {
         if (currentFetchController) return;
-        const colspan = canToggle ? 7 : 6;
+        const colspan = canToggle ? 8 : 7;
         container.innerHTML = `<tr><td colspan="${colspan}" style="text-align:center;padding:2rem;">Nenhum registro encontrado</td></tr>`;
         return;
     }
@@ -759,12 +761,17 @@ function updateTable() {
             </td>
         `;
 
+        const nfCell = canToggle
+            ? `<td onclick="event.stopPropagation(); abrirModalDefinirNF('${pedido.id}')" style="cursor:pointer; text-decoration: underline dotted; text-underline-offset: 3px;" title="Clique para definir/editar o número da NF">${pedido.numero_nf || '-'}</td>`
+            : `<td>${pedido.numero_nf || '-'}</td>`;
+
         if (canToggle) {
             return `
             <tr class="${emitida ? 'row-fechada' : ''}" data-id="${pedido.id}" style="cursor:pointer;">
                 ${firstCell}
                 <td><strong>${pedido.codigo}</strong></td>
                 <td>${pedido.razao_social}</td>
+                ${nfCell}
                 <td>${dataEmissao}</td>
                 <td><strong>${pedido.valor_total || 'R$ 0,00'}</strong></td>
                 <td>
@@ -779,6 +786,7 @@ function updateTable() {
             <tr class="${emitida ? 'row-fechada' : ''}" data-id="${pedido.id}" style="cursor:pointer;">
                 <td><strong>${pedido.codigo}</strong></td>
                 <td>${pedido.razao_social}</td>
+                ${nfCell}
                 <td>${dataEmissao}</td>
                 <td><strong>${pedido.valor_total || 'R$ 0,00'}</strong></td>
                 <td>
@@ -822,9 +830,18 @@ async function openFormModal() {
         responsavelInput.value = responsavelAuto;
     }
 
+    updateNumeroNFVisibility();
     activateTab(0);
     document.getElementById('formModal').classList.add('show');
     updateTransportadoraSelects();
+}
+
+// Mostra/esconde e habilita o campo "Nº Nota Fiscal" apenas para quem tem
+// permissão de emissão (mesma regra da caixa de marcação da tabela).
+function updateNumeroNFVisibility() {
+    const canToggle = userCanToggleEmissao();
+    const group = document.getElementById('numeroNFGroup');
+    if (group) group.style.display = canToggle ? '' : 'none';
 }
 
 function closeFormModal(silent = false) {
@@ -1113,7 +1130,14 @@ async function savePedido() {
     if (items.length > 0) {
         pedido.items = items;
     }
-    
+
+    // Nº NF só é enviado quando o usuário tem permissão de edição.
+    // Assim, quem não vê o campo nunca sobrescreve o valor já salvo.
+    if (userCanToggleEmissao()) {
+        const numeroNFInput = document.getElementById('numeroNF');
+        pedido.numero_nf = numeroNFInput ? (numeroNFInput.value.trim() || null) : null;
+    }
+
     if (!editingId) {
         pedido.responsavel = responsavel;
         pedido.status = 'pendente';
@@ -1174,7 +1198,11 @@ async function editPedido(id) {
     
     document.getElementById('codigo').value = pedido.codigo;
     document.getElementById('documento').value = pedido.documento || '';
-    
+
+    updateNumeroNFVisibility();
+    const numeroNFInput = document.getElementById('numeroNF');
+    if (numeroNFInput) numeroNFInput.value = pedido.numero_nf || '';
+
     if (pedido.responsavel) {
         document.getElementById('responsavel').value = pedido.responsavel;
     }
@@ -1613,6 +1641,78 @@ async function executarEmissao(id) {
 }
 
 // ============================================
+// DEFINIR NÚMERO DA NF (coluna da tabela)
+// ============================================
+function abrirModalDefinirNF(id) {
+    if (!userCanToggleEmissao()) return;
+
+    const pedido = pedidos.find(p => p.id === id);
+    if (!pedido) return;
+
+    const existing = document.getElementById('definirNFModal');
+    if (existing) existing.remove();
+
+    const modalHTML = `
+        <div class="modal-overlay" id="definirNFModal" style="display:flex;">
+            <div class="modal-content modal-delete" style="max-width:420px; min-height:260px;">
+                <button class="close-modal" onclick="fecharModalDefinirNF()">✕</button>
+                <div style="margin-bottom:1.5rem; padding: 0 0.25rem; margin-top:1rem;">
+                    <p style="font-size:1.05rem; margin-bottom:1rem; font-weight:600;">Qual é o número da NF para este pedido?</p>
+                    <input type="text"
+                           id="definirNFInput"
+                           placeholder="Número da NF"
+                           value="${pedido.numero_nf ? pedido.numero_nf.replace(/"/g, '&quot;') : ''}"
+                           style="text-align:center; font-size:1.1rem; font-weight:600; letter-spacing:1px;"
+                           onkeydown="if(event.key==='Enter') confirmarDefinirNF('${id}')">
+                </div>
+                <div class="modal-actions modal-actions-no-border">
+                    <button type="button" onclick="confirmarDefinirNF('${id}')" style="background:#22C55E; min-width:140px;">Salvar</button>
+                    <button type="button" onclick="fecharModalDefinirNF()" class="cancel-close" style="min-width:100px;">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    setTimeout(() => document.getElementById('definirNFInput')?.focus(), 100);
+}
+
+function fecharModalDefinirNF() {
+    const modal = document.getElementById('definirNFModal');
+    if (modal) {
+        modal.style.animation = 'fadeOut 0.2s ease forwards';
+        setTimeout(() => modal.remove(), 200);
+    }
+}
+
+async function confirmarDefinirNF(id) {
+    if (!userCanToggleEmissao()) return;
+
+    const pedido = pedidos.find(p => p.id === id);
+    if (!pedido) return;
+
+    const input = document.getElementById('definirNFInput');
+    const valor = input?.value?.trim() || '';
+
+    fecharModalDefinirNF();
+
+    try {
+        const response = await fetch(`${API_URL}/pedidos/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
+            body: JSON.stringify({ numero_nf: valor || null })
+        });
+
+        if (!response.ok) throw new Error('Erro ao salvar número da NF');
+
+        await loadPedidos();
+        showMessage(`Nº NF do pedido ${pedido.codigo} atualizado`, 'success');
+    } catch (error) {
+        console.error('Erro ao salvar NF:', error);
+        showMessage('Erro ao salvar número da NF', 'error');
+    }
+}
+
+// ============================================
 // GERAR ETIQUETA AUTOMÁTICA (com modal para NF)
 // ============================================
 function gerarEtiqueta(id) {
@@ -1634,6 +1734,9 @@ function showNFModal(pedidoId) {
     const existing = document.getElementById('nfModal');
     if (existing) existing.remove();
 
+    const pedidoRef = pedidos.find(p => p.id === pedidoId);
+    const nfExistente = pedidoRef?.numero_nf ? pedidoRef.numero_nf.replace(/"/g, '&quot;') : '';
+
     const modalHTML = `
         <div class="modal-overlay" id="nfModal" style="display:flex;">
             <div class="modal-content modal-delete" style="max-width:420px; min-height:260px;">
@@ -1642,6 +1745,7 @@ function showNFModal(pedidoId) {
                     <input type="text"
                            id="nfInput"
                            placeholder="Número da NF"
+                           value="${nfExistente}"
                            style="text-align:center; font-size:1.1rem; font-weight:600; letter-spacing:1px;"
                            onkeydown="if(event.key==='Enter') confirmarGerarEtiqueta('${pedidoId}')">
                 </div>
