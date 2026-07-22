@@ -32,17 +32,20 @@
 
             <!-- Dashboard Cards -->
             <div class="dashboard-grid">
-                <div class="stat-card stat-card-warning">
-                    <div class="stat-icon stat-icon-warning">
+                <!-- Entregas Realizadas – agora com cor verde (success) -->
+                <div class="stat-card stat-card-success">
+                    <div class="stat-icon stat-icon-success">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="20 6 9 17 4 12"></polyline>
                         </svg>
                     </div>
                     <div class="stat-content">
-                        <div class="stat-value stat-value-warning" id="statEntregues">0</div>
+                        <div class="stat-value stat-value-success" id="statEntregues">0</div>
                         <div class="stat-label">Entregas Realizadas</div>
                     </div>
                 </div>
+
+                <!-- Fora do Prazo (mantém vermelho) -->
                 <div class="stat-card stat-card-danger" id="cardForaPrazo" onclick="showAlertModal()" style="cursor: pointer;" title="Clique para ver detalhes">
                     <div class="stat-icon stat-icon-danger">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -56,6 +59,8 @@
                         <div class="stat-label">Fora do Prazo</div>
                     </div>
                 </div>
+
+                <!-- Em Trânsito (universal – mantém cinza) -->
                 <div class="stat-card">
                     <div class="stat-icon stat-icon-default">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -67,6 +72,8 @@
                         <div class="stat-label">Em Trânsito</div>
                     </div>
                 </div>
+
+                <!-- Valor Faturado (antigo Valor Total) – cor verde -->
                 <div class="stat-card stat-card-success">
                     <div class="stat-icon stat-icon-success">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -76,9 +83,11 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-value stat-value-success" id="statValorTotal">R$ 0,00</div>
-                        <div class="stat-label">Valor Total</div>
+                        <div class="stat-label">Valor Faturado</div>
                     </div>
                 </div>
+
+                <!-- Valor Frete (antigo Frete Total) – cor azul (info) -->
                 <div class="stat-card stat-card-info">
                     <div class="stat-icon stat-icon-info">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -90,7 +99,7 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-value stat-value-info" id="statFrete">R$ 0,00</div>
-                        <div class="stat-label">Frete Total</div>
+                        <div class="stat-label">Valor Frete</div>
                     </div>
                 </div>
             </div>
