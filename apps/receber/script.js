@@ -143,6 +143,9 @@ async function checkServerStatus() {
     }
 }
 
+// ============================================
+// CARREGAR CONTAS — AGORA SEM FILTRO NA API
+// ============================================
 async function loadContas(mes = currentMonth, ano = currentYear, showMsg = false) {
     if (!isOnline && !DEVELOPMENT_MODE) {
         if (showMsg) showToast('Sistema offline. Não foi possível sincronizar.', 'error');
@@ -150,11 +153,10 @@ async function loadContas(mes = currentMonth, ano = currentYear, showMsg = false
     }
 
     try {
-        const url = new URL(`${API_URL}/receber`);
-        url.searchParams.append('mes', mes);
-        url.searchParams.append('ano', ano);
+        // Requisição SEM parâmetros de mês/ano – traz TODAS as contas
+        const url = `${API_URL}/receber`;
 
-        const response = await fetch(url.toString(), {
+        const response = await fetch(url, {
             method: 'GET',
             headers: {
                 'X-Session-Token': sessionToken,
@@ -177,8 +179,7 @@ async function loadContas(mes = currentMonth, ano = currentYear, showMsg = false
 
         const dados = await response.json();
 
-        // Garante que cada conta apareça exatamente no mês/ano da sua
-        // DATA DE EMISSÃO, independentemente de como a API filtrou/retornou.
+        // Filtra localmente as contas cuja data de emissão pertence ao mês/ano selecionado
         contas = dados.filter(c => pertenceAoPeriodo(c, mes, ano));
 
         console.log(`✅ ${contas.length} contas carregadas para ${meses[mes]} ${ano} (filtradas pela data de emissão)`);
