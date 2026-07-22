@@ -124,74 +124,7 @@ function inicializarApp() {
     loadUltimoNumero();
     loadFornecedoresGlobal();
     setInterval(() => loadOrdensDirectly(), 10000);
-    adicionarBotaoDuplicar(); // 👈 adiciona o botão "++ Duplicar Ordem"
-}
-
-// ============================================
-// BOTÃO DUPLICAR ORDEM
-// ============================================
-function adicionarBotaoDuplicar() {
-    // Procura pelo botão "Nova Ordem" existente
-    const btnNovo = document.querySelector('.btn-new-order-header, button[onclick*="openFormModal"]');
-    if (!btnNovo) {
-        // Se não encontrar, tenta inserir no header
-        const headerRight = document.querySelector('.header .header-left + *') || document.querySelector('.header');
-        if (headerRight) {
-            const btnDuplicar = document.createElement('button');
-            btnDuplicar.className = 'btn-duplicar-order-header';
-            btnDuplicar.innerHTML = '++ Duplicar Ordem';
-            btnDuplicar.onclick = abrirModalDuplicar;
-            btnDuplicar.style.cssText = `
-                background: #8B5CF6;
-                color: white;
-                border: none;
-                padding: 0.65rem 1.5rem;
-                border-radius: 8px;
-                cursor: pointer;
-                font-size: 0.9rem;
-                font-weight: 600;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                gap: 0.5rem;
-                transition: all 0.3s ease;
-                box-shadow: 0 1px 3px rgba(139, 92, 246, 0.3);
-                white-space: nowrap;
-                margin-left: 0.5rem;
-            `;
-            btnDuplicar.onmouseover = () => { btnDuplicar.style.background = '#7C3AED'; btnDuplicar.style.transform = 'translateY(-1px)'; };
-            btnDuplicar.onmouseout = () => { btnDuplicar.style.background = '#8B5CF6'; btnDuplicar.style.transform = 'none'; };
-            headerRight.appendChild(btnDuplicar);
-        }
-        return;
-    }
-    // Se encontrou, insere ao lado dele
-    const parent = btnNovo.parentNode;
-    const btnDuplicar = document.createElement('button');
-    btnDuplicar.className = 'btn-duplicar-order-header';
-    btnDuplicar.innerHTML = '++ Duplicar Ordem';
-    btnDuplicar.onclick = abrirModalDuplicar;
-    btnDuplicar.style.cssText = `
-        background: #8B5CF6;
-        color: white;
-        border: none;
-        padding: 0.65rem 1.5rem;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 0.9rem;
-        font-weight: 600;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-        transition: all 0.3s ease;
-        box-shadow: 0 1px 3px rgba(139, 92, 246, 0.3);
-        white-space: nowrap;
-        margin-left: 0.5rem;
-    `;
-    btnDuplicar.onmouseover = () => { btnDuplicar.style.background = '#7C3AED'; btnDuplicar.style.transform = 'translateY(-1px)'; };
-    btnDuplicar.onmouseout = () => { btnDuplicar.style.background = '#8B5CF6'; btnDuplicar.style.transform = 'none'; };
-    parent.insertBefore(btnDuplicar, btnNovo.nextSibling);
+    // Botão Duplicar Ordem já está fixo no HTML — nenhuma inserção automática é necessária
 }
 
 // ============================================
@@ -212,7 +145,7 @@ function abrirModalDuplicar() {
                     <div id="duplicarErro" style="color: #EF4444; font-size: 0.9rem; margin-top: 0.5rem; display: none;">Esta ordem de compra ainda não existe.</div>
                 </div>
                 <div class="modal-actions modal-actions-no-border" style="justify-content: center;">
-                    <button type="button" id="btnDuplicarConfirmar" style="background: #8B5CF6; min-width: 140px;">Duplicar</button>
+                    <button type="button" id="btnDuplicarConfirmar" class="success" style="background: #22C55E; min-width: 140px;">Confirmar</button>
                     <button type="button" onclick="fecharModalDuplicar()" class="secondary" style="min-width: 100px;">Cancelar</button>
                 </div>
             </div>
@@ -1058,7 +991,7 @@ function showToast(message, type = 'success') {
 }
 
 // ============================================
-// GERAÇÃO DE PDF (COMPLETA) - mantida igual
+// GERAÇÃO DE PDF (COMPLETA)
 // ============================================
 function generatePDF(id) {
     const ordem = ordens.find(o => String(o.id) === String(id));
