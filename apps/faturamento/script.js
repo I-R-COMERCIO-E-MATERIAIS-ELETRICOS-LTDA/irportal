@@ -1492,43 +1492,177 @@ async function toggleEmissao(id, checked) {
     if (!pedido) return;
 
     if (checked && pedido.status === 'pendente') {
-        if (!pedido.cnpj || !pedido.razao_social || !pedido.endereco) {
-            showMessage(`Não existem informações suficientes para o pedido ${pedido.codigo}`, 'error');
-            document.getElementById(`check-${id}`).checked = false;
-            return;
-        }
+        // Abrir modal para solicitar o número da NF antes de emitir
+        abrirModalEmissaoNF(id);
+        // Não prosseguir com a emissão diretamente
+        return;
+    } else if (!checked && pedido.status === 'emitida') {
+        // Reverter emissão
+        // Manter checkbox marcado enquanto processa
+        document.getElementById(`check-${id}`).checked = true;
+        await executarReverterEmissao(id);
+    }
+}
 
-        const items = Array.isArray(pedido.items) ? pedido.items : [];
-        const hasStockCode = items.some(item => item.codigoEstoque && item.codigoEstoque.trim() !== '');
+// ── Modal para emissão com NF ──────────────────────────────────────────────
+function abrirModalEmissaoNF(id) {
+    const pedido = pedidos.find(p => p.id === id);
+    if (!pedido) return;
 
-        if (!hasStockCode) {
-            await executarEmissaoSemEstoque(id);
-            return;
-        }
+    // Remove modal existente
+    const existing = document.getElementById('emissaoNFModal');
+    if (existing) existing.remove();
 
-        let estoqueInsuficiente = false;
+    const nfExistente = pedido.numero_nf ? pedido.numero_nf.replace(/"/g, '&quot;') : '';
+
+    const modalHTML = `
+        <div class="modal-overlay" id="emissaoNFModal" style="display:flex;">
+            <div class="modal-content modal-delete" style="max-width:420px; min-height:280px;">
+                <button class="close-modal" onclick="fecharModalEmissaoNF('${id}')">✕</button>
+                <div style="margin-bottom:1.5rem; padding: 0 0.25rem; margin-top:1rem;">
+                    <p style="font-size:1.05rem; margin-bottom:1rem; font-weight:600;">Informe o número da NF para emitir o pedido ${pedido.codigo}</p>
+                    <input type="text"
+                           id="emissaoNFInput"
+                           placeholder="Número da NF"
+                           value="${nfExistente}"
+                           style="text-align:center; font-size:1.1rem; font-weight:600; letter-spacing:1px;"
+                           onkeydown="if(event.key==='Enter') confirmarEmissaoComNF('${id}')">
+                </div>
+                <div class="modal-actions modal-actions-no-border">
+                    <button type="button" onclick="confirmarEmissaoComNF('${id}')" style="background:#22C55E; min-width:140px;">Emitir</button>
+                    <button type="button" onclick="fecharModalEmissaoNF('${id}')" class="cancel-close" style="min-width:100px;">Cancelar</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    setTimeout(() => document.getElementById('emissaoNFInput')?.focus(), 100);
+}
+
+function fecharModalEmissaoNF(id) {
+    const modal = document.getElementById('emissaoNFModal');
+    if (modal) {
+        modal.style.animation = 'fadeOut 0.2s ease forwards';
+        setTimeout(() => {
+            modal.remove();
+            // Desmarcar checkbox se o usuário cancelou
+            const cb = document.getElementById(`check-${id}`);
+            if (cb) cb.checked = false;
+        }, 200);
+    }
+}
+
+async function confirmarEmissaoComNF(id) {
+    const input = document.getElementById('emissaoNFInput');
+    const nf = input?.value?.trim() || '';
+
+    if (!nf) {
+        showMessage('Informe o número da NF!', 'error');
+        return;
+    }
+
+    // Fechar modal
+    const modal = document.getElementById('emissaoNFModal');
+    if (modal) modal.remove();
+
+    const pedido = pedidos.find(p => p.id === id);
+    if (!pedido) return;
+
+    // Verificar se há itens com código de estoque
+    const items = Array.isArray(pedido.items) ? pedido.items : [];
+    const hasStockCode = items.some(item => item.codigoEstoque && item.codigoEstoque.trim() !== '');
+
+    if (hasStockCode) {
+        await executarEmissao(id, nf);
+    } else {
+        await executarEmissaoSemEstoque(id, nf);
+    }
+}
+
+async function executarEmissao(id, numero_nf = null) {
+    const pedido = pedidos.find(p => p.id === id);
+    if (!pedido) return;
+    const items = Array.isArray(pedido.items) ? pedido.items : [];
+
+    try {
+        const checkboxLabel = document.querySelector(`label[for="check-${id}"]`);
+        if (checkboxLabel) { checkboxLabel.style.opacity = '0.5'; checkboxLabel.style.pointerEvents = 'none'; }
+
         for (const item of items) {
             if (!item.codigoEstoque) continue;
             const itemEstoque = estoqueCache[item.codigoEstoque];
-            if (!itemEstoque) {
-                showMessage(`Código ${item.codigoEstoque} não encontrado no estoque`, 'error');
-                document.getElementById(`check-${id}`).checked = false;
-                return;
-            }
-            const quantidadeDisponivel = parseFloat(itemEstoque.quantidade) || 0;
-            if (item.quantidade > quantidadeDisponivel) {
-                showMessage(`A quantidade em estoque para o item ${item.codigoEstoque} é insuficiente para atender o pedido`, 'error');
-                estoqueInsuficiente = true;
-            }
+            if (!itemEstoque) continue;
+            const novaQuantidade = parseFloat(itemEstoque.quantidade) - item.quantidade;
+            const resp = await fetch(`${API_URL}/estoque/${itemEstoque.codigo}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
+                body: JSON.stringify({ quantidade: novaQuantidade })
+            });
+            if (!resp.ok) throw new Error('Erro ao atualizar estoque');
         }
-        if (estoqueInsuficiente) {
-            document.getElementById(`check-${id}`).checked = false;
-            return;
+
+        const payload = { 
+            status: 'emitida', 
+            data_emissao: new Date().toISOString() 
+        };
+        if (numero_nf !== null) {
+            payload.numero_nf = numero_nf;
         }
-        await executarEmissao(id);
-    } else if (!checked && pedido.status === 'emitida') {
-        document.getElementById(`check-${id}`).checked = true;
-        await executarReverterEmissao(id);
+
+        const response = await fetch(`${API_URL}/pedidos/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error('Erro ao atualizar pedido');
+
+        await Promise.all([loadPedidos(), loadEstoque()]);
+
+        if (checkboxLabel) { checkboxLabel.style.opacity = '1'; checkboxLabel.style.pointerEvents = 'auto'; }
+
+        showMessage(`Pedido ${pedido.codigo} emitido`, 'success');
+    } catch (error) {
+        console.error('Erro ao emitir:', error);
+        showMessage('Erro ao emitir pedido', 'error');
+        const cb = document.getElementById(`check-${id}`);
+        if (cb) cb.checked = false;
+    }
+}
+
+async function executarEmissaoSemEstoque(id, numero_nf = null) {
+    try {
+        const pedido = pedidos.find(p => p.id === id);
+        if (!pedido) return;
+
+        const checkboxLabel = document.querySelector(`label[for="check-${id}"]`);
+        if (checkboxLabel) { checkboxLabel.style.opacity = '0.5'; checkboxLabel.style.pointerEvents = 'none'; }
+
+        const payload = {
+            status: 'emitida',
+            data_emissao: new Date().toISOString()
+        };
+        if (numero_nf !== null) {
+            payload.numero_nf = numero_nf;
+        }
+
+        const response = await fetch(`${API_URL}/pedidos/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error('Erro ao atualizar pedido');
+
+        await loadPedidos();
+
+        if (checkboxLabel) { checkboxLabel.style.opacity = '1'; checkboxLabel.style.pointerEvents = 'auto'; }
+        showMessage(`Pedido ${pedido.codigo} emitido sem referência de estoque`, 'error');
+    } catch (error) {
+        console.error('Erro ao emitir:', error);
+        showMessage('Erro ao emitir pedido', 'error');
+        const cb = document.getElementById(`check-${id}`);
+        if (cb) cb.checked = false;
     }
 }
 
@@ -1565,78 +1699,6 @@ async function executarReverterEmissao(id) {
         showMessage('Erro ao reverter emissão!', 'error');
         const cb = document.getElementById(`check-${id}`);
         if (cb) cb.checked = true;
-    }
-}
-
-async function executarEmissaoSemEstoque(id) {
-    try {
-        const pedido = pedidos.find(p => p.id === id);
-        if (!pedido) return;
-
-        const checkboxLabel = document.querySelector(`label[for="check-${id}"]`);
-        if (checkboxLabel) { checkboxLabel.style.opacity = '0.5'; checkboxLabel.style.pointerEvents = 'none'; }
-
-        const response = await fetch(`${API_URL}/pedidos/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
-            body: JSON.stringify({ status: 'emitida', data_emissao: new Date().toISOString() })
-        });
-
-        if (!response.ok) throw new Error('Erro ao atualizar pedido');
-
-        await loadPedidos();
-
-        if (checkboxLabel) { checkboxLabel.style.opacity = '1'; checkboxLabel.style.pointerEvents = 'auto'; }
-        showMessage(`Pedido ${pedido.codigo} emitido sem referência de estoque`, 'error');
-    } catch (error) {
-        console.error('Erro ao emitir:', error);
-        showMessage('Erro ao emitir pedido', 'error');
-        const cb = document.getElementById(`check-${id}`);
-        if (cb) cb.checked = false;
-    }
-}
-
-async function executarEmissao(id) {
-    const pedido = pedidos.find(p => p.id === id);
-    if (!pedido) return;
-    const items = Array.isArray(pedido.items) ? pedido.items : [];
-
-    try {
-        const checkboxLabel = document.querySelector(`label[for="check-${id}"]`);
-        if (checkboxLabel) { checkboxLabel.style.opacity = '0.5'; checkboxLabel.style.pointerEvents = 'none'; }
-
-        for (const item of items) {
-            if (!item.codigoEstoque) continue;
-            const itemEstoque = estoqueCache[item.codigoEstoque];
-            if (!itemEstoque) continue;
-            const novaQuantidade = parseFloat(itemEstoque.quantidade) - item.quantidade;
-            const resp = await fetch(`${API_URL}/estoque/${itemEstoque.codigo}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
-                body: JSON.stringify({ quantidade: novaQuantidade })
-            });
-            if (!resp.ok) throw new Error('Erro ao atualizar estoque');
-        }
-
-        const response = await fetch(`${API_URL}/pedidos/${id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'X-Session-Token': sessionToken },
-            body: JSON.stringify({ status: 'emitida', data_emissao: new Date().toISOString() })
-        });
-
-        if (!response.ok) throw new Error('Erro ao atualizar pedido');
-
-        await Promise.all([loadPedidos(), loadEstoque()]);
-
-        if (checkboxLabel) { checkboxLabel.style.opacity = '1'; checkboxLabel.style.pointerEvents = 'auto'; }
-
-        const codigosDescontados = items.map(i => i.codigoEstoque).filter(Boolean).join(', ');
-        showMessage(`Pedido ${pedido.codigo} emitido`, 'success');
-    } catch (error) {
-        console.error('Erro ao emitir:', error);
-        showMessage('Erro ao emitir pedido', 'error');
-        const cb = document.getElementById(`check-${id}`);
-        if (cb) cb.checked = false;
     }
 }
 
