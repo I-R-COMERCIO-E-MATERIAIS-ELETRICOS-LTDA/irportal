@@ -948,7 +948,7 @@ window.showFormModal = function(editingId = null) {
                                 </div>
                                 <div class="form-group">
                                     <label for="cidade_destino">Cidade/UF</label>
-                                    <input type="text" id="cidade_destino" value="${frete?.cidade_destino || ''}" placeholder="Ex: São Paulo-SP">
+                                    <input type="text" id="cidade_destino" value="${frete?.cidade_destino || ''}" placeholder="Ex: São Paulo/SP">
                                 </div>
                             </div>
                         </div>
