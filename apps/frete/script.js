@@ -947,7 +947,7 @@ window.showFormModal = function(editingId = null) {
                                     <input type="text" id="contato_orgao" value="${frete?.contato_orgao || ''}">
                                 </div>
                                 <div class="form-group">
-                                    <label for="cidade_destino">Cidade-UF (Destino)</label>
+                                    <label for="cidade_destino">Cidade/UF</label>
                                     <input type="text" id="cidade_destino" value="${frete?.cidade_destino || ''}" placeholder="Ex: São Paulo-SP">
                                 </div>
                             </div>
