@@ -291,7 +291,7 @@ window.handleCheckboxChange = async function(id) {
         // Usuário cancelou: desmarcar o checkbox
         const cb = document.getElementById(`check-${idStr}`);
         if (cb) cb.checked = false;
-        showToast('Confirmação de entrega revogada', 'error');
+        showToast('Entrega cancelada', 'error');
         return;
     }
     
@@ -684,30 +684,39 @@ function updateDashboard() {
         return;
     }
     
+    // Filtro por mês atual para a maioria dos indicadores
     const fretesMesAtual = fretes.filter(f => {
         const data = new Date(f.data_emissao + 'T00:00:00');
         return data.getMonth() === currentMonth.getMonth() && data.getFullYear() === currentMonth.getFullYear();
     });
 
     const tiposComStatus = ['ENVIO', 'SIMPLES_REMESSA', 'REMESSA_AMOSTRA'];
+    
+    // Filtro para tipos que possuem status (usado para Entregues e Fora do Prazo)
     const fretesComStatusMesAtual = fretesMesAtual.filter(f => {
         const tipo = f.tipo_nf || 'ENVIO';
         return tiposComStatus.includes(tipo);
     });
     
+    // Todos os fretes com status (para Fora do Prazo e Em Trânsito universal)
     const fretesComStatusTodos = fretes.filter(f => {
         const tipo = f.tipo_nf || 'ENVIO';
         return tiposComStatus.includes(tipo);
     });
     
+    // Fretes do tipo ENVIO (para somar valores)
     const fretesEnvio = fretesMesAtual.filter(f => !f.tipo_nf || f.tipo_nf === 'ENVIO');
 
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     
+    // ── Entregues (apenas mês atual) ──
     const entregues = fretesComStatusMesAtual.filter(f => f.status === 'ENTREGUE').length;
-    const transito = fretesComStatusMesAtual.filter(f => f.status === 'EM_TRANSITO').length;
     
+    // ── Em Trânsito (TODOS, independente do mês) ──
+    const transito = fretesComStatusTodos.filter(f => f.status === 'EM_TRANSITO').length;
+    
+    // ── Fora do Prazo (TODOS, independente do mês) ──
     const foraPrazo = fretesComStatusTodos.filter(f => {
         if (f.status === 'ENTREGUE') return false;
         if (!f.previsao_entrega) return false;
@@ -716,15 +725,18 @@ function updateDashboard() {
         return previsao < hoje;
     }).length;
     
+    // ── Valores (apenas mês atual e tipo ENVIO) ──
     const valorTotal = fretesEnvio.reduce((sum, f) => sum + parseFloat(f.valor_nf || 0), 0);
     const freteTotal = fretesEnvio.reduce((sum, f) => sum + parseFloat(f.valor_frete || 0), 0);
     
+    // Atualiza os textos
     statEntregues.textContent = entregues;
     statForaPrazo.textContent = foraPrazo;
     statTransito.textContent = transito;
     statValorTotal.textContent = `R$ ${valorTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     statFrete.textContent = `R$ ${freteTotal.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
     
+    // ── Badge de alerta para Fora do Prazo ──
     const cardForaPrazo = document.getElementById('cardForaPrazo');
     if (!cardForaPrazo) return;
     
@@ -947,8 +959,8 @@ window.showFormModal = function(editingId = null) {
                                     <input type="text" id="contato_orgao" value="${frete?.contato_orgao || ''}">
                                 </div>
                                 <div class="form-group">
-                                    <label for="cidade_destino">Cidade/UF</label>
-                                    <input type="text" id="cidade_destino" value="${frete?.cidade_destino || ''}" placeholder="Ex: São Paulo/SP">
+                                    <label for="cidade_destino">Cidade-UF (Destino)</label>
+                                    <input type="text" id="cidade_destino" value="${frete?.cidade_destino || ''}" placeholder="Ex: São Paulo-SP">
                                 </div>
                             </div>
                         </div>
@@ -980,7 +992,7 @@ window.showFormModal = function(editingId = null) {
                                     <input type="date" id="data_entrega" value="${frete?.data_entrega || ''}">
                                 </div>
                                 <div class="form-group">
-                                    <label for="cotacao">Ref. Cotação de Frete</label>
+                                    <label for="cotacao">Cotação</label>
                                     <input type="text" id="cotacao" value="${frete?.cotacao || ''}" placeholder="Ex: 123">
                                 </div>
                             </div>
