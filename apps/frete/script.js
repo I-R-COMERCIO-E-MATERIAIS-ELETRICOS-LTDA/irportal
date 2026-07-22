@@ -980,7 +980,7 @@ window.showFormModal = function(editingId = null) {
                                     <input type="date" id="data_entrega" value="${frete?.data_entrega || ''}">
                                 </div>
                                 <div class="form-group">
-                                    <label for="cotacao">Cotação</label>
+                                    <label for="cotacao">Ref. Cotação de Frete</label>
                                     <input type="text" id="cotacao" value="${frete?.cotacao || ''}" placeholder="Ex: 123">
                                 </div>
                             </div>
