@@ -7,20 +7,14 @@ module.exports = function (supabase) {
     const router = express.Router();
 
     // ─── LISTAR CONTAS A RECEBER ─────────────────────────────────────────────────
-    // Suporte a query params: ?mes=1&ano=2026 para filtrar por mês/ano
+    // Agora retorna TODAS as contas, sem filtro por mês/ano.
+    // A distribuição mensal é feita no frontend com base na data de emissão.
     router.get('/', async (req, res) => {
         try {
-            const { mes, ano } = req.query;
-            let query = supabase.from('contas_receber').select('*');
-
-            if (mes && ano) {
-                const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
-                const ultimoDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
-                const fim = `${ano}-${String(mes).padStart(2, '0')}-${ultimoDia}`;
-                query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
-            }
-
-            const { data, error } = await query.order('data_emissao', { ascending: false });
+            const { data, error } = await supabase
+                .from('contas_receber')
+                .select('*')
+                .order('data_emissao', { ascending: false });
 
             if (error) throw error;
             res.json(data);
@@ -197,20 +191,13 @@ module.exports = function (supabase) {
     });
 
     // ─── RELATÓRIO RESUMIDO ──────────────────────────────────────────────────────
+    // Agora sem filtro de mês/ano – considera todas as contas.
     router.get('/relatorio/resumo', async (req, res) => {
         try {
-            const { mes, ano } = req.query;
+            const { data, error } = await supabase
+                .from('contas_receber')
+                .select('*');
 
-            let query = supabase.from('contas_receber').select('*');
-
-            if (mes && ano) {
-                const inicio = `${ano}-${String(mes).padStart(2, '0')}-01`;
-                const fimDia = new Date(parseInt(ano), parseInt(mes), 0).getDate();
-                const fim = `${ano}-${String(mes).padStart(2, '0')}-${fimDia}`;
-                query = query.gte('data_emissao', inicio).lte('data_emissao', fim);
-            }
-
-            const { data, error } = await query;
             if (error) throw error;
 
             const totalPago = data
