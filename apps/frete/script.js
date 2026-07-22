@@ -1555,4 +1555,64 @@ function renderAlertModalPage() {
         return;
     }
     const totalPages = Math.ceil(foraDoPrazo.length / ALERT_PAGE_SIZE);
-    const start = (alertModalPage
+    const start = (alertModalPage - 1) * ALERT_PAGE_SIZE;
+    const pageData = foraDoPrazo.slice(start, start + ALERT_PAGE_SIZE);
+    modalBody.innerHTML = `
+        <div style="overflow-x: auto;">
+            <table style="font-size: 0.85rem;">
+                <thead>
+                    <tr>
+                        <th style="padding: 8px 10px;">Nº NF</th>
+                        <th style="padding: 8px 10px;">Emissão</th>
+                        <th style="padding: 8px 10px;">Órgão</th>
+                        <th style="padding: 8px 10px;">Vendedor</th>
+                        <th style="padding: 8px 10px;">Previsão</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${pageData.map(f => `
+                        <tr>
+                            <td style="padding: 8px 10px;"><strong>${f.numero_nf || '-'}</strong></td>
+                            <td style="padding: 8px 10px; white-space: nowrap;">${formatDate(f.data_emissao)}</td>
+                            <td style="padding: 8px 10px; max-width: 160px; word-break: break-word; white-space: normal;">${f.nome_orgao || '-'}</td>
+                            <td style="padding: 8px 10px; white-space: nowrap;">${f.vendedor && f.vendedor !== 'NÃO INFORMADO' ? f.vendedor : '-'}</td>
+                            <td style="padding: 8px 10px; white-space: nowrap; color: #EF4444; font-weight: 600;">${formatDate(f.previsao_entrega)}</td>
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+        ${totalPages > 1 ? `
+        <div class="alert-pagination">
+            <button class="alert-page-btn" onclick="changeAlertPage(-1)" ${alertModalPage === 1 ? 'disabled' : ''}>‹</button>
+            <span class="alert-page-info">${alertModalPage} / ${totalPages}</span>
+            <button class="alert-page-btn" onclick="changeAlertPage(1)" ${alertModalPage === totalPages ? 'disabled' : ''}>›</button>
+        </div>
+        ` : ''}
+    `;
+}
+
+window.changeAlertPage = function(direction) {
+    const totalPages = Math.ceil(alertModalData.length / ALERT_PAGE_SIZE);
+    alertModalPage = Math.max(1, Math.min(totalPages, alertModalPage + direction));
+    renderAlertModalPage();
+};
+
+window.closeAlertModal = function() {
+    const alertModal = document.getElementById('alertModal');
+    if (alertModal) {
+        alertModal.style.display = 'none';
+    }
+};
+
+window.addEventListener('beforeunload', () => {
+    sessionStorage.removeItem('alertShown');
+});
+
+console.log('✅ Script completo carregado com sucesso!');
+console.log('🔧 Funções exportadas para window:', {
+    toggleForm: typeof window.toggleForm,
+    showFormModal: typeof window.showFormModal,
+    handleEditClick: typeof window.handleEditClick,
+    handleSubmit: typeof window.handleSubmit
+});
