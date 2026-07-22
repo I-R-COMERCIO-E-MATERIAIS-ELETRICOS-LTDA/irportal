@@ -48,7 +48,7 @@ module.exports = function (supabase) {
                 numero_nf, data_emissao, documento, valor_nf, tipo_nf,
                 nome_orgao, contato_orgao, vendedor, transportadora,
                 valor_frete, data_coleta, cidade_destino, previsao_entrega,
-                data_entrega, observacoes
+                data_entrega, observacoes, cotacao
             } = req.body;
 
             if (!numero_nf || !nome_orgao) {
@@ -92,7 +92,8 @@ module.exports = function (supabase) {
                 previsao_entrega: previsao_entrega || null,
                 data_entrega: data_entrega || null,
                 status,
-                observacoes: JSON.parse(obsJson)
+                observacoes: JSON.parse(obsJson),
+                cotacao: (cotacao || '').trim() || null
             };
 
             const { data, error } = await supabase
@@ -120,7 +121,7 @@ module.exports = function (supabase) {
                 numero_nf, data_emissao, documento, valor_nf, tipo_nf,
                 nome_orgao, contato_orgao, vendedor, transportadora,
                 valor_frete, data_coleta, cidade_destino, previsao_entrega,
-                data_entrega, observacoes
+                data_entrega, observacoes, cotacao
             } = req.body;
 
             // Calcular status automaticamente
@@ -161,6 +162,7 @@ module.exports = function (supabase) {
                 data_entrega: data_entrega || null,
                 status,
                 observacoes: JSON.parse(obsJson),
+                cotacao: (cotacao || '').trim() || null,
                 updated_at: new Date().toISOString()
             };
 
