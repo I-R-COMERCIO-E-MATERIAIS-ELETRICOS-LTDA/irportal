@@ -174,24 +174,27 @@ window.handleRowClick = function(event, id) {
 };
 
 // ============================================
-// MODAL DE DATA DE ENTREGA (Novo)
+// MODAL DE DATA DE ENTREGA (com número da NF)
 // ============================================
-function showDatePickerModal(defaultDate = null) {
+function showDatePickerModal(numero_nf, defaultDate = null) {
     return new Promise((resolve) => {
         const today = new Date().toISOString().split('T')[0];
         const value = defaultDate || today;
+        const displayNF = numero_nf || 'sem número';
 
         const modalHTML = `
             <div class="modal-overlay" id="datePickerModal" style="display: flex; z-index: 10002;">
                 <div class="modal-content confirm-modal-content" style="max-width: 420px;">
                     <button class="close-modal" id="datePickerClose">✕</button>
                     <div style="padding: 1.5rem 0.25rem 0.5rem; text-align: center;">
-                        <p style="font-size: 1.05rem; margin-bottom: 1rem; font-weight: 600;">Informe a data de entrega</p>
+                        <p style="font-size: 1.05rem; margin-bottom: 1rem; font-weight: 600;">
+                            Informe a data de entrega para a NF ${displayNF}
+                        </p>
                         <input type="date" id="datePickerInput" value="${value}" style="text-align: center; font-size: 1.1rem; padding: 10px; width: 100%; max-width: 220px;">
                     </div>
-                    <div class="modal-actions modal-actions-no-border">
+                    <div class="modal-actions modal-actions-no-border" style="justify-content: center;">
                         <button type="button" id="datePickerConfirm" style="background: #22C55E; min-width: 140px;">Confirmar</button>
-                        <button type="button" id="datePickerCancel" class="cancel-close" style="min-width: 100px;">Cancelar</button>
+                        <button type="button" id="datePickerCancel" class="danger" style="min-width: 100px;">Cancelar</button>
                     </div>
                 </div>
             </div>
@@ -283,7 +286,7 @@ window.handleCheckboxChange = async function(id) {
     }
     
     // Caso contrário, está marcando como ENTREGUE -> abrir modal para data
-    const dataEscolhida = await showDatePickerModal(frete.data_entrega || undefined);
+    const dataEscolhida = await showDatePickerModal(frete.numero_nf, frete.data_entrega || undefined);
     if (dataEscolhida === null) {
         // Usuário cancelou: desmarcar o checkbox
         const cb = document.getElementById(`check-${idStr}`);
@@ -1168,7 +1171,7 @@ window.handleSubmit = async function(event) {
         cidade_destino: document.getElementById('cidade_destino').value.trim() || 'NÃO INFORMADO',
         previsao_entrega: document.getElementById('previsao_entrega').value || null,
         data_entrega: document.getElementById('data_entrega').value || null,
-        cotacao: document.getElementById('cotacao').value.trim() || null, // Novo campo
+        cotacao: document.getElementById('cotacao').value.trim() || null,
         observacoes: observacoesValue
     };
 
