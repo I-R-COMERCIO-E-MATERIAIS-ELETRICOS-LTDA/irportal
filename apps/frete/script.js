@@ -291,7 +291,7 @@ window.handleCheckboxChange = async function(id) {
         // Usuário cancelou: desmarcar o checkbox
         const cb = document.getElementById(`check-${idStr}`);
         if (cb) cb.checked = false;
-        showToast('Entrega cancelada', 'error');
+        showToast('Confirmação de entrega revogada', 'error');
         return;
     }
     
