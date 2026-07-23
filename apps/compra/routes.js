@@ -41,6 +41,32 @@ module.exports = function(supabase) {
         }
     });
 
+    // ─── GET /ordens/numero/:numero ──────────────────────────────
+    // Busca uma ordem pelo número (independente do mês)
+    router.get('/ordens/numero/:numero', async (req, res) => {
+        try {
+            const { numero } = req.params;
+            if (!numero) {
+                return res.status(400).json({ error: 'Número da ordem é obrigatório' });
+            }
+
+            const { data, error } = await supabase
+                .from('ordens_compra')
+                .select('*')
+                .eq('numero_ordem', numero)
+                .maybeSingle();
+
+            if (error) throw error;
+            if (!data) {
+                return res.status(404).json({ error: 'Ordem não encontrada' });
+            }
+            res.json(data);
+        } catch (err) {
+            console.error('GET /ordens/numero/:numero error:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     // ─── GET /ordens?mes=&ano= ────────────────────────────────────
     router.get('/ordens', async (req, res) => {
         try {
