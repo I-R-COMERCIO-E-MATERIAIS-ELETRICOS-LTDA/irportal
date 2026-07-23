@@ -216,11 +216,14 @@ async function confirmarDuplicacao() {
         // Fechar modal
         fecharModalDuplicar();
 
+        // Data atual para a nova ordem (sempre o dia de hoje)
+        const dataAtual = new Date().toISOString().split('T')[0];
+
         // Criar uma cópia dos dados (sem id)
         const dadosCopia = {
             numeroOrdem: original.numero_ordem || original.numeroOrdem,
             responsavel: original.responsavel || '',
-            dataOrdem: original.data_ordem || original.dataOrdem || new Date().toISOString().split('T')[0],
+            dataOrdem: dataAtual, // <-- AGORA SEMPRE DATA ATUAL
             razaoSocial: original.razao_social || original.razaoSocial || '',
             nomeFantasia: original.nome_fantasia || original.nomeFantasia || '',
             cnpj: original.cnpj || '',
