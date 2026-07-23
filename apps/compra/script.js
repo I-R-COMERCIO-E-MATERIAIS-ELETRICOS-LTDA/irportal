@@ -171,7 +171,7 @@ function fecharModalDuplicar() {
 }
 
 // ============================================
-// CONFIRMAR DUPLICAÇÃO
+// CONFIRMAR DUPLICAÇÃO (com busca via API)
 // ============================================
 async function confirmarDuplicacao() {
     const input = document.getElementById('numeroOrdemDuplicar');
@@ -181,90 +181,105 @@ async function confirmarDuplicacao() {
         return;
     }
 
-    // Buscar a ordem original
-    const original = ordens.find(o => String(o.numero_ordem || o.numeroOrdem) === numero);
-    if (!original) {
-        // Exibir mensagem de erro em vermelho
-        const erroDiv = document.getElementById('duplicarErro');
-        if (erroDiv) {
-            erroDiv.style.display = 'block';
-            erroDiv.textContent = 'Esta ordem de compra ainda não existe.';
-            setTimeout(() => { erroDiv.style.display = 'none'; }, 3000);
-        } else {
-            showToast('Esta ordem de compra ainda não existe.', 'error');
-        }
-        input.value = '';
-        input.focus();
-        return;
-    }
-
-    // Fechar modal
-    fecharModalDuplicar();
-
-    // Criar uma cópia dos dados (sem id)
-    const dadosCopia = {
-        numeroOrdem: original.numero_ordem || original.numeroOrdem,
-        responsavel: original.responsavel || '',
-        dataOrdem: original.data_ordem || original.dataOrdem || new Date().toISOString().split('T')[0],
-        razaoSocial: original.razao_social || original.razaoSocial || '',
-        nomeFantasia: original.nome_fantasia || original.nomeFantasia || '',
-        cnpj: original.cnpj || '',
-        enderecoFornecedor: original.endereco_fornecedor || original.enderecoFornecedor || '',
-        site: original.site || '',
-        contato: original.contato || '',
-        telefone: original.telefone || '',
-        email: original.email || '',
-        items: (original.items || []).map(item => ({
-            item: item.item || 0,
-            especificacao: item.especificacao || '',
-            quantidade: item.quantidade || 0,
-            unidade: item.unidade || 'UN',
-            valorUnitario: item.valorUnitario || item.valor_unitario || 0,
-            ipi: item.ipi || '',
-            st: item.st || '',
-            valorTotal: item.valorTotal || item.valor_total || 'R$ 0,00'
-        })),
-        valorTotal: original.valor_total || original.valorTotal || 'R$ 0,00',
-        frete: original.frete || 'CIF',
-        localEntrega: original.local_entrega || original.localEntrega || 'RUA TADORNA Nº 472, SALA 2, NOVO HORIZONTE - SERRA/ES  |  CEP: 29.163-318',
-        prazoEntrega: original.prazo_entrega || original.prazoEntrega || 'IMEDIATO',
-        transporte: original.transporte || 'FORNECEDOR',
-        formaPagamento: original.forma_pagamento || original.formaPagamento || '',
-        prazoPagamento: original.prazo_pagamento || original.prazoPagamento || '',
-        dadosBancarios: original.dados_bancarios || original.dadosBancarios || '',
-        status: 'aberta'
-    };
-
     try {
-        const headers = {
+        // Buscar a ordem original pelo número (independente do mês)
+        const headers = { 'Accept': 'application/json' };
+        if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
+
+        const response = await fetch(`${API_URL}/ordens/numero/${numero}`, {
+            method: 'GET',
+            headers,
+            mode: 'cors'
+        });
+
+        if (response.status === 404) {
+            // Ordem não encontrada
+            const erroDiv = document.getElementById('duplicarErro');
+            if (erroDiv) {
+                erroDiv.style.display = 'block';
+                erroDiv.textContent = 'Esta ordem de compra ainda não existe.';
+                setTimeout(() => { erroDiv.style.display = 'none'; }, 3000);
+            } else {
+                showToast('Esta ordem de compra ainda não existe.', 'error');
+            }
+            input.value = '';
+            input.focus();
+            return;
+        }
+
+        if (!response.ok) {
+            throw new Error('Erro ao buscar ordem');
+        }
+
+        const original = await response.json();
+
+        // Fechar modal
+        fecharModalDuplicar();
+
+        // Criar uma cópia dos dados (sem id)
+        const dadosCopia = {
+            numeroOrdem: original.numero_ordem || original.numeroOrdem,
+            responsavel: original.responsavel || '',
+            dataOrdem: original.data_ordem || original.dataOrdem || new Date().toISOString().split('T')[0],
+            razaoSocial: original.razao_social || original.razaoSocial || '',
+            nomeFantasia: original.nome_fantasia || original.nomeFantasia || '',
+            cnpj: original.cnpj || '',
+            enderecoFornecedor: original.endereco_fornecedor || original.enderecoFornecedor || '',
+            site: original.site || '',
+            contato: original.contato || '',
+            telefone: original.telefone || '',
+            email: original.email || '',
+            items: (original.items || []).map(item => ({
+                item: item.item || 0,
+                especificacao: item.especificacao || '',
+                quantidade: item.quantidade || 0,
+                unidade: item.unidade || 'UN',
+                valorUnitario: item.valorUnitario || item.valor_unitario || 0,
+                ipi: item.ipi || '',
+                st: item.st || '',
+                valorTotal: item.valorTotal || item.valor_total || 'R$ 0,00'
+            })),
+            valorTotal: original.valor_total || original.valorTotal || 'R$ 0,00',
+            frete: original.frete || 'CIF',
+            localEntrega: original.local_entrega || original.localEntrega || 'RUA TADORNA Nº 472, SALA 2, NOVO HORIZONTE - SERRA/ES  |  CEP: 29.163-318',
+            prazoEntrega: original.prazo_entrega || original.prazoEntrega || 'IMEDIATO',
+            transporte: original.transporte || 'FORNECEDOR',
+            formaPagamento: original.forma_pagamento || original.formaPagamento || '',
+            prazoPagamento: original.prazo_pagamento || original.prazoPagamento || '',
+            dadosBancarios: original.dados_bancarios || original.dadosBancarios || '',
+            status: 'aberta'
+        };
+
+        // Enviar para criar nova ordem
+        const postHeaders = {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         };
-        if (!DEVELOPMENT_MODE && sessionToken) headers['X-Session-Token'] = sessionToken;
+        if (!DEVELOPMENT_MODE && sessionToken) postHeaders['X-Session-Token'] = sessionToken;
 
-        const response = await fetch(`${API_URL}/ordens`, {
+        const postResponse = await fetch(`${API_URL}/ordens`, {
             method: 'POST',
-            headers,
+            headers: postHeaders,
             body: JSON.stringify(dadosCopia),
             mode: 'cors'
         });
 
-        if (!DEVELOPMENT_MODE && response.status === 401) {
+        if (!DEVELOPMENT_MODE && postResponse.status === 401) {
             sessionStorage.removeItem('ordemCompraSession');
             mostrarTelaAcessoNegado('Sua sessão expirou');
             return;
         }
 
-        if (!response.ok) {
+        if (!postResponse.ok) {
             let errorMessage = 'Erro ao duplicar ordem';
             try {
-                const errorData = await response.json();
+                const errorData = await postResponse.json();
                 errorMessage = errorData.error || errorData.message || errorMessage;
             } catch (e) {}
             throw new Error(errorMessage);
         }
 
-        const novaOrdem = await response.json();
+        const novaOrdem = await postResponse.json();
         ordens.push(novaOrdem);
         lastDataHash = JSON.stringify(ordens.map(o => o.id));
         updateDisplay();
@@ -273,6 +288,7 @@ async function confirmarDuplicacao() {
     } catch (error) {
         console.error('Erro ao duplicar:', error);
         showToast(`Erro: ${error.message}`, 'error');
+        fecharModalDuplicar();
     }
 }
 
