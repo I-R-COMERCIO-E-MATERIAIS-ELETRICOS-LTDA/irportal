@@ -13,6 +13,27 @@ let currentYear = new Date().getFullYear();
 let _editingParcelasTemp = [];
 let _descontoConfirmado = false;
 
+// ============================================
+// COMPARAÇÃO SEGURA DE VALORES MONETÁRIOS
+// ============================================
+// JavaScript não representa números decimais com precisão exata em ponto
+// flutuante (ex: 35.30 + 35.30 + 35.32 === 105.91999999999999, não 105.92).
+// Isso fazia com que parcelas cuja SOMA REAL era igual ao valor da NF
+// fossem tratadas como "menor que o valor total" só por causa desse
+// arredondamento invisível, deixando o pagamento como "A RECEBER" em vez
+// de "PAGO" de forma imprevisível (dependia dos centavos exatos digitados).
+// Para evitar isso, todo valor monetário é convertido para centavos
+// (número inteiro) antes de qualquer comparação de igual/maior/menor.
+function paraCentavos(valor) {
+    return Math.round((parseFloat(valor) || 0) * 100);
+}
+function valorMaiorOuIgual(a, b) {
+    return paraCentavos(a) >= paraCentavos(b);
+}
+function valorMenorQue(a, b) {
+    return paraCentavos(a) < paraCentavos(b);
+}
+
 const meses = [
     'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
     'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
@@ -566,11 +587,11 @@ window.handleSubmitForm = async function(editId) {
     const valorTotal = valor;
     let pagamentoValido = false;
     if (parcelas.length > 0) {
-        if (totalParcelas >= valorTotal || (isDesconto && totalParcelas > 0 && totalParcelas < valorTotal)) {
+        if (valorMaiorOuIgual(totalParcelas, valorTotal) || (isDesconto && totalParcelas > 0 && valorMenorQue(totalParcelas, valorTotal))) {
             pagamentoValido = true;
         }
     } else {
-        if (valorPago >= valorTotal || (isDesconto && valorPago > 0 && valorPago < valorTotal)) {
+        if (valorMaiorOuIgual(valorPago, valorTotal) || (isDesconto && valorPago > 0 && valorMenorQue(valorPago, valorTotal))) {
             pagamentoValido = true;
         }
     }
@@ -578,7 +599,7 @@ window.handleSubmitForm = async function(editId) {
         status = 'PAGO';
     } else if (parcelas.length > 0 && totalParcelas > 0) {
         status = parcelas.length + 'ª PARCELA';
-    } else if (valorPago > 0 && valorPago < valorTotal && !isDesconto) {
+    } else if (valorPago > 0 && valorMenorQue(valorPago, valorTotal) && !isDesconto) {
         status = 'A RECEBER';
     }
     if (isDesconto && (parcelas.length > 0 ? totalParcelas > 0 : valorPago > 0)) {
