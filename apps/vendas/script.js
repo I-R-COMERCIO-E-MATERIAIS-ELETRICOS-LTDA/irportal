@@ -1,6 +1,10 @@
 const DEVELOPMENT_MODE = false;
 const API_URL = window.location.origin + '/api';
 const VENDEDORES_VALIDOS = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
+// Apenas estes vendedores têm o filtro travado automaticamente no próprio nome
+// ao serem identificados. Qualquer outro nome (ex.: Roberto) libera o módulo
+// para visualização completa, sem travar o filtro.
+const VENDEDORES_RESTRITOS = ['ISAQUE', 'MIGUEL'];
 const PAGE_SIZE = 5;
 
 let isOnline = false;
@@ -11,6 +15,7 @@ let sessionToken = null;
 let calendarYear = new Date().getFullYear();
 let vendedorLogado = null;
 let painelAno = new Date().getFullYear();
+let painelModo = 'geral'; // 'geral' (todos os vendedores) ou 'individual' (vendedor logado/selecionado)
 
 // Índices com os dados brutos de controle_frete e contas_receber,
 // usados para exibir observações, parcelas, cotação e data de entrega
@@ -48,7 +53,7 @@ function detectarVendedorLogado() {
         v = v.toUpperCase().trim();
         sessionStorage.setItem('vendasVendedorLogado', v);
     }
-    vendedorLogado = (v && VENDEDORES_VALIDOS.includes(v)) ? v : null;
+    vendedorLogado = (v && VENDEDORES_RESTRITOS.includes(v)) ? v : null;
 }
 
 function aplicarFiltroVendedorLogado() {
@@ -83,6 +88,11 @@ function normalizeStatusFrete(status) {
     return status.toUpperCase().trim()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .replace(/_/g, ' ');
+}
+
+// ─── Normaliza texto para busca (minúsculo e sem acentos) ─────────────────────
+function normalizeSearch(str) {
+    return String(str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 // ─── Normaliza número de NF (mesma lógica usada no backend) ───────────────────
@@ -286,7 +296,7 @@ function hasObservacoes(v) {
     return temFrete || temConta;
 }
 
-// ─── Sincroniza dados via routes (silenciosamente — sem mensagens de sucesso) ─
+// ─── Sincroniza dados via routes (silenciosamente — usada em segundo plano) ──
 async function syncData() {
     try {
         const response = await fetch(`${API_URL}/vendas/sincronizar`, {
@@ -301,8 +311,32 @@ async function syncData() {
             await loadVendas();
             await loadFontes();
         }
+        return result;
     } catch (error) {
         console.error('❌ Erro ao sincronizar:', error);
+        return null;
+    }
+}
+
+// ─── Sincronização manual (botão) — com feedback visual claro para o usuário ─
+let syncingManualmente = false;
+async function syncDataManual() {
+    if (syncingManualmente) return;
+    syncingManualmente = true;
+    const btn = document.getElementById('syncBtn');
+    if (btn) { btn.classList.add('syncing'); btn.disabled = true; }
+    try {
+        const result = await syncData();
+        if (result && result.success) {
+            showToast('Dados sincronizados com sucesso', 'success');
+        } else if (result) {
+            showToast(result.message || 'Sincronização concluída com avisos', 'warning');
+        } else {
+            showToast('Não foi possível sincronizar. Verifique a conexão.', 'error');
+        }
+    } finally {
+        if (btn) { btn.classList.remove('syncing'); btn.disabled = false; }
+        syncingManualmente = false;
     }
 }
 
@@ -337,17 +371,23 @@ function getDisplayStatus(v) {
     if (isForaDoPrazo(v)) return { code: 'FORA DO PRAZO', label: 'FORA DO PRAZO' };
     const sf = normalizeStatusFrete(v.status_frete);
     if (sf === 'ENTREGUE') return { code: 'ENTREGUE', label: 'ENTREGUE' };
+    if (sf === 'AGUARDANDO COLETA') return { code: 'AGUARDANDO COLETA', label: 'AGUARDANDO COLETA' };
+    if (sf === 'EXTRAVIADO') return { code: 'EXTRAVIADO', label: 'EXTRAVIADO' };
+    if (sf === 'DEVOLVIDO') return { code: 'DEVOLVIDO', label: 'DEVOLVIDO' };
     if (!sf || sf === 'EM TRANSITO') return { code: 'EM TRÂNSITO', label: 'EM TRÂNSITO' };
     return { code: sf, label: sf };
 }
 
 function getStatusBadge(statusInfo) {
     const map = {
-        'PAGO':          { class: 'pago',       text: 'PAGO' },
-        'PARCELA':       { class: 'parcela',    text: statusInfo.label },
-        'ENTREGUE':      { class: 'entregue',   text: 'ENTREGUE' },
-        'EM TRÂNSITO':   { class: 'transito',   text: 'EM TRÂNSITO' },
-        'FORA DO PRAZO': { class: 'fora-prazo', text: 'FORA DO PRAZO' }
+        'PAGO':              { class: 'pago',       text: 'PAGO' },
+        'PARCELA':           { class: 'parcela',    text: statusInfo.label },
+        'ENTREGUE':          { class: 'entregue',   text: 'ENTREGUE' },
+        'EM TRÂNSITO':       { class: 'transito',   text: 'EM TRÂNSITO' },
+        'AGUARDANDO COLETA': { class: 'aguardando', text: 'AGUARDANDO COLETA' },
+        'FORA DO PRAZO':     { class: 'fora-prazo', text: 'FORA DO PRAZO' },
+        'EXTRAVIADO':        { class: 'extraviado', text: 'EXTRAVIADO' },
+        'DEVOLVIDO':         { class: 'devolvido',  text: 'DEVOLVIDO' }
     };
     const s = map[statusInfo.code] || { class: 'transito', text: statusInfo.label };
     return `<span class="badge ${s.class}">${s.text}</span>`;
@@ -465,13 +505,16 @@ function updateTable() {
         filtered = filtered.filter(v => (v.vendedor || '').toUpperCase().trim() === vendedorSelecionado);
     }
 
-    const search = (document.getElementById('search')?.value || '').toLowerCase();
+    const search = normalizeSearch(document.getElementById('search')?.value || '');
     const filterStatus = document.getElementById('filterStatus')?.value || '';
 
     if (search) {
         filtered = filtered.filter(v =>
-            (v.numero_nf || '').toLowerCase().includes(search) ||
-            (v.nome_orgao || '').toLowerCase().includes(search)
+            normalizeSearch(v.numero_nf).includes(search) ||
+            normalizeSearch(v.nome_orgao).includes(search) ||
+            normalizeSearch(v.vendedor).includes(search) ||
+            normalizeSearch(v.cidade_destino).includes(search) ||
+            normalizeSearch(v.contato_orgao).includes(search)
         );
     }
 
@@ -754,11 +797,37 @@ const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Se
 
 function abrirPainelGeral() {
     painelAno = new Date().getFullYear();
-    const vendedorSel = getVendedorFiltroAtual();
-    const label = document.getElementById('painelVendedorLabel');
-    if (label) label.textContent = vendedorSel ? `— ${vendedorSel}` : '';
+    // Vendedor logado (Isaque/Miguel) começa no modo Individual, já mostrando seus
+    // próprios números; nos demais casos começa no modo Geral (todos combinados).
+    painelModo = vendedorLogado ? 'individual' : 'geral';
+    atualizarBotoesPainelModo();
     renderPainelGeral();
     document.getElementById('painelModal').style.display = 'flex';
+}
+
+function atualizarBotoesPainelModo() {
+    document.getElementById('painelBtnGeral')?.classList.toggle('active', painelModo === 'geral');
+    document.getElementById('painelBtnIndividual')?.classList.toggle('active', painelModo === 'individual');
+}
+
+// ─── Alterna entre "Geral" (todos os vendedores combinados) e "Individual" ────
+// (vendedor logado, ou selecionado no filtro principal quando o módulo está
+// liberado). Isso evita a necessidade de ficar filtrando toda hora.
+function setPainelModo(modo) {
+    painelModo = modo;
+    atualizarBotoesPainelModo();
+    renderPainelGeral();
+}
+
+// Retorna o vendedor a considerar dentro do Painel Geral, de acordo com o modo.
+// No modo "geral" retorna '' (sem filtro) — o painel mostra apenas números,
+// então não há necessidade de restringir por vendedor mesmo quando o filtro
+// principal está travado para um vendedor específico.
+function getVendedorPainelAtual() {
+    if (painelModo === 'individual') {
+        return vendedorLogado || getVendedorFiltroAtual();
+    }
+    return '';
 }
 
 function mudarAnoPainel(dir) {
@@ -798,23 +867,57 @@ function computeMonthlyPago(ano, vendedorSel) {
     return arr;
 }
 
-function renderMesesGrid(valores, comparar) {
+// modo: 'faturamento' (compara c/ mês anterior: sobe=verde, desce=vermelho),
+// 'frete' (mesma comparação, porém invertida: sobe=vermelho, desce=azul),
+// 'receber' (laranja quando há valor pendente no mês, senão neutro),
+// 'pago' (sempre verde).
+function renderMesesGrid(valores, modo) {
     let html = '<div class="painel-months-grid">';
     valores.forEach((val, i) => {
         let cls = 'neutral';
-        if (comparar && val > 0) {
-            const anterior = i > 0 ? valores[i - 1] : null;
-            if (anterior === null || anterior === 0) {
-                cls = 'neutral';
-            } else if (val < anterior) {
-                cls = 'down';
-            } else {
-                cls = 'up';
+
+        if (modo === 'faturamento' || modo === 'frete') {
+            if (val > 0) {
+                const anterior = i > 0 ? valores[i - 1] : null;
+                if (anterior) {
+                    if (modo === 'faturamento') {
+                        cls = val < anterior ? 'down' : 'up';
+                    } else {
+                        cls = val > anterior ? 'frete-up' : 'frete-down';
+                    }
+                }
             }
+        } else if (modo === 'receber') {
+            cls = val > 0 ? 'receber-has' : 'neutral';
+        } else if (modo === 'pago') {
+            cls = 'pago-green';
         }
+
         html += `<div class="painel-month-card">
             <div class="painel-month-name">${MESES_ABREV[i]}</div>
             <div class="painel-month-value ${cls}">${formatCurrency(val)}</div>
+        </div>`;
+    });
+    html += '</div>';
+    return html;
+}
+
+// Aba "Geral": mesmo estilo visual de cartão das demais abas (painel-month-card),
+// com as cores fixas de cada dashboard equivalente na tela principal:
+// Faturamento (neutro), Frete Total (azul), A Receber (laranja quando há saldo,
+// senão neutro), Total Pago (verde).
+function renderPainelResumo(faturamento, frete, receber, pago) {
+    const itens = [
+        { label: `Faturamento ${painelAno}`, valor: faturamento, cls: 'neutral' },
+        { label: `Frete Total ${painelAno}`, valor: frete, cls: 'frete-down' },
+        { label: `A Receber ${painelAno}`, valor: receber, cls: receber > 0 ? 'receber-has' : 'neutral' },
+        { label: `Total Pago ${painelAno}`, valor: pago, cls: 'pago-green' }
+    ];
+    let html = '<div class="painel-months-grid">';
+    itens.forEach(it => {
+        html += `<div class="painel-month-card">
+            <div class="painel-month-name">${it.label}</div>
+            <div class="painel-month-value ${it.cls}">${formatCurrency(it.valor)}</div>
         </div>`;
     });
     html += '</div>';
@@ -825,7 +928,10 @@ function renderPainelGeral() {
     const yearLabel = document.getElementById('painelYearLabel');
     if (yearLabel) yearLabel.textContent = painelAno;
 
-    const vendedorSel = getVendedorFiltroAtual();
+    const vendedorSel = getVendedorPainelAtual();
+
+    const label = document.getElementById('painelVendedorLabel');
+    if (label) label.textContent = (painelModo === 'individual' && vendedorSel) ? `— ${vendedorSel}` : '';
 
     const faturamentoMes = computeMonthlySum(painelAno, vendedorSel, 'valor_nf');
     const freteMes       = computeMonthlySum(painelAno, vendedorSel, 'valor_frete');
@@ -834,18 +940,14 @@ function renderPainelGeral() {
 
     const somaAno = arr => arr.reduce((s, v) => s + v, 0);
 
-    document.getElementById('painelTabGeral').innerHTML = `
-        <div class="painel-months-grid">
-            <div class="painel-annual-card"><div class="painel-annual-label">Faturamento ${painelAno}</div><div class="painel-annual-value">${formatCurrency(somaAno(faturamentoMes))}</div></div>
-            <div class="painel-annual-card"><div class="painel-annual-label">Frete Total ${painelAno}</div><div class="painel-annual-value">${formatCurrency(somaAno(freteMes))}</div></div>
-            <div class="painel-annual-card"><div class="painel-annual-label">A Receber ${painelAno}</div><div class="painel-annual-value">${formatCurrency(somaAno(receberMes))}</div></div>
-            <div class="painel-annual-card"><div class="painel-annual-label">Total Pago ${painelAno}</div><div class="painel-annual-value">${formatCurrency(somaAno(pagoMes))}</div></div>
-        </div>`;
+    document.getElementById('painelTabGeral').innerHTML = renderPainelResumo(
+        somaAno(faturamentoMes), somaAno(freteMes), somaAno(receberMes), somaAno(pagoMes)
+    );
 
-    document.getElementById('painelTabFaturamento').innerHTML = renderMesesGrid(faturamentoMes, true);
-    document.getElementById('painelTabFrete').innerHTML       = renderMesesGrid(freteMes, false);
-    document.getElementById('painelTabReceber').innerHTML     = renderMesesGrid(receberMes, false);
-    document.getElementById('painelTabPago').innerHTML        = renderMesesGrid(pagoMes, false);
+    document.getElementById('painelTabFaturamento').innerHTML = renderMesesGrid(faturamentoMes, 'faturamento');
+    document.getElementById('painelTabFrete').innerHTML       = renderMesesGrid(freteMes, 'frete');
+    document.getElementById('painelTabReceber').innerHTML     = renderMesesGrid(receberMes, 'receber');
+    document.getElementById('painelTabPago').innerHTML        = renderMesesGrid(pagoMes, 'pago');
 }
 
 function switchPainelTab(tab, btnEl) {
