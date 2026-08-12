@@ -249,10 +249,17 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 
 .splash-welcome {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    background: var(--bg-primary); display: flex; align-items: center; justify-content: center; z-index: 99999;
+    background: var(--bg-primary); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1.5rem; z-index: 99999;
+}
+.splash-greeting {
+    font-family: 'DM Sans', 'Inter', sans-serif;
+    font-size: 1.5rem; font-weight: 500; color: var(--text-primary);
+    letter-spacing: -0.3px; text-align: center; opacity: 0;
+    animation: portalFadeIn 0.7s ease 0.05s forwards;
 }
 .splash-spinner {
-    width: 52px; height: 52px;
+    width: 44px; height: 44px;
     border: 4px solid rgba(255, 82, 29, 0.15); border-top-color: var(--primary);
     border-radius: 50%; animation: splashSpin 0.8s linear infinite;
 }
@@ -340,6 +347,7 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 
 .module-item:hover { background: rgba(255,81,0,0.1); color: var(--text-primary); }
 .module-item.active { background: rgba(255,81,0,0.15); color: var(--primary); border-left-color: var(--primary); font-weight: 600; }
+.module-item.disabled { pointer-events: none; }
 .module-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: transform 0.2s ease; }
 .module-item:hover .module-icon { transform: scale(1.1); }
 .module-icon svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -347,41 +355,6 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 /* ─── MAIN CONTENT ─── */
 .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .content-area { flex: 1; overflow: hidden; display: flex; flex-direction: column; height: 100%; width: 100%; position: relative; }
-
-/* ─── TELA DE BOAS-VINDAS ─── */
-.welcome-screen {
-    position: absolute; inset: 0;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 2rem; gap: 2rem; opacity: 1; visibility: visible;
-    transition: opacity 0.5s cubic-bezier(0.4,0,0.2,1), visibility 0.5s cubic-bezier(0.4,0,0.2,1);
-    overflow-y: auto; z-index: 10;
-}
-.welcome-screen.hidden-smooth { opacity: 0; visibility: hidden; pointer-events: none; }
-.welcome-header { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; text-align: center; }
-.welcome-greeting-text { font-size: 2rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; }
-.welcome-title { font-size: 1rem; font-weight: 400; color: var(--text-secondary); text-align: center; }
-
-.welcome-modules-grid {
-    display: grid; grid-template-columns: repeat(5, 1fr);
-    gap: 1.2rem; width: 100%; max-width: 1400px; margin: 0 auto;
-}
-.welcome-module-card {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 0.85rem; padding: 2rem 1.5rem;
-    background: var(--bg-card); border: 1.5px solid var(--border-color); border-radius: 16px;
-    cursor: pointer; transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
-    color: var(--text-secondary); font-size: 0.95rem; font-weight: 600;
-    text-align: center; user-select: none; position: relative; overflow: hidden;
-}
-.welcome-module-card::before {
-    content: ''; position: absolute; inset: 0;
-    background: linear-gradient(135deg, rgba(255,81,0,0.04) 0%, transparent 70%);
-    opacity: 0; transition: opacity 0.22s ease;
-}
-.welcome-module-card:hover::before { opacity: 1; }
-.welcome-module-card:hover { border-color: var(--primary); color: var(--primary); transform: translateY(-4px); box-shadow: 0 8px 24px rgba(255,81,0,0.15); }
-.welcome-module-card:active { transform: translateY(-1px); }
-.welcome-module-card.unavailable { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
 .badge-new {
     display: inline-flex; align-items: center; justify-content: center;
@@ -391,10 +364,6 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 }
 .module-item .badge-new { font-size: 0.55rem; padding: 1px 4px; margin-left: 4px; opacity: 0; transition: opacity 0.2s ease; }
 .sidebar.visible.expanded .module-item .badge-new { opacity: 1; }
-
-.card-icon { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transition: transform 0.22s ease; }
-.welcome-module-card:hover .card-icon { transform: scale(1.15); }
-.card-icon svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ─── BOTÃO SAIR FLUTUANTE ─── */
 .logout-btn-floating {
@@ -462,16 +431,8 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 .hidden { display: none !important; }
 
 /* ─── RESPONSIVO ─── */
-@media (max-width: 1200px) {
-    .welcome-modules-grid { grid-template-columns: repeat(3, 1fr); max-width: 1000px; }
-}
 @media (max-width: 768px) {
-    .welcome-modules-grid { grid-template-columns: repeat(2, 1fr); max-width: 600px; }
-    .welcome-module-card  { padding: 1.8rem 1.2rem; }
     .sidebar.visible.expanded { position: fixed; left: 0; top: 0; height: 100vh; z-index: 1000; }
-}
-@media (max-width: 480px) {
-    .welcome-modules-grid { grid-template-columns: 1fr; max-width: 350px; }
 }
     </style>
 </head>
@@ -529,6 +490,7 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
     <!-- ── DASHBOARD ── -->
     <div id="dashboardScreen" class="dashboard-screen">
         <div class="splash-welcome" id="splashWelcome">
+            <div class="splash-greeting" id="splashGreeting"></div>
             <div class="splash-spinner"></div>
         </div>
 
@@ -567,13 +529,6 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 
             <div class="main-content">
                 <div class="content-area">
-                    <div id="welcomeScreen" class="welcome-screen">
-                        <div class="welcome-header">
-                            <div class="welcome-greeting-text" id="welcomeGreeting"></div>
-                            <div class="welcome-title">Selecione um módulo para começar</div>
-                        </div>
-                        <div id="welcomeModulesGrid" class="welcome-modules-grid"></div>
-                    </div>
                     <div id="iframesContainer"></div>
                 </div>
             </div>
@@ -606,6 +561,9 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
             'Almoxarifado':  ['transportadoras','cotacoes','faturamento','estoque','frete'],
         };
 
+        // Módulos que ficam sempre acessíveis, independente do setor (o Dashboard é o mesmo para todos)
+        const ALWAYS_ACCESSIBLE_MODULES = ['vendas'];
+
         
         // ÍCONES
         const MODULE_ICONS = {
@@ -626,6 +584,8 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 
         
         // MÓDULOS
+        // OBS: id 'vendas' continua o mesmo internamente (permissões/URL), mas agora é
+        // exibido como "Dashboard" e é aberto automaticamente para todos os usuários.
         const ORIGIN = window.location.origin;
         const MODULES = [
             { id: 'licitacoes',      name: 'Licitações',               url: '',                                          available: false },  
@@ -637,7 +597,7 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
             { id: 'frete',           name: 'Controle de Frete',        url: `${ORIGIN}/frete`,                           available: true },
             { id: 'estoque',         name: 'Estoque',                  url: '',                                          available: false },
             { id: 'receber',         name: 'Contas a Receber',         url: `${ORIGIN}/receber`,                         available: true },
-            { id: 'vendas',          name: 'Vendas',                   url: `${ORIGIN}/vendas`,                          available: true },
+            { id: 'vendas',          name: 'Dashboard',                url: `${ORIGIN}/vendas`,                          available: true },
             { id: 'pagar',           name: 'Contas a Pagar',           url: `${ORIGIN}/pagar`,                           available: true },
             { id: 'lucro',           name: 'Lucro Real',               url: `${ORIGIN}/lucro`,                           available: true },
         ];
@@ -652,6 +612,12 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
 function getUserPermissions(sessionInfo) {
     const sector = sessionInfo.sector || '';
     return SECTOR_PERMISSIONS[sector] || [];
+}
+
+// Um módulo é acessível se o setor do usuário tem permissão OU se o módulo está
+// na lista de sempre-acessíveis (caso do Dashboard/Vendas).
+function isModuleAccessible(module, perms) {
+    return ALWAYS_ACCESSIBLE_MODULES.includes(module.id) || perms.includes(module.id);
 }
 
         function getGreeting() {
@@ -711,12 +677,12 @@ function getUserPermissions(sessionInfo) {
             document.getElementById('password').value = '';
             document.getElementById('iframesContainer').innerHTML = '';
             sidebarRevealed = false;
+            activeModuleId  = null;
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.remove('visible', 'expanded');
-            document.getElementById('welcomeScreen').classList.remove('hidden-smooth');
             document.getElementById('logoutFloatingBtn').classList.remove('hidden-smooth');
-            const wg = document.getElementById('welcomeGreeting');
-            if (wg) wg.textContent = '';
+            const sg = document.getElementById('splashGreeting');
+            if (sg) sg.textContent = '';
         }
 
         /* ── SETUP SIDEBAR HOVER ── */
@@ -732,15 +698,18 @@ function getUserPermissions(sessionInfo) {
         }
 
         /* ── CARREGAR MÓDULOS NA SIDEBAR ── */
+        // Agora TODOS os módulos aparecem na sidebar para todos os usuários.
+        // Os módulos sem permissão (ou indisponíveis, como Licitações/Estoque)
+        // ficam visíveis porém desabilitados/bloqueados.
         function loadSidebarModules(sessionInfo) {
             const sidebarModules = document.getElementById('sidebarModules');
             sidebarModules.innerHTML = '';
             const perms = getUserPermissions(sessionInfo);
             MODULES.forEach(module => {
-                if (!perms.includes(module.id)) return;
+                const accessible = module.available && module.url && isModuleAccessible(module, perms);
                 const item = document.createElement('div');
                 item.className = 'module-item';
-                if (!module.available || !module.url) {
+                if (!accessible) {
                     item.classList.add('disabled');
                     item.style.opacity = '0.4';
                     item.style.cursor  = 'not-allowed';
@@ -756,27 +725,6 @@ function getUserPermissions(sessionInfo) {
             });
         }
 
-        /* ── CARREGAR CARDS NA TELA INICIAL ── */
-        function loadWelcomeModules(sessionInfo) {
-            const grid = document.getElementById('welcomeModulesGrid');
-            grid.innerHTML = '';
-            const perms = getUserPermissions(sessionInfo);
-            MODULES.forEach(module => {
-                if (!perms.includes(module.id)) return;
-                const card     = document.createElement('div');
-                card.className = 'welcome-module-card';
-                const icon     = MODULE_ICONS[module.id] || '';
-                const newBadge = module.isNew ? '<span class="badge-new">Novo</span>' : '';
-                card.innerHTML = `<span class="card-icon">${icon}</span><span>${module.name}${newBadge}</span>`;
-                if (!module.available || !module.url) {
-                    card.classList.add('unavailable');
-                } else {
-                    card.addEventListener('click', () => openModule(module));
-                }
-                grid.appendChild(card);
-            });
-        }
-
         /* ── ABRIR MÓDULO ── */
         function openModule(module) {
             if (!sidebarRevealed) {
@@ -788,8 +736,6 @@ function getUserPermissions(sessionInfo) {
             document.querySelectorAll('.module-item').forEach(i => i.classList.remove('active'));
             const sidebarItem = document.getElementById(`module-${module.id}`);
             if (sidebarItem) sidebarItem.classList.add('active');
-
-            document.getElementById('welcomeScreen').classList.add('hidden-smooth');
 
             let iframeContainer = document.getElementById(`iframe-${module.id}`);
             if (!iframeContainer) {
@@ -834,12 +780,21 @@ function getUserPermissions(sessionInfo) {
             document.getElementById('sidebarUserName').textContent   = userName;
             document.getElementById('sidebarUserSector').textContent = userSector;
 
-            const welcomeGreetingEl = document.getElementById('welcomeGreeting');
-            if (welcomeGreetingEl) welcomeGreetingEl.textContent = `${greeting}, ${userName}!`;
+            // Saudação exibida junto ao ícone de carregamento (splash), de forma leve
+            const splashGreetingEl = document.getElementById('splashGreeting');
+            if (splashGreetingEl) splashGreetingEl.textContent = `${greeting}, ${userName}!`;
 
             loadSidebarModules(sessionInfo);
-            loadWelcomeModules(sessionInfo);
             setupSidebarHover();
+
+            // Sidebar já visível desde o início, pois o Dashboard abre por padrão
+            sidebarRevealed = true;
+            document.getElementById('sidebar').classList.add('visible');
+            document.getElementById('logoutFloatingBtn').classList.add('hidden-smooth');
+
+            // Abre o Dashboard (módulo Vendas) automaticamente para todos os usuários
+            const dashboardModule = MODULES.find(m => m.id === 'vendas');
+            if (dashboardModule) openModule(dashboardModule);
 
             const splash = document.getElementById('splashWelcome');
             if (splash) {
