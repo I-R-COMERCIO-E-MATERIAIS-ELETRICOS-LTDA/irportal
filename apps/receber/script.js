@@ -6,6 +6,7 @@ const PORTAL_URL = window.location.origin;
 const API_URL = window.location.origin + '/api';
 
 let contas = [];
+let todasContasRaw = []; // todas as contas vindas da API, sem filtro de mês (usado no PDF de comissão)
 let isOnline = false;
 let sessionToken = null;
 let currentMonth = new Date().getMonth();
@@ -200,6 +201,10 @@ async function loadContas(mes = currentMonth, ano = currentYear, showMsg = false
 
         const dados = await response.json();
 
+        // Guarda o conjunto completo (todas as datas de emissão) para uso no
+        // relatório de comissão, que filtra por DATA DE PAGAMENTO, não emissão.
+        todasContasRaw = dados;
+
         // Filtra localmente as contas cuja data de emissão pertence ao mês/ano selecionado
         contas = dados.filter(c => pertenceAoPeriodo(c, mes, ano));
 
@@ -247,6 +252,85 @@ window.changeMonth = function (direction) {
 };
 
 window.updateMonthDisplay = updateMonthDisplay;
+
+// ============================================
+// GERAÇÃO DE PDF — RELATÓRIO DE COMISSÃO
+// ============================================
+// Mesmo formato usado no módulo Vendas: filtra pelo VENDEDOR selecionado no
+// filtro da barra de pesquisa e pela DATA DE PAGAMENTO dentro do mês/ano
+// atualmente selecionado na navegação — não pela data de emissão. Por isso
+// usa `todasContasRaw` (conjunto completo vindo da API) em vez de `contas`
+// (que já está restrito ao mês por data de emissão).
+window.gerarPDF = function () {
+    const filterVendedor = document.getElementById('filterVendedor');
+    const vendedorSelecionado = filterVendedor ? filterVendedor.value.toUpperCase().trim() : '';
+    if (!vendedorSelecionado) {
+        showToast('Selecione um Vendedor', 'error');
+        return;
+    }
+
+    const contasPagas = todasContasRaw.filter(c => {
+        if (isContaEspecial(c)) return false;
+        if (!c.data_pagamento) return false;
+        if ((c.vendedor || '').toUpperCase().trim() !== vendedorSelecionado) return false;
+        const dataPagamento = new Date(c.data_pagamento + 'T00:00:00');
+        return dataPagamento.getMonth() === currentMonth &&
+               dataPagamento.getFullYear() === currentYear;
+    });
+
+    if (contasPagas.length === 0) {
+        showToast('Nenhum pagamento encontrado para este vendedor no período', 'error');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.text('RELATÓRIO DE COMISSÃO', 148, 20, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'normal');
+    doc.text(`Vendedor: ${vendedorSelecionado}`, 148, 28, { align: 'center' });
+    doc.text(`Período (pagamentos): ${meses[currentMonth]} ${currentYear}`, 148, 35, { align: 'center' });
+    doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, 148, 42, { align: 'center' });
+
+    const tableData = contasPagas.map(c => [
+        c.numero_nf,
+        c.orgao || '-',
+        formatDate(c.data_emissao),
+        formatDate(c.data_pagamento),
+        `R$ ${(parseFloat(c.valor_pago) || parseFloat(c.valor) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ]);
+
+    const totalPago = contasPagas.reduce((sum, c) =>
+        sum + (parseFloat(c.valor_pago) || parseFloat(c.valor) || 0), 0);
+    const comissao = totalPago * 0.01;
+
+    doc.autoTable({
+        startY: 50,
+        head: [['NF', 'Órgão', 'Emissão', 'Data Pagamento', 'Valor Pago']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [100, 100, 100], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: {
+            0: { halign: 'center', cellWidth: 25 },
+            1: { cellWidth: 'auto' },
+            2: { halign: 'center', cellWidth: 25 },
+            3: { halign: 'center', cellWidth: 25 },
+            4: { halign: 'right', cellWidth: 30 }
+        }
+    });
+
+    const finalY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.text(`TOTAL PAGO NO MÊS: R$ ${totalPago.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14, finalY);
+    doc.text(`COMISSÃO (1%): R$ ${comissao.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 14, finalY + 7);
+
+    doc.save(`COMISSAO_${vendedorSelecionado}_${meses[currentMonth]}_${currentYear}.pdf`);
+    showToast('Relatório gerado com sucesso', 'success');
+};
 
 // ============================================
 // DASHBOARD
