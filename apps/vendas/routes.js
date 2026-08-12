@@ -231,8 +231,17 @@ module.exports = function (supabase) {
                         mapa[key].valor_nf = parseFloat(conta.valor) || 0;
                     if (!mapa[key].nome_orgao && conta.orgao)
                         mapa[key].nome_orgao = conta.orgao;
-                    if (!mapa[key].vendedor && conta.vendedor)
-                        mapa[key].vendedor = (conta.vendedor || '').toUpperCase().trim();
+
+                    // ── FIX (duplicação de NF): o vendedor informado em
+                    //     Contas a Receber é sempre a fonte de verdade quando
+                    //     divergir do que veio no Controle de Frete, pois é
+                    //     comum o Controle de Frete estar desatualizado.
+                    //     Antes, o vendedor só era preenchido se estivesse
+                    //     vazio no frete — o que perpetuava vendedor errado.
+                    const vendedorConta = (conta.vendedor || '').toUpperCase().trim();
+                    if (vendedorConta) {
+                        mapa[key].vendedor = vendedorConta;
+                    }
                 } else {
                     unmatchedContas++;
                     mapa[key] = {
@@ -264,8 +273,70 @@ module.exports = function (supabase) {
 
             console.log(`[vendas] Total a sincronizar: ${registros.length}`);
 
-            // ── 6. Upsert em lotes ────────────────────────────────────────────
             const CHUNK = 200;
+
+            // ── 6. Remove duplicatas com vendedor desatualizado ───────────────
+            //     CAUSA RAIZ da NF duplicada para vendedores diferentes: o
+            //     upsert abaixo usava onConflict "numero_nf,vendedor". Se uma
+            //     NF já existente na tabela "vendas" tinha o vendedor antigo
+            //     (ex.: "ROBERTO") e a fonte (Controle de Frete / Contas a
+            //     Receber) foi corrigida para outro vendedor (ex.: "ISAQUE"),
+            //     o upsert NÃO encontrava conflito (chave diferente) e
+            //     simplesmente INSERIA uma segunda linha, deixando a NF
+            //     duplicada — uma com o vendedor antigo, outra com o correto.
+            //     Antes de gravar, removemos qualquer linha órfã cujo
+            //     vendedor não bate mais com o vendedor correto vindo da
+            //     sincronização atual.
+            const numerosNF = registros.map(r => r.numero_nf);
+            const vendedorCorretoPorNF = {};
+            registros.forEach(r => { vendedorCorretoPorNF[r.numero_nf] = r.vendedor; });
+
+            let duplicatasRemovidas = 0;
+            for (let i = 0; i < numerosNF.length; i += CHUNK) {
+                const loteNF = numerosNF.slice(i, i + CHUNK);
+                if (!loteNF.length) continue;
+
+                const { data: existentes, error: errExistentes } = await supabase
+                    .from('vendas')
+                    .select('id, numero_nf, vendedor')
+                    .in('numero_nf', loteNF);
+
+                if (errExistentes) {
+                    console.error('[vendas] ⚠️ Erro ao checar duplicatas:', errExistentes.message);
+                    continue;
+                }
+
+                const idsParaRemover = (existentes || [])
+                    .filter(e => {
+                        const correto = vendedorCorretoPorNF[normalizeNF(e.numero_nf)];
+                        return correto && (e.vendedor || '').toUpperCase().trim() !== correto;
+                    })
+                    .map(e => e.id);
+
+                if (idsParaRemover.length) {
+                    const { error: errDelete } = await supabase.from('vendas').delete().in('id', idsParaRemover);
+                    if (errDelete) {
+                        console.error('[vendas] ⚠️ Erro ao remover duplicatas:', errDelete.message);
+                    } else {
+                        duplicatasRemovidas += idsParaRemover.length;
+                    }
+                }
+            }
+            if (duplicatasRemovidas > 0) {
+                console.log(`[vendas] 🧹 ${duplicatasRemovidas} duplicata(s) com vendedor desatualizado removida(s)`);
+            }
+
+            // ── 7. Upsert em lotes ────────────────────────────────────────────
+            //     onConflict agora é APENAS "numero_nf" — o número da NF é o
+            //     identificador único real de cada registro. Isso garante que
+            //     uma correção de vendedor na fonte sempre ATUALIZE a linha
+            //     existente, em vez de criar uma nova.
+            //     IMPORTANTE: a tabela "vendas" no Supabase precisa ter uma
+            //     constraint UNIQUE em "numero_nf" (e não mais em
+            //     "numero_nf, vendedor") para este upsert funcionar. Se ela
+            //     ainda não existir, rode antes:
+            //       ALTER TABLE vendas DROP CONSTRAINT IF EXISTS vendas_numero_nf_vendedor_key;
+            //       ALTER TABLE vendas ADD CONSTRAINT vendas_numero_nf_key UNIQUE (numero_nf);
             let erros = 0;
             const erroMsgs = [];
 
@@ -275,7 +346,7 @@ module.exports = function (supabase) {
                 const { error: upsertError } = await supabase
                     .from('vendas')
                     .upsert(chunk, {
-                        onConflict:       'numero_nf,vendedor',
+                        onConflict:       'numero_nf',
                         ignoreDuplicates: false
                     });
 
@@ -290,10 +361,10 @@ module.exports = function (supabase) {
 
             const msg = erros
                 ? `${registros.length} registros processados com ${erros} lote(s) com erro: ${erroMsgs[0]}`
-                : `${registros.length} registros sincronizados (match: ${matched} | só frete: ${fretes.length - matched} | só conta: ${unmatchedContas})`;
+                : `${registros.length} registros sincronizados (match: ${matched} | só frete: ${fretes.length - matched} | só conta: ${unmatchedContas}${duplicatasRemovidas ? ` | duplicatas removidas: ${duplicatasRemovidas}` : ''})`;
 
             console.log(`[vendas] ${erros ? '⚠️' : '✅'} ${msg}`);
-            res.json({ success: erros === 0, message: msg, total: registros.length, matched, unmatchedContas });
+            res.json({ success: erros === 0, message: msg, total: registros.length, matched, unmatchedContas, duplicatasRemovidas });
 
         } catch (err) {
             console.error('[vendas] ❌ Erro geral na sincronização:', err.message);
