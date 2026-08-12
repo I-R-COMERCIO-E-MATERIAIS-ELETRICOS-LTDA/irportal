@@ -15,7 +15,6 @@ let sessionToken = null;
 let calendarYear = new Date().getFullYear();
 let vendedorLogado = null;
 let painelAno = new Date().getFullYear();
-let painelModo = 'geral'; // 'geral' (todos os vendedores) ou 'individual' (vendedor logado/selecionado)
 
 // Índices com os dados brutos de controle_frete e contas_receber,
 // usados para exibir observações, parcelas, cotação e data de entrega
@@ -797,37 +796,15 @@ const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Se
 
 function abrirPainelGeral() {
     painelAno = new Date().getFullYear();
-    // Vendedor logado (Isaque/Miguel) começa no modo Individual, já mostrando seus
-    // próprios números; nos demais casos começa no modo Geral (todos combinados).
-    painelModo = vendedorLogado ? 'individual' : 'geral';
-    atualizarBotoesPainelModo();
     renderPainelGeral();
     document.getElementById('painelModal').style.display = 'flex';
 }
 
-function atualizarBotoesPainelModo() {
-    document.getElementById('painelBtnGeral')?.classList.toggle('active', painelModo === 'geral');
-    document.getElementById('painelBtnIndividual')?.classList.toggle('active', painelModo === 'individual');
-}
-
-// ─── Alterna entre "Geral" (todos os vendedores combinados) e "Individual" ────
-// (vendedor logado, ou selecionado no filtro principal quando o módulo está
-// liberado). Isso evita a necessidade de ficar filtrando toda hora.
-function setPainelModo(modo) {
-    painelModo = modo;
-    atualizarBotoesPainelModo();
-    renderPainelGeral();
-}
-
-// Retorna o vendedor a considerar dentro do Painel Geral, de acordo com o modo.
-// No modo "geral" retorna '' (sem filtro) — o painel mostra apenas números,
-// então não há necessidade de restringir por vendedor mesmo quando o filtro
-// principal está travado para um vendedor específico.
+// O Painel Geral não tem mais modo Geral/Individual: ele sempre reflete o
+// filtro de Vendedores selecionado na tela principal (vazio = todos os
+// vendedores combinados; um vendedor selecionado = apenas aquele vendedor).
 function getVendedorPainelAtual() {
-    if (painelModo === 'individual') {
-        return vendedorLogado || getVendedorFiltroAtual();
-    }
-    return '';
+    return getVendedorFiltroAtual();
 }
 
 function mudarAnoPainel(dir) {
@@ -869,8 +846,7 @@ function computeMonthlyPago(ano, vendedorSel) {
 
 // modo: 'faturamento' (compara c/ mês anterior: sobe=verde, desce=vermelho),
 // 'frete' (mesma comparação, porém invertida: sobe=vermelho, desce=azul),
-// 'receber' (laranja quando há valor pendente no mês, senão neutro),
-// 'pago' (sempre verde).
+// 'receber' (laranja quando há valor pendente no mês, senão neutro).
 function renderMesesGrid(valores, modo) {
     let html = '<div class="painel-months-grid">';
     valores.forEach((val, i) => {
@@ -889,8 +865,6 @@ function renderMesesGrid(valores, modo) {
             }
         } else if (modo === 'receber') {
             cls = val > 0 ? 'receber-has' : 'neutral';
-        } else if (modo === 'pago') {
-            cls = 'pago-green';
         }
 
         html += `<div class="painel-month-card">
@@ -905,7 +879,7 @@ function renderMesesGrid(valores, modo) {
 // Aba "Geral": mesmo estilo visual de cartão das demais abas (painel-month-card),
 // com as cores fixas de cada dashboard equivalente na tela principal:
 // Faturamento (neutro), Frete Total (azul), A Receber (laranja quando há saldo,
-// senão neutro), Total Pago (verde).
+// senão neutro), Total Pago Ano (verde — sempre calculado aqui, mesmo sem aba própria).
 function renderPainelResumo(faturamento, frete, receber, pago) {
     const itens = [
         { label: `Faturamento ${painelAno}`, valor: faturamento, cls: 'neutral' },
@@ -931,15 +905,17 @@ function renderPainelGeral() {
     const vendedorSel = getVendedorPainelAtual();
 
     const label = document.getElementById('painelVendedorLabel');
-    if (label) label.textContent = (painelModo === 'individual' && vendedorSel) ? `— ${vendedorSel}` : '';
+    if (label) label.textContent = vendedorSel ? `— ${vendedorSel}` : '';
 
     const faturamentoMes = computeMonthlySum(painelAno, vendedorSel, 'valor_nf');
     const freteMes       = computeMonthlySum(painelAno, vendedorSel, 'valor_frete');
     const receberMes     = computeMonthlyAReceber(painelAno, vendedorSel);
-    const pagoMes        = computeMonthlyPago(painelAno, vendedorSel);
+    const pagoMes         = computeMonthlyPago(painelAno, vendedorSel);
 
     const somaAno = arr => arr.reduce((s, v) => s + v, 0);
 
+    // A aba "Total Pago" foi removida do Painel Geral — o valor anual segue
+    // calculado e exibido apenas dentro do cartão "Total Pago" na aba Geral.
     document.getElementById('painelTabGeral').innerHTML = renderPainelResumo(
         somaAno(faturamentoMes), somaAno(freteMes), somaAno(receberMes), somaAno(pagoMes)
     );
@@ -947,11 +923,10 @@ function renderPainelGeral() {
     document.getElementById('painelTabFaturamento').innerHTML = renderMesesGrid(faturamentoMes, 'faturamento');
     document.getElementById('painelTabFrete').innerHTML       = renderMesesGrid(freteMes, 'frete');
     document.getElementById('painelTabReceber').innerHTML     = renderMesesGrid(receberMes, 'receber');
-    document.getElementById('painelTabPago').innerHTML        = renderMesesGrid(pagoMes, 'pago');
 }
 
 function switchPainelTab(tab, btnEl) {
-    const tabs = ['geral', 'faturamento', 'frete', 'receber', 'pago'];
+    const tabs = ['geral', 'faturamento', 'frete', 'receber'];
     document.querySelectorAll('#painelModal .tab-btn').forEach((b, i) => b.classList.toggle('active', tabs[i] === tab));
     tabs.forEach(t => {
         const el = document.getElementById('painelTab' + t.charAt(0).toUpperCase() + t.slice(1));
@@ -961,4 +936,10 @@ function switchPainelTab(tab, btnEl) {
 
 function filterVendas() {
     updateDisplay();
+    // Se o Painel Geral estiver aberto, atualiza também com o novo filtro
+    // de vendedores — o painel não tem mais modo próprio, segue este filtro.
+    const painelModal = document.getElementById('painelModal');
+    if (painelModal && painelModal.style.display === 'flex') {
+        renderPainelGeral();
+    }
 }
