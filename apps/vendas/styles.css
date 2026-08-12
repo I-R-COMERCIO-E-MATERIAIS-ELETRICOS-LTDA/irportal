@@ -512,9 +512,15 @@ h2 {
 
 .dashboard-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
     margin-bottom: 1.5rem;
+}
+
+@media (max-width: 900px) and (min-width: 769px) {
+    .dashboard-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
 }
 
 .stat-card {
@@ -971,6 +977,12 @@ button.small {
     background: #EF4444;
     color: #FFFFFF;
     border-color: #DC2626;
+}
+
+.floating-message.warning {
+    background: #F59E0B;
+    color: #FFFFFF;
+    border-color: #D97706;
 }
 
 @keyframes slideInBottom {
@@ -1520,9 +1532,9 @@ button.small {
 
 /* Badge — Parcela em aberto */
 .badge.parcela {
-    background: rgba(139, 92, 246, 0.1);
-    color: #7C3AED;
-    border: 1px solid rgba(139, 92, 246, 0.2);
+    background: rgba(34, 197, 94, 0.1);
+    color: #16A34A;
+    border: 1px solid rgba(34, 197, 94, 0.2);
 }
 
 /* Badge — Fora do Prazo */
@@ -1583,8 +1595,16 @@ button.small {
     color: var(--text-primary);
 }
 .painel-month-value.neutral { color: var(--text-primary); }
+/* Faturamento: comparação com o mês anterior (aumento = verde, queda = vermelho) */
 .painel-month-value.up { color: #16A34A; }
 .painel-month-value.down { color: #DC2626; }
+/* Frete Total: lógica invertida (aumento = vermelho, queda = azul) */
+.painel-month-value.frete-up { color: #DC2626; }
+.painel-month-value.frete-down { color: #3B82F6; }
+/* A Receber: laranja quando há valor pendente no mês */
+.painel-month-value.receber-has { color: #F59E0B; }
+/* Total Pago: sempre verde */
+.painel-month-value.pago-green { color: #22C55E; }
 
 .painel-annual-card {
     grid-column: 1 / -1;
@@ -1606,4 +1626,53 @@ button.small {
     font-size: 1.4rem;
     font-weight: 800;
     color: var(--primary, #16A34A);
+}
+
+/* ── Toggle Geral / Individual do Painel Geral ── */
+.painel-mode-toggle {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 1.1rem;
+}
+.painel-mode-btn {
+    padding: 8px 24px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.2s ease;
+    margin: 0;
+}
+.painel-mode-btn.geral {
+    background: rgba(34, 197, 94, 0.1);
+    color: #16A34A;
+    border-color: rgba(34, 197, 94, 0.35);
+}
+.painel-mode-btn.geral.active {
+    background: #16A34A;
+    color: #FFFFFF;
+    border-color: #16A34A;
+}
+.painel-mode-btn.individual {
+    background: rgba(59, 130, 246, 0.1);
+    color: #2563EB;
+    border-color: rgba(59, 130, 246, 0.35);
+}
+.painel-mode-btn.individual.active {
+    background: #2563EB;
+    color: #FFFFFF;
+    border-color: #2563EB;
+}
+.painel-mode-btn:hover:not(.active) {
+    filter: brightness(0.95);
+}
+
+/* ── Botão de sincronizar: feedback visual ao clicar ── */
+.calendar-btn.syncing svg {
+    animation: syncSpin 0.8s linear infinite;
+}
+@keyframes syncSpin {
+    to { transform: rotate(360deg); }
 }
