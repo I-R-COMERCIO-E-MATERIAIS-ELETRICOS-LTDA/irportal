@@ -108,7 +108,7 @@
                         <circle cx="11" cy="11" r="8"></circle>
                         <path d="m21 21-4.35-4.35"></path>
                     </svg>
-                    <input type="text" id="search" placeholder="Pesquisar por NF, órgão..." oninput="filterVendas()">
+                    <input type="text" id="search" placeholder="Pesquisar por NF, órgão, vendedor, cidade..." oninput="filterVendas()">
 
                     <div class="search-bar-filters">
                         <div class="filter-dropdown-inline">
@@ -129,7 +129,10 @@
                                 <option value="PARCELA">Parcela em Aberto</option>
                                 <option value="ENTREGUE">Entregue</option>
                                 <option value="EM TRÂNSITO">Em Trânsito</option>
+                                <option value="AGUARDANDO COLETA">Aguardando Coleta</option>
                                 <option value="FORA DO PRAZO">Fora do Prazo</option>
+                                <option value="EXTRAVIADO">Extraviado</option>
+                                <option value="DEVOLVIDO">Devolvido</option>
                                 <option value="SIMPLES REMESSA">Simples Remessa</option>
                                 <option value="REMESSA DE AMOSTRA">Remessa de Amostra</option>
                             </select>
@@ -169,7 +172,7 @@
                             <line x1="6" y1="20" x2="6" y2="14"></line>
                         </svg>
                     </button>
-                    <button class="calendar-btn" onclick="syncData()" title="Sincronizar">
+                    <button class="calendar-btn" id="syncBtn" onclick="syncDataManual()" title="Sincronizar">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                             <polyline points="23 4 23 10 17 10"></polyline>
                             <polyline points="1 20 1 14 7 14"></polyline>
@@ -281,6 +284,11 @@
             <div class="modal-header">
                 <h3 class="modal-title">Painel Geral <span id="painelVendedorLabel"></span></h3>
                 <button class="close-modal" onclick="closeModalGenerico('painelModal')">✕</button>
+            </div>
+
+            <div class="painel-mode-toggle">
+                <button type="button" id="painelBtnGeral" class="painel-mode-btn geral active" onclick="setPainelModo('geral')">Geral</button>
+                <button type="button" id="painelBtnIndividual" class="painel-mode-btn individual" onclick="setPainelModo('individual')">Individual</button>
             </div>
 
             <div class="painel-year-nav">
