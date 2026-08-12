@@ -89,6 +89,37 @@ module.exports = function (supabase) {
     });
 
     // ─────────────────────────────────────────────────────────────────────────
+    // GET /api/vendas/fontes
+    // Retorna os registros BRUTOS de controle_frete e contas_receber
+    // (mesmo filtro usado na sincronização). Usado pelo frontend para
+    // exibir dados que não são persistidos na tabela "vendas" (observações,
+    // parcelas, data de entrega, cotação etc.) sem precisar alterar o
+    // schema da tabela consolidada.
+    // ─────────────────────────────────────────────────────────────────────────
+    router.get('/fontes', async (req, res) => {
+        try {
+            const { data: fretesRaw, error: errFretes } = await supabase
+                .from('controle_frete')
+                .select('*')
+                .not('status', 'in', '("DEVOLVIDO","DEVOLUCAO")');
+            if (errFretes) throw new Error(`Frete: ${errFretes.message}`);
+
+            const { data: contasRaw, error: errContas } = await supabase
+                .from('contas_receber')
+                .select('*');
+            if (errContas) throw new Error(`Contas: ${errContas.message}`);
+
+            const fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
+            const contas = (contasRaw || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
+
+            res.json({ fretes, contas });
+        } catch (e) {
+            console.error('[vendas] GET /fontes erro:', e.message);
+            res.status(500).json({ error: e.message });
+        }
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
     // GET /api/vendas/:id
     // ─────────────────────────────────────────────────────────────────────────
     router.get('/:id', async (req, res) => {
