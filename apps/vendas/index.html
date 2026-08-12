@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vendas</title>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
     <div class="splash-screen" id="splashScreen">
@@ -26,7 +24,7 @@
 
             <!-- Dashboard Cards -->
             <div class="dashboard-grid">
-                <div class="stat-card stat-card-success">
+                <div class="stat-card stat-card-success" id="cardPago" onclick="abrirModalPago()" style="cursor:pointer;" title="Clique para ver detalhes">
                     <div class="stat-icon stat-icon-success">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="20 6 9 17 4 12"></polyline>
@@ -37,7 +35,7 @@
                         <div class="stat-label">Pago</div>
                     </div>
                 </div>
-                <div class="stat-card stat-card-warning">
+                <div class="stat-card stat-card-warning" id="cardAReceber" onclick="abrirModalAReceber()" style="cursor:pointer;" title="Clique para ver detalhes">
                     <div class="stat-icon stat-icon-warning">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <circle cx="12" cy="12" r="10"></circle>
@@ -47,6 +45,19 @@
                     <div class="stat-content">
                         <div class="stat-value stat-value-warning" id="totalAReceber">R$ 0,00</div>
                         <div class="stat-label">A Receber</div>
+                    </div>
+                </div>
+                <div class="stat-card stat-card-danger" id="cardForaPrazo" onclick="abrirModalForaPrazo()" style="cursor:pointer;" title="Clique para ver detalhes">
+                    <div class="stat-icon stat-icon-danger">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value stat-value-danger" id="totalForaPrazo">0</div>
+                        <div class="stat-label">Fora do Prazo</div>
                     </div>
                 </div>
                 <div class="stat-card stat-card-info">
@@ -74,6 +85,20 @@
                         <div class="stat-label">Faturado</div>
                     </div>
                 </div>
+                <div class="stat-card stat-card-info">
+                    <div class="stat-icon stat-icon-info">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="1" y="3" width="15" height="13"></rect>
+                            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+                            <circle cx="5.5" cy="18.5" r="2.5"></circle>
+                            <circle cx="18.5" cy="18.5" r="2.5"></circle>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value stat-value-info" id="totalValorFrete">R$ 0,00</div>
+                        <div class="stat-label">Valor Frete</div>
+                    </div>
+                </div>
             </div>
 
             <!-- Search Bar -->
@@ -84,7 +109,7 @@
                         <path d="m21 21-4.35-4.35"></path>
                     </svg>
                     <input type="text" id="search" placeholder="Pesquisar por NF, órgão..." oninput="filterVendas()">
-                    
+
                     <div class="search-bar-filters">
                         <div class="filter-dropdown-inline">
                             <select id="filterVendedor" onchange="filterVendas()">
@@ -101,8 +126,10 @@
                             <select id="filterStatus" onchange="filterVendas()">
                                 <option value="">Todos os Status</option>
                                 <option value="PAGO">Pago</option>
+                                <option value="PARCELA">Parcela em Aberto</option>
                                 <option value="ENTREGUE">Entregue</option>
                                 <option value="EM TRÂNSITO">Em Trânsito</option>
+                                <option value="FORA DO PRAZO">Fora do Prazo</option>
                                 <option value="SIMPLES REMESSA">Simples Remessa</option>
                                 <option value="REMESSA DE AMOSTRA">Remessa de Amostra</option>
                             </select>
@@ -135,13 +162,11 @@
                             <line x1="3" y1="10" x2="21" y2="10"></line>
                         </svg>
                     </button>
-                    <button class="calendar-btn" onclick="gerarPDF()" title="Gerar PDF">
+                    <button class="calendar-btn chart-btn" onclick="abrirPainelGeral()" title="Painel Geral">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                            <polyline points="14 2 14 8 20 8"></polyline>
-                            <line x1="16" y1="13" x2="8" y2="13"></line>
-                            <line x1="16" y1="17" x2="8" y2="17"></line>
-                            <polyline points="10 9 9 9 8 9"></polyline>
+                            <line x1="18" y1="20" x2="18" y2="10"></line>
+                            <line x1="12" y1="20" x2="12" y2="4"></line>
+                            <line x1="6" y1="20" x2="6" y2="14"></line>
                         </svg>
                     </button>
                     <button class="calendar-btn" onclick="syncData()" title="Sincronizar">
@@ -174,25 +199,113 @@
                 </div>
             </div>
 
-            <!-- Table Card IGUAL AO CONTROLE DE FRETE -->
+            <!-- Table Card -->
             <div class="card table-card">
                 <div id="vendasContainer"></div>
             </div>
         </div>
     </div>
 
-    <!-- MODAL DE VISUALIZAÇÃO -->
+    <!-- MODAL DE VISUALIZAÇÃO (abas) -->
     <div class="modal-overlay" id="infoModal">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 class="modal-title">NF Nº <span id="modalNumeroNF"></span></h3>
                 <button class="close-modal" onclick="closeInfoModal()">✕</button>
             </div>
-            
-            <div class="modal-body" id="modalBody"></div>
+
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchInfoTab(0, this)">Geral</button>
+                    <button class="tab-btn" onclick="switchInfoTab(1, this)">Controle de Frete</button>
+                    <button class="tab-btn" onclick="switchInfoTab(2, this)">Contas a Receber</button>
+                    <button class="tab-btn" onclick="switchInfoTab(3, this)">Observações</button>
+                </div>
+                <div class="tab-content active" id="infoTabGeral"></div>
+                <div class="tab-content" id="infoTabFrete"></div>
+                <div class="tab-content" id="infoTabReceber"></div>
+                <div class="tab-content" id="infoTabObs"></div>
+            </div>
 
             <div class="modal-actions">
                 <button type="button" onclick="closeInfoModal()" class="secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL FORA DO PRAZO -->
+    <div class="modal-overlay" id="foraPrazoModal" style="display:none;">
+        <div class="modal-content alert-modal">
+            <div class="modal-header-alert">
+                <h3 class="modal-title">NFs Fora do Prazo</h3>
+                <button class="close-modal" onclick="closeModalGenerico('foraPrazoModal')">✕</button>
+            </div>
+            <div class="modal-body" id="foraPrazoModalBody"></div>
+            <div class="modal-actions-alert">
+                <button type="button" onclick="closeModalGenerico('foraPrazoModal')" class="secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PAGO -->
+    <div class="modal-overlay" id="pagoModal" style="display:none;">
+        <div class="modal-content alert-modal">
+            <div class="modal-header-alert">
+                <h3 class="modal-title">NFs Pagas no Mês</h3>
+                <button class="close-modal" onclick="closeModalGenerico('pagoModal')">✕</button>
+            </div>
+            <div class="modal-body" id="pagoModalBody"></div>
+            <div class="modal-actions-alert">
+                <button type="button" onclick="closeModalGenerico('pagoModal')" class="secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL A RECEBER -->
+    <div class="modal-overlay" id="aReceberModal" style="display:none;">
+        <div class="modal-content alert-modal">
+            <div class="modal-header-alert">
+                <h3 class="modal-title">NFs A Receber</h3>
+                <button class="close-modal" onclick="closeModalGenerico('aReceberModal')">✕</button>
+            </div>
+            <div class="modal-body" id="aReceberModalBody"></div>
+            <div class="modal-actions-alert">
+                <button type="button" onclick="closeModalGenerico('aReceberModal')" class="secondary">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PAINEL GERAL -->
+    <div class="modal-overlay" id="painelModal" style="display:none;">
+        <div class="modal-content painel-modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Painel Geral <span id="painelVendedorLabel"></span></h3>
+                <button class="close-modal" onclick="closeModalGenerico('painelModal')">✕</button>
+            </div>
+
+            <div class="painel-year-nav">
+                <button onclick="mudarAnoPainel(-1)">‹</button>
+                <span class="painel-year-label" id="painelYearLabel">2026</span>
+                <button onclick="mudarAnoPainel(1)">›</button>
+            </div>
+
+            <div class="tabs-container">
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchPainelTab('geral', this)">Geral</button>
+                    <button class="tab-btn" onclick="switchPainelTab('faturamento', this)">Faturamento</button>
+                    <button class="tab-btn" onclick="switchPainelTab('frete', this)">Frete Total</button>
+                    <button class="tab-btn" onclick="switchPainelTab('receber', this)">A Receber</button>
+                    <button class="tab-btn" onclick="switchPainelTab('pago', this)">Total Pago</button>
+                </div>
+                <div class="tab-content active" id="painelTabGeral"></div>
+                <div class="tab-content" id="painelTabFaturamento"></div>
+                <div class="tab-content" id="painelTabFrete"></div>
+                <div class="tab-content" id="painelTabReceber"></div>
+                <div class="tab-content" id="painelTabPago"></div>
+            </div>
+
+            <div class="modal-actions">
+                <button type="button" onclick="closeModalGenerico('painelModal')" class="secondary">Fechar</button>
             </div>
         </div>
     </div>
