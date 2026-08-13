@@ -208,7 +208,15 @@ async function loadVendas() {
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        const newHash = JSON.stringify(data.map(v => v.id));
+        // FIX (atualizações não apareciam na tela): antes o hash usava só os
+        // ids dos registros ("data.map(v => v.id)"). Isso detectava registro
+        // novo/removido, mas NÃO detectava um registro existente sendo
+        // atualizado (ex.: status_frete, vendedor corrigido, pagamento
+        // lançado) — o conjunto de ids continuava igual, então a tela nunca
+        // era atualizada e ficava mostrando dados antigos/errados vindos do
+        // Controle de Frete e do Contas a Receber. Agora o hash considera o
+        // conteúdo completo dos registros, não só os ids.
+        const newHash = JSON.stringify(data);
         if (newHash !== lastDataHash) {
             allVendas = data;
             lastDataHash = newHash;
@@ -305,7 +313,16 @@ async function syncData() {
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
-        if (result.success) {
+        // FIX (novos registros não apareciam): antes só recarregávamos a
+        // tela quando "result.success" era true. Se apenas UM lote (de até
+        // 200 registros) falhasse por qualquer motivo pontual, o backend
+        // retorna success:false para a sincronização inteira — mas todos os
+        // OUTROS lotes (que podem incluir registros novos) já tinham sido
+        // gravados no banco com sucesso. Como não recarregávamos, esses
+        // registros novos/atualizados nunca chegavam a aparecer na tela.
+        // Agora recarregamos sempre que o servidor respondeu, mesmo em caso
+        // de sucesso parcial, para refletir o que realmente foi gravado.
+        if (result) {
             lastDataHash = '';
             await loadVendas();
             await loadFontes();
