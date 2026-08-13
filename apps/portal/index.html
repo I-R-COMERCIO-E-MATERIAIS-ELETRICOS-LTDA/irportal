@@ -562,11 +562,12 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
         };
 
         // Módulos que ficam sempre acessíveis, independente do setor (o Dashboard é o mesmo para todos)
-        const ALWAYS_ACCESSIBLE_MODULES = ['vendas'];
+        const ALWAYS_ACCESSIBLE_MODULES = ['dashboard'];
 
         
         // ÍCONES
         const MODULE_ICONS = {
+            'Dashboard':           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
             'licitacoes':       '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-hammer-icon lucide-hammer"><path d="m15 12-9.373 9.373a1 1 0 0 1-3.001-3L12 9"/><path d="m18 15 4-4"/><path d="m21.5 11.5-1.914-1.914A2 2 0 0 1 19 8.172v-.344a2 2 0 0 0-.586-1.414l-1.657-1.657A6 6 0 0 0 12.516 3H9l1.243 1.243A6 6 0 0 1 12 8.485V10l2 2h1.172a2 2 0 0 1 1.414.586L18.5 14.5"/></svg>',
             'precos':           '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 13H7"/><path d="M19 9h-4"/><path d="M3 3v16a2 2 0 0 0 2 2h16"/><rect x="15" y="5" width="4" height="12" rx="1"/><rect x="7" y="8" width="4" height="9" rx="1"/></svg>',
             'compra':           '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>',
@@ -576,7 +577,6 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
             'estoque':          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
             'frete':            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-map-pin-icon lucide-map-pin"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>',
             'receber':          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5"/><path d="m16 19 3 3 3-3"/><path d="M18 12h.01"/><path d="M19 16v6"/><path d="M6 12h.01"/><circle cx="12" cy="12" r="2"/></svg>',
-            'vendas':           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
             'pagar':            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 18H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5"/><path d="M18 12h.01"/><path d="M19 22v-6"/><path d="m22 19-3-3-3 3"/><path d="M6 12h.01"/><circle cx="12" cy="12" r="2"/></svg>',
             'lucro':            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="5" y1="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>'
         };
@@ -588,6 +588,7 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
         // exibido como "Dashboard" e é aberto automaticamente para todos os usuários.
         const ORIGIN = window.location.origin;
         const MODULES = [
+            { id: 'dashboard',       name: 'Dashboard',                url: `${ORIGIN}/vendas`,                          available: true },
             { id: 'licitacoes',      name: 'Licitações',               url: '',                                          available: false },  
             { id: 'precos',          name: 'Tabela de Preços',         url: `${ORIGIN}/precos`,                          available: true },
             { id: 'compra',          name: 'Ordens de Compra',         url: `${ORIGIN}/compra`,                          available: true },
@@ -597,7 +598,6 @@ input:focus { outline: none; border-color: #F97316; background: #ffffff; box-sha
             { id: 'frete',           name: 'Controle de Frete',        url: `${ORIGIN}/frete`,                           available: true },
             { id: 'estoque',         name: 'Estoque',                  url: '',                                          available: false },
             { id: 'receber',         name: 'Contas a Receber',         url: `${ORIGIN}/receber`,                         available: true },
-            { id: 'vendas',          name: 'Dashboard',                url: `${ORIGIN}/vendas`,                          available: true },
             { id: 'pagar',           name: 'Contas a Pagar',           url: `${ORIGIN}/pagar`,                           available: true },
             { id: 'lucro',           name: 'Lucro Real',               url: `${ORIGIN}/lucro`,                           available: true },
         ];
