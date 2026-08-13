@@ -1,9 +1,6 @@
 const DEVELOPMENT_MODE = false;
 const API_URL = window.location.origin + '/api';
 const VENDEDORES_VALIDOS = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
-// Apenas estes vendedores têm o filtro travado automaticamente no próprio nome
-// ao serem identificados. Qualquer outro nome (ex.: Roberto) libera o módulo
-// para visualização completa, sem travar o filtro.
 const VENDEDORES_RESTRITOS = ['ISAQUE', 'MIGUEL'];
 const PAGE_SIZE = 5;
 
@@ -16,11 +13,20 @@ let calendarYear = new Date().getFullYear();
 let vendedorLogado = null;
 let painelAno = new Date().getFullYear();
 
-// Índices com os dados brutos de controle_frete e contas_receber,
-// usados para exibir observações, parcelas, cotação e data de entrega
-// (informações que não são persistidas na tabela consolidada "vendas").
+// Índices com os dados brutos de controle_frete e contas_receber, usados
+// para juntar TODAS as observações/notas de cada NF na aba Observações.
 let fretesByNF = {};
 let contasByNF = {};
+
+// FIX (Painel mostrando informações divergentes de status/valor no modal
+// "Ver"): antes o modal pegava sempre o primeiro item bruto de
+// fretesByNF[key]/contasByNF[key], que não tinha nenhuma relação com o
+// registro que realmente virou a linha da tabela "vendas". Agora o backend
+// (GET /fontes) devolve também o registro "oficial" por NF — escolhido com
+// o MESMO critério usado na sincronização — e o frontend usa esses mapas
+// para exibir os dados corretos nas abas Geral/Frete/Receber.
+let fretePrincipalByNF = {};
+let contaPrincipalByNF = {};
 
 // Estado de paginação dos modais de dashboard (Fora do Prazo, Pago, A Receber)
 let modalPaginationState = {};
@@ -41,10 +47,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await inicializarApp();
 });
 
-// ─── Identifica o vendedor logado (Roberto / Isaque / Miguel) ─────────────────
-// O portal pode informar o vendedor via parâmetro de URL (?vendedor=ISAQUE),
-// da mesma forma que informa o sessionToken. Quando identificado, o filtro
-// "Vendedores" é travado automaticamente nesse nome.
 function detectarVendedorLogado() {
     const urlParams = new URLSearchParams(window.location.search);
     let v = urlParams.get('vendedor') || sessionStorage.getItem('vendasVendedorLogado');
@@ -81,7 +83,6 @@ async function inicializarApp() {
     setInterval(async () => { await loadVendas(); await loadFontes(); }, 30000);
 }
 
-// ─── Normaliza status_frete para comparação consistente ───────────────────────
 function normalizeStatusFrete(status) {
     if (!status) return '';
     return status.toUpperCase().trim()
@@ -89,19 +90,16 @@ function normalizeStatusFrete(status) {
         .replace(/_/g, ' ');
 }
 
-// ─── Normaliza texto para busca (minúsculo e sem acentos) ─────────────────────
 function normalizeSearch(str) {
     return String(str || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-// ─── Normaliza número de NF (mesma lógica usada no backend) ───────────────────
 function normalizeNF(numeroNF) {
     if (!numeroNF) return '';
     const str = String(numeroNF).trim().replace(/^0+/, '');
     return str || '0';
 }
 
-// ─── Helpers de exibição ──────────────────────────────────────────────────────
 function formatDate(d) {
     if (!d) return '-';
     return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR');
@@ -121,7 +119,6 @@ function showToast(msg, type) {
     setTimeout(() => div.remove(), 3000);
 }
 
-// ─── Navegação de meses ───────────────────────────────────────────────────────
 function updateMonthDisplay() {
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -172,7 +169,6 @@ function selectMonth(monthIndex) {
     if (modal) modal.classList.remove('show');
 }
 
-// ─── Status do servidor ───────────────────────────────────────────────────────
 async function checkServerStatus() {
     try {
         const response = await fetch(`${API_URL}/health`, { method: 'GET', mode: 'cors' });
@@ -198,7 +194,6 @@ async function checkServerStatus() {
     }
 }
 
-// ─── Carrega vendas da API ────────────────────────────────────────────────────
 async function loadVendas() {
     try {
         const response = await fetch(`${API_URL}/vendas`, {
@@ -208,14 +203,6 @@ async function loadVendas() {
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
-        // FIX (atualizações não apareciam na tela): antes o hash usava só os
-        // ids dos registros ("data.map(v => v.id)"). Isso detectava registro
-        // novo/removido, mas NÃO detectava um registro existente sendo
-        // atualizado (ex.: status_frete, vendedor corrigido, pagamento
-        // lançado) — o conjunto de ids continuava igual, então a tela nunca
-        // era atualizada e ficava mostrando dados antigos/errados vindos do
-        // Controle de Frete e do Contas a Receber. Agora o hash considera o
-        // conteúdo completo dos registros, não só os ids.
         const newHash = JSON.stringify(data);
         if (newHash !== lastDataHash) {
             allVendas = data;
@@ -254,6 +241,11 @@ async function loadFontes() {
 
         fretesByNF = novoFretesByNF;
         contasByNF = novoContasByNF;
+        // Registro oficial por NF, já escolhido pelo backend com o mesmo
+        // critério usado na sincronização (ver routes.js: pickMelhorFrete /
+        // pickMelhorConta). É isso que as abas Frete/Receber do modal usam.
+        fretePrincipalByNF = data.fretePrincipal || {};
+        contaPrincipalByNF = data.contaPrincipal || {};
         updateDisplay();
     } catch (error) {
         console.error('❌ Erro ao carregar fontes:', error);
@@ -303,7 +295,6 @@ function hasObservacoes(v) {
     return temFrete || temConta;
 }
 
-// ─── Sincroniza dados via routes (silenciosamente — usada em segundo plano) ──
 async function syncData() {
     try {
         const response = await fetch(`${API_URL}/vendas/sincronizar`, {
@@ -313,15 +304,6 @@ async function syncData() {
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const result = await response.json();
-        // FIX (novos registros não apareciam): antes só recarregávamos a
-        // tela quando "result.success" era true. Se apenas UM lote (de até
-        // 200 registros) falhasse por qualquer motivo pontual, o backend
-        // retorna success:false para a sincronização inteira — mas todos os
-        // OUTROS lotes (que podem incluir registros novos) já tinham sido
-        // gravados no banco com sucesso. Como não recarregávamos, esses
-        // registros novos/atualizados nunca chegavam a aparecer na tela.
-        // Agora recarregamos sempre que o servidor respondeu, mesmo em caso
-        // de sucesso parcial, para refletir o que realmente foi gravado.
         if (result) {
             lastDataHash = '';
             await loadVendas();
@@ -334,7 +316,6 @@ async function syncData() {
     }
 }
 
-// ─── Sincronização manual (botão) — com feedback visual claro para o usuário ─
 let syncingManualmente = false;
 async function syncDataManual() {
     if (syncingManualmente) return;
@@ -361,7 +342,6 @@ function updateDisplay() {
     updateTable();
 }
 
-// ─── Regras de status (pagamento / frete / prazo) ──────────────────────────────
 function isPago(v) {
     return (v.status_pagamento || '').toUpperCase().trim() === 'PAGO';
 }
@@ -409,7 +389,6 @@ function getStatusBadge(statusInfo) {
     return `<span class="badge ${s.class}">${s.text}</span>`;
 }
 
-// ─── Pagamentos ocorridos em um mês/ano (considera parcelas individualmente) ──
 function getPagamentosDoMes(mes, ano, vendedorSel) {
     const linhas = [];
     getAllContas().forEach(c => {
@@ -450,7 +429,6 @@ function somaPagamentosDoMes(mes, ano, vendedorSel) {
     return getPagamentosDoMes(mes, ano, vendedorSel).reduce((s, r) => s + (parseFloat(r.valor_nf) || 0), 0);
 }
 
-// ─── Dashboard ────────────────────────────────────────────────────────────────
 function loadDashboard() {
     const currentYear = currentMonth.getFullYear();
     const currentMonthIndex = currentMonth.getMonth();
@@ -468,7 +446,6 @@ function loadDashboard() {
         const valorNF = parseFloat(v.valor_nf) || 0;
         const statusFrete = normalizeStatusFrete(v.status_frete);
 
-        // FATURADO / VALOR FRETE — pela data de emissão no mês selecionado
         if (v.data_emissao) {
             const dataEmissao = new Date(v.data_emissao + 'T00:00:00');
             if (dataEmissao.getMonth() === currentMonthIndex && dataEmissao.getFullYear() === currentYear) {
@@ -478,18 +455,15 @@ function loadDashboard() {
             }
         }
 
-        // A RECEBER — entregue e sem confirmação de pagamento total (saldo em aberto, qualquer mês)
         if (statusFrete === 'ENTREGUE' && !isPago(v)) {
             totalAReceber += valorNF;
         }
 
-        // FORA DO PRAZO — monitoramento total, independente do mês (igual Controle de Frete)
         if (isForaDoPrazo(v)) {
             totalForaPrazo++;
         }
     }
 
-    // PAGO — soma real dos pagamentos (inclusive parcelas) ocorridos no mês selecionado
     const totalPago = somaPagamentosDoMes(currentMonthIndex, currentYear, vendedorSel);
 
     document.getElementById('totalPago').textContent = formatCurrency(totalPago);
@@ -503,7 +477,6 @@ function loadDashboard() {
     if (cardForaPrazo) cardForaPrazo.classList.toggle('has-alert', totalForaPrazo > 0);
 }
 
-// ─── Tabela de vendas ─────────────────────────────────────────────────────────
 function updateTable() {
     const container = document.getElementById('vendasContainer');
     if (!container) return;
@@ -597,8 +570,13 @@ function viewVenda(idx, activeTab = 0) {
     if (!venda) return;
 
     const key = normalizeNF(venda.numero_nf);
-    const freteRaw = (fretesByNF[key] || [])[0] || null;
-    const contaRaw = (contasByNF[key] || [])[0] || null;
+
+    // FIX: usa o registro OFICIAL escolhido pelo backend (mesmo critério da
+    // sincronização) em vez do primeiro item arbitrário do array bruto.
+    // Mantém fallback pro primeiro item só para não quebrar se o backend
+    // ainda não tiver sido atualizado.
+    const freteRaw = fretePrincipalByNF[key] || (fretesByNF[key] || [])[0] || null;
+    const contaRaw = contaPrincipalByNF[key] || (contasByNF[key] || [])[0] || null;
 
     document.getElementById('modalNumeroNF').textContent = venda.numero_nf;
 
@@ -656,9 +634,14 @@ function viewVenda(idx, activeTab = 0) {
             ${parcelasHTML}
         </div>`;
 
-    // Aba Observações (Controle de Frete + Contas a Receber)
-    const notasFrete = freteRaw ? getNotasFrete(freteRaw) : [];
-    const notasConta = contaRaw ? getNotasConta(contaRaw) : [];
+    // Aba Observações — junta as notas de TODOS os lançamentos brutos da NF
+    // (Controle de Frete + Contas a Receber), não só do registro "oficial",
+    // para nenhuma observação lançada em um lançamento duplicado se perder.
+    const notasFrete = (fretesByNF[key] || []).flatMap(f =>
+        getNotasFrete(f).map(n => ({ ...n, __origemRegistro: f })));
+    const notasConta = (contasByNF[key] || []).flatMap(c =>
+        getNotasConta(c).map(n => ({ ...n, __origemRegistro: c })));
+
     const todasNotas = [
         ...notasFrete.map(n => ({ origem: 'Controle de Frete', texto: n.texto, data: n.timestamp ? new Date(n.timestamp).toLocaleString('pt-BR') : '' })),
         ...notasConta.map(n => ({ origem: 'Contas a Receber', texto: n.texto, data: n.data || '' }))
@@ -694,7 +677,6 @@ function closeInfoModal() {
     document.getElementById('infoModal').classList.remove('show');
 }
 
-// ─── Modais de dashboard paginados (Fora do Prazo / Pago / A Receber) ────────
 const MODAL_CONFIG = {
     foraPrazo: {
         bodyId: 'foraPrazoModalBody',
@@ -808,7 +790,6 @@ function abrirModalAReceber() {
     document.getElementById('aReceberModal').style.display = 'flex';
 }
 
-// ─── Painel Geral (ícone de gráfico) ──────────────────────────────────────────
 const MESES_ABREV = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 function abrirPainelGeral() {
@@ -817,9 +798,6 @@ function abrirPainelGeral() {
     document.getElementById('painelModal').style.display = 'flex';
 }
 
-// O Painel Geral não tem mais modo Geral/Individual: ele sempre reflete o
-// filtro de Vendedores selecionado na tela principal (vazio = todos os
-// vendedores combinados; um vendedor selecionado = apenas aquele vendedor).
 function getVendedorPainelAtual() {
     return getVendedorFiltroAtual();
 }
@@ -861,9 +839,6 @@ function computeMonthlyPago(ano, vendedorSel) {
     return arr;
 }
 
-// modo: 'faturamento' (compara c/ mês anterior: sobe=verde, desce=vermelho),
-// 'frete' (mesma comparação, porém invertida: sobe=vermelho, desce=azul),
-// 'receber' (laranja quando há valor pendente no mês, senão neutro).
 function renderMesesGrid(valores, modo) {
     let html = '<div class="painel-months-grid">';
     valores.forEach((val, i) => {
@@ -893,10 +868,6 @@ function renderMesesGrid(valores, modo) {
     return html;
 }
 
-// Aba "Geral": mesmo estilo visual de cartão das demais abas (painel-month-card),
-// com as cores fixas de cada dashboard equivalente na tela principal:
-// Faturamento (neutro), Frete Total (azul), A Receber (laranja quando há saldo,
-// senão neutro), Total Pago Ano (verde — sempre calculado aqui, mesmo sem aba própria).
 function renderPainelResumo(faturamento, frete, receber, pago) {
     const itens = [
         { label: `Faturamento ${painelAno}`, valor: faturamento, cls: 'neutral' },
@@ -931,8 +902,6 @@ function renderPainelGeral() {
 
     const somaAno = arr => arr.reduce((s, v) => s + v, 0);
 
-    // A aba "Total Pago" foi removida do Painel Geral — o valor anual segue
-    // calculado e exibido apenas dentro do cartão "Total Pago" na aba Geral.
     document.getElementById('painelTabGeral').innerHTML = renderPainelResumo(
         somaAno(faturamentoMes), somaAno(freteMes), somaAno(receberMes), somaAno(pagoMes)
     );
@@ -953,8 +922,6 @@ function switchPainelTab(tab, btnEl) {
 
 function filterVendas() {
     updateDisplay();
-    // Se o Painel Geral estiver aberto, atualiza também com o novo filtro
-    // de vendedores — o painel não tem mais modo próprio, segue este filtro.
     const painelModal = document.getElementById('painelModal');
     if (painelModal && painelModal.style.display === 'flex') {
         renderPainelGeral();
