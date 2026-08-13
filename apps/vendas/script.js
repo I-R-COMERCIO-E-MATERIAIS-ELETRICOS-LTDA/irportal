@@ -361,9 +361,27 @@ function isForaDoPrazo(v) {
     return previsao < hoje;
 }
 
+// ─── Classifica tipos especiais de NF (simples remessa, remessa de amostra,
+//     devolução, cancelada) a partir do campo tipo_nf. O backend não exclui
+//     mais nenhuma NF por tipo — todas aparecem no painel e contam nos
+//     totais — então aqui só decidimos como rotular visualmente essas notas.
+function getTipoEspecial(v) {
+    const raw = (v.tipo_nf || '').toUpperCase().trim()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_');
+    if (!raw) return null;
+    if (raw.includes('SIMPLES_REMESSA')) return { code: 'SIMPLES REMESSA', label: 'SIMPLES REMESSA' };
+    if (raw.includes('REMESSA_AMOSTRA')) return { code: 'REMESSA DE AMOSTRA', label: 'REMESSA DE AMOSTRA' };
+    if (raw.includes('CANCELADA')) return { code: 'CANCELADA', label: 'CANCELADA' };
+    if (raw.includes('DEVOLUCAO') || raw.includes('DEVOLVIDA')) return { code: 'DEVOLVIDO', label: 'DEVOLVIDO' };
+    return null;
+}
+
 function getDisplayStatus(v) {
     if (isPago(v)) return { code: 'PAGO', label: 'PAGO' };
     if (isParcelaAberta(v)) return { code: 'PARCELA', label: (v.status_pagamento || '').toUpperCase().trim() };
+    const especial = getTipoEspecial(v);
+    if (especial) return especial;
     if (isForaDoPrazo(v)) return { code: 'FORA DO PRAZO', label: 'FORA DO PRAZO' };
     const sf = normalizeStatusFrete(v.status_frete);
     if (sf === 'ENTREGUE') return { code: 'ENTREGUE', label: 'ENTREGUE' };
@@ -376,14 +394,17 @@ function getDisplayStatus(v) {
 
 function getStatusBadge(statusInfo) {
     const map = {
-        'PAGO':              { class: 'pago',       text: 'PAGO' },
-        'PARCELA':           { class: 'parcela',    text: statusInfo.label },
-        'ENTREGUE':          { class: 'entregue',   text: 'ENTREGUE' },
-        'EM TRÂNSITO':       { class: 'transito',   text: 'EM TRÂNSITO' },
-        'AGUARDANDO COLETA': { class: 'aguardando', text: 'AGUARDANDO COLETA' },
-        'FORA DO PRAZO':     { class: 'fora-prazo', text: 'FORA DO PRAZO' },
-        'EXTRAVIADO':        { class: 'extraviado', text: 'EXTRAVIADO' },
-        'DEVOLVIDO':         { class: 'devolvido',  text: 'DEVOLVIDO' }
+        'PAGO':               { class: 'pago',          text: 'PAGO' },
+        'PARCELA':            { class: 'parcela',       text: statusInfo.label },
+        'ENTREGUE':           { class: 'entregue',      text: 'ENTREGUE' },
+        'EM TRÂNSITO':        { class: 'transito',      text: 'EM TRÂNSITO' },
+        'AGUARDANDO COLETA':  { class: 'aguardando',    text: 'AGUARDANDO COLETA' },
+        'FORA DO PRAZO':      { class: 'fora-prazo',    text: 'FORA DO PRAZO' },
+        'EXTRAVIADO':         { class: 'extraviado',    text: 'EXTRAVIADO' },
+        'DEVOLVIDO':          { class: 'devolvido',     text: 'DEVOLVIDO' },
+        'SIMPLES REMESSA':    { class: 'badge-especial', text: 'SIMPLES REMESSA' },
+        'REMESSA DE AMOSTRA': { class: 'badge-especial', text: 'REMESSA DE AMOSTRA' },
+        'CANCELADA':          { class: 'cancelado',     text: 'CANCELADA' }
     };
     const s = map[statusInfo.code] || { class: 'transito', text: statusInfo.label };
     return `<span class="badge ${s.class}">${s.text}</span>`;
