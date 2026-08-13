@@ -354,13 +354,37 @@ module.exports = function (supabase) {
                     console.error(`[vendas] ❌ Erro no lote ${i}:`, upsertError.message);
                     erros++;
                     erroMsgs.push(upsertError.message);
+
+                    // Detecta o erro específico do Postgres quando não existe
+                    // (ainda) uma constraint UNIQUE(numero_nf) na tabela
+                    // "vendas". Esse erro faz TODOS os lotes falharem, ou
+                    // seja: NENHUM registro novo ou atualizado é gravado —
+                    // exatamente o sintoma de "a aplicação não está pegando
+                    // novos registros". Deixamos isso bem visível no log em
+                    // vez de escondido dentro de uma mensagem genérica.
+                    const msgErro = (upsertError.message || '').toLowerCase();
+                    if (upsertError.code === '42P10' || msgErro.includes('no unique or exclusion constraint')) {
+                        console.error(
+                            '[vendas] 🚨 AÇÃO NECESSÁRIA: a tabela "vendas" não tem a constraint ' +
+                            'UNIQUE(numero_nf) exigida pelo upsert (onConflict: "numero_nf"). ' +
+                            'Enquanto isso não for corrigido no banco, NENHUM registro novo ou ' +
+                            'atualizado será sincronizado. Rode no Supabase (SQL Editor):\n' +
+                            '  ALTER TABLE vendas DROP CONSTRAINT IF EXISTS vendas_numero_nf_vendedor_key;\n' +
+                            '  ALTER TABLE vendas ADD CONSTRAINT vendas_numero_nf_key UNIQUE (numero_nf);'
+                        );
+                    }
                 } else {
                     console.log(`[vendas] ✅ Lote ${i} ok (${chunk.length} registros)`);
                 }
             }
 
+            const faltaConstraint = erroMsgs.some(m =>
+                (m || '').toLowerCase().includes('no unique or exclusion constraint'));
+
             const msg = erros
-                ? `${registros.length} registros processados com ${erros} lote(s) com erro: ${erroMsgs[0]}`
+                ? (faltaConstraint
+                    ? `Falha ao gravar: falta a constraint UNIQUE(numero_nf) na tabela "vendas" no banco. Peça para rodar a migração indicada nos logs do servidor. (${erroMsgs[0]})`
+                    : `${registros.length} registros processados com ${erros} lote(s) com erro: ${erroMsgs[0]}`)
                 : `${registros.length} registros sincronizados (match: ${matched} | só frete: ${fretes.length - matched} | só conta: ${unmatchedContas}${duplicatasRemovidas ? ` | duplicatas removidas: ${duplicatasRemovidas}` : ''})`;
 
             console.log(`[vendas] ${erros ? '⚠️' : '✅'} ${msg}`);
