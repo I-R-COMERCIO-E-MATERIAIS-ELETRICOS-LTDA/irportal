@@ -24,15 +24,11 @@ module.exports = function (supabase) {
     }
 
     // ─── Chave de junção: APENAS o número da NF normalizado ──────────────────
-    //     O número da NF é o identificador real. Se a NF é a mesma nos dois
-    //     módulos, todos os dados pertencem ao mesmo registro.
     function makeKey(numeroNF) {
         return normalizeNF(numeroNF);
     }
 
     // ─── Normaliza o status do frete para exibição uniforme ──────────────────
-    //     Banco grava com underscore: AGUARDANDO_COLETA, EM_TRANSITO …
-    //     Frontend espera: EM TRÂNSITO, AGUARDANDO COLETA …
     const STATUS_FRETE_MAP = {
         'AGUARDANDO_COLETA': 'AGUARDANDO COLETA',
         'EM_TRANSITO':       'EM TRÂNSITO',
@@ -63,6 +59,83 @@ module.exports = function (supabase) {
         return safe;
     }
 
+    // ─── Agrupa uma lista de registros (frete ou conta) por número de NF ─────
+    function agruparPorNF(registros) {
+        const grupos = {};
+        for (const r of (registros || [])) {
+            const key = makeKey(r.numero_nf);
+            if (!grupos[key]) grupos[key] = [];
+            grupos[key].push(r);
+        }
+        return grupos;
+    }
+
+    // ─── Prioridade de status do frete (registro mais "avançado" no fluxo de
+    //     entrega vence quando há mais de um lançamento para a mesma NF) ─────
+    const STATUS_FRETE_PRIORIDADE = [
+        'AGUARDANDO_COLETA', 'EM_TRANSITO', 'DEVOLVIDO', 'EXTRAVIADO', 'ENTREGUE'
+    ];
+
+    function prioridadeStatusFrete(status) {
+        if (!status) return -1;
+        return STATUS_FRETE_PRIORIDADE.indexOf(status.toUpperCase().trim());
+    }
+
+    // ─── Escolhe, entre vários lançamentos de Controle de Frete para a mesma
+    //     NF, qual deve ser considerado o registro "oficial". Usado tanto na
+    //     sincronização (tabela vendas) quanto na rota /fontes (dados do
+    //     modal "Ver"), para que as duas telas NUNCA mostrem informações de
+    //     lançamentos diferentes para a mesma nota.
+    //     Critério: status mais avançado no fluxo; em empate, o mais recente
+    //     (maior id).
+    //     ANTES: a sincronização usava "o último processado no loop" (ordem
+    //     do banco, não-determinística) e a rota /fontes não escolhia nada —
+    //     o frontend pegava o primeiro item do array bruto arbitrariamente.
+    //     Isso fazia o modal "Ver" mostrar um lançamento diferente do que
+    //     realmente virou a linha da tabela vendas.
+    function pickMelhorFrete(fretesMesmaNF) {
+        if (!fretesMesmaNF || !fretesMesmaNF.length) return null;
+        return fretesMesmaNF.reduce((melhor, atual) => {
+            if (!melhor) return atual;
+            const pMelhor = prioridadeStatusFrete(melhor.status);
+            const pAtual  = prioridadeStatusFrete(atual.status);
+            if (pAtual !== pMelhor) return pAtual > pMelhor ? atual : melhor;
+            return (atual.id || 0) > (melhor.id || 0) ? atual : melhor;
+        }, null);
+    }
+
+    // ─── Escolhe, entre vários lançamentos de Contas a Receber para a mesma
+    //     NF, o registro "oficial": PAGO > com data_pagamento > mais recente.
+    //     Mesmo critério usado nos dois endpoints (antes só existia, parcial,
+    //     dentro do /sincronizar).
+    function pickMelhorConta(contasMesmaNF) {
+        if (!contasMesmaNF || !contasMesmaNF.length) return null;
+        return contasMesmaNF.reduce((melhor, atual) => {
+            if (!melhor) return atual;
+            if (atual.status === 'PAGO' && melhor.status !== 'PAGO') return atual;
+            if (melhor.status === 'PAGO' && atual.status !== 'PAGO') return melhor;
+            if (atual.data_pagamento && !melhor.data_pagamento) return atual;
+            if (melhor.data_pagamento && !atual.data_pagamento) return melhor;
+            return (atual.id || 0) > (melhor.id || 0) ? atual : melhor;
+        }, null);
+    }
+
+    // ─── Exclusão GLOBAL por NF, olhando frete e conta juntos ────────────────
+    //     Se qualquer uma das duas fontes indicar que a NF é
+    //     SIMPLES_REMESSA/REMESSA_AMOSTRA/DEVOLUCAO/CANCELADA, a NF inteira
+    //     fica de fora dos dois lados (evita que ela "vaze" como venda real
+    //     quando só uma fonte marcou a exclusão).
+    function calcularNfsExcluidas(fretesRaw, contasRaw) {
+        const nfsExcluidas = new Set();
+        for (const f of (fretesRaw || [])) {
+            if (isExcludedTipoNF(f.tipo_nf)) nfsExcluidas.add(makeKey(f.numero_nf));
+        }
+        for (const c of (contasRaw || [])) {
+            if (isExcludedTipoNF(c.tipo_nf)) nfsExcluidas.add(makeKey(c.numero_nf));
+        }
+        return nfsExcluidas;
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // GET /api/vendas
     // ─────────────────────────────────────────────────────────────────────────
@@ -90,11 +163,11 @@ module.exports = function (supabase) {
 
     // ─────────────────────────────────────────────────────────────────────────
     // GET /api/vendas/fontes
-    // Retorna os registros BRUTOS de controle_frete e contas_receber
-    // (mesmo filtro usado na sincronização). Usado pelo frontend para
-    // exibir dados que não são persistidos na tabela "vendas" (observações,
-    // parcelas, data de entrega, cotação etc.) sem precisar alterar o
-    // schema da tabela consolidada.
+    // Retorna os registros BRUTOS de controle_frete e contas_receber (para a
+    // aba Observações, que precisa juntar notas de todos os lançamentos), e
+    // também o registro "oficial" por NF (fretePrincipal / contaPrincipal),
+    // escolhido com o MESMO critério usado em /sincronizar — é o que o
+    // frontend deve exibir nas abas Geral/Frete/Receber do modal "Ver".
     // ─────────────────────────────────────────────────────────────────────────
     router.get('/fontes', async (req, res) => {
         try {
@@ -109,10 +182,23 @@ module.exports = function (supabase) {
                 .select('*');
             if (errContas) throw new Error(`Contas: ${errContas.message}`);
 
-            const fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
-            const contas = (contasRaw || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
+            const nfsExcluidas = calcularNfsExcluidas(fretesRaw, contasRaw);
 
-            res.json({ fretes, contas });
+            const fretes = (fretesRaw || []).filter(f =>
+                !isExcludedTipoNF(f.tipo_nf) && !nfsExcluidas.has(makeKey(f.numero_nf)));
+            const contas = (contasRaw || []).filter(c =>
+                !isExcludedTipoNF(c.tipo_nf) && !nfsExcluidas.has(makeKey(c.numero_nf)));
+
+            const fretePrincipal = {};
+            for (const [key, grupo] of Object.entries(agruparPorNF(fretes))) {
+                fretePrincipal[key] = pickMelhorFrete(grupo);
+            }
+            const contaPrincipal = {};
+            for (const [key, grupo] of Object.entries(agruparPorNF(contas))) {
+                contaPrincipal[key] = pickMelhorConta(grupo);
+            }
+
+            res.json({ fretes, contas, fretePrincipal, contaPrincipal });
         } catch (e) {
             console.error('[vendas] GET /fontes erro:', e.message);
             res.status(500).json({ error: e.message });
@@ -156,31 +242,33 @@ module.exports = function (supabase) {
 
             if (errContas) throw new Error(`Contas: ${errContas.message}`);
 
-            // ── 2. Filtra tipos de NF excluídos ───────────────────────────────
-            const fretes = (fretesRaw || []).filter(f => !isExcludedTipoNF(f.tipo_nf));
-            const contas  = (contasRaw  || []).filter(c => !isExcludedTipoNF(c.tipo_nf));
+            // ── 2. Filtra tipos de NF excluídos (exclusão cruzada) ────────────
+            const nfsExcluidas = calcularNfsExcluidas(fretesRaw, contasRaw);
+
+            const fretes = (fretesRaw || []).filter(f =>
+                !isExcludedTipoNF(f.tipo_nf) && !nfsExcluidas.has(makeKey(f.numero_nf)));
+            const contas = (contasRaw || []).filter(c =>
+                !isExcludedTipoNF(c.tipo_nf) && !nfsExcluidas.has(makeKey(c.numero_nf)));
 
             console.log(`[vendas] Fretes: ${fretes.length} | Contas: ${contas.length}`);
 
-            // ── 3. Índice de contas por número de NF ─────────────────────────
-            //     Se houver mais de uma conta para a mesma NF (ex: parcelamento),
-            //     prioriza: PAGO > com data_pagamento > mais recente.
+            // ── 3. Escolhe o registro "oficial" por NF em cada fonte ──────────
+            //      MESMO critério usado em GET /fontes (pickMelhorFrete /
+            //      pickMelhorConta) — garante que a linha gravada em "vendas"
+            //      seja sempre a mesma que o modal "Ver" exibe.
+            const fretesPorNF = {};
+            for (const [key, grupo] of Object.entries(agruparPorNF(fretes))) {
+                fretesPorNF[key] = pickMelhorFrete(grupo);
+            }
             const contasPorNF = {};
-            for (const conta of contas) {
-                const key = makeKey(conta.numero_nf);
-                const atual = contasPorNF[key];
-                if (!atual
-                    || conta.status === 'PAGO'
-                    || (atual.status !== 'PAGO' && conta.data_pagamento && !atual.data_pagamento)) {
-                    contasPorNF[key] = conta;
-                }
+            for (const [key, grupo] of Object.entries(agruparPorNF(contas))) {
+                contasPorNF[key] = pickMelhorConta(grupo);
             }
 
             // ── 4. Constrói mapa indexado apenas pelo número da NF ────────────
             const mapa = {};
 
-            for (const frete of fretes) {
-                const key = makeKey(frete.numero_nf);
+            for (const [key, frete] of Object.entries(fretesPorNF)) {
                 mapa[key] = {
                     numero_nf:        normalizeNF(frete.numero_nf),
                     origem:           'CONTROLE_FRETE',
@@ -232,12 +320,6 @@ module.exports = function (supabase) {
                     if (!mapa[key].nome_orgao && conta.orgao)
                         mapa[key].nome_orgao = conta.orgao;
 
-                    // ── FIX (duplicação de NF): o vendedor informado em
-                    //     Contas a Receber é sempre a fonte de verdade quando
-                    //     divergir do que veio no Controle de Frete, pois é
-                    //     comum o Controle de Frete estar desatualizado.
-                    //     Antes, o vendedor só era preenchido se estivesse
-                    //     vazio no frete — o que perpetuava vendedor errado.
                     const vendedorConta = (conta.vendedor || '').toUpperCase().trim();
                     if (vendedorConta) {
                         mapa[key].vendedor = vendedorConta;
@@ -265,7 +347,7 @@ module.exports = function (supabase) {
                 }
             }
 
-            console.log(`[vendas] Matches frete+conta: ${matched} | Só frete: ${fretes.length - matched} | Só conta: ${unmatchedContas}`);
+            console.log(`[vendas] Matches frete+conta: ${matched} | Só frete: ${Object.keys(fretesPorNF).length - matched} | Só conta: ${unmatchedContas}`);
 
             const registros = Object.values(mapa);
             if (!registros.length)
@@ -276,17 +358,6 @@ module.exports = function (supabase) {
             const CHUNK = 200;
 
             // ── 6. Remove duplicatas com vendedor desatualizado ───────────────
-            //     CAUSA RAIZ da NF duplicada para vendedores diferentes: o
-            //     upsert abaixo usava onConflict "numero_nf,vendedor". Se uma
-            //     NF já existente na tabela "vendas" tinha o vendedor antigo
-            //     (ex.: "ROBERTO") e a fonte (Controle de Frete / Contas a
-            //     Receber) foi corrigida para outro vendedor (ex.: "ISAQUE"),
-            //     o upsert NÃO encontrava conflito (chave diferente) e
-            //     simplesmente INSERIA uma segunda linha, deixando a NF
-            //     duplicada — uma com o vendedor antigo, outra com o correto.
-            //     Antes de gravar, removemos qualquer linha órfã cujo
-            //     vendedor não bate mais com o vendedor correto vindo da
-            //     sincronização atual.
             const numerosNF = registros.map(r => r.numero_nf);
             const vendedorCorretoPorNF = {};
             registros.forEach(r => { vendedorCorretoPorNF[r.numero_nf] = r.vendedor; });
@@ -327,16 +398,6 @@ module.exports = function (supabase) {
             }
 
             // ── 7. Upsert em lotes ────────────────────────────────────────────
-            //     onConflict agora é APENAS "numero_nf" — o número da NF é o
-            //     identificador único real de cada registro. Isso garante que
-            //     uma correção de vendedor na fonte sempre ATUALIZE a linha
-            //     existente, em vez de criar uma nova.
-            //     IMPORTANTE: a tabela "vendas" no Supabase precisa ter uma
-            //     constraint UNIQUE em "numero_nf" (e não mais em
-            //     "numero_nf, vendedor") para este upsert funcionar. Se ela
-            //     ainda não existir, rode antes:
-            //       ALTER TABLE vendas DROP CONSTRAINT IF EXISTS vendas_numero_nf_vendedor_key;
-            //       ALTER TABLE vendas ADD CONSTRAINT vendas_numero_nf_key UNIQUE (numero_nf);
             let erros = 0;
             const erroMsgs = [];
 
@@ -355,13 +416,6 @@ module.exports = function (supabase) {
                     erros++;
                     erroMsgs.push(upsertError.message);
 
-                    // Detecta o erro específico do Postgres quando não existe
-                    // (ainda) uma constraint UNIQUE(numero_nf) na tabela
-                    // "vendas". Esse erro faz TODOS os lotes falharem, ou
-                    // seja: NENHUM registro novo ou atualizado é gravado —
-                    // exatamente o sintoma de "a aplicação não está pegando
-                    // novos registros". Deixamos isso bem visível no log em
-                    // vez de escondido dentro de uma mensagem genérica.
                     const msgErro = (upsertError.message || '').toLowerCase();
                     if (upsertError.code === '42P10' || msgErro.includes('no unique or exclusion constraint')) {
                         console.error(
@@ -385,7 +439,7 @@ module.exports = function (supabase) {
                 ? (faltaConstraint
                     ? `Falha ao gravar: falta a constraint UNIQUE(numero_nf) na tabela "vendas" no banco. Peça para rodar a migração indicada nos logs do servidor. (${erroMsgs[0]})`
                     : `${registros.length} registros processados com ${erros} lote(s) com erro: ${erroMsgs[0]}`)
-                : `${registros.length} registros sincronizados (match: ${matched} | só frete: ${fretes.length - matched} | só conta: ${unmatchedContas}${duplicatasRemovidas ? ` | duplicatas removidas: ${duplicatasRemovidas}` : ''})`;
+                : `${registros.length} registros sincronizados (match: ${matched} | só frete: ${Object.keys(fretesPorNF).length - matched} | só conta: ${unmatchedContas}${duplicatasRemovidas ? ` | duplicatas removidas: ${duplicatasRemovidas}` : ''})`;
 
             console.log(`[vendas] ${erros ? '⚠️' : '✅'} ${msg}`);
             res.json({ success: erros === 0, message: msg, total: registros.length, matched, unmatchedContas, duplicatasRemovidas });
