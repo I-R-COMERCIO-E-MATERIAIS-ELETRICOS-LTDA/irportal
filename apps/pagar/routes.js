@@ -6,28 +6,48 @@ const express = require('express');
 module.exports = function (supabase) {
     const router = express.Router();
 
+    // ─── Helper: busca TODAS as linhas paginando (contorna limite de 1000) ──
+    async function fetchAllContas(buildQuery) {
+        const PAGE_SIZE = 1000;
+        let all = [];
+        let from = 0;
+
+        while (true) {
+            const to = from + PAGE_SIZE - 1;
+            const { data, error } = await buildQuery().range(from, to);
+            if (error) throw error;
+            if (!data || data.length === 0) break;
+            all = all.concat(data);
+            if (data.length < PAGE_SIZE) break;
+            from += PAGE_SIZE;
+        }
+        return all;
+    }
+
     // ─── GET /api/contas ────────────────────────────────────────────────────
     router.get('/contas', async (req, res) => {
         try {
             const { mes, ano } = req.query;
 
-            let query = supabase
-                .from('contas_pagar')
-                .select('*')
-                .order('data_vencimento', { ascending: true })
-                .order('id', { ascending: true });
+            const buildQuery = () => {
+                let q = supabase
+                    .from('contas_pagar')
+                    .select('*')
+                    .order('data_vencimento', { ascending: true })
+                    .order('id', { ascending: true });
 
-            if (mes && ano) {
-                const mesNum  = parseInt(mes);
-                const anoNum  = parseInt(ano);
-                const inicio  = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
-                const fimDate = new Date(anoNum, mesNum, 0);
-                const fim     = fimDate.toISOString().split('T')[0];
-                query = query.gte('data_vencimento', inicio).lte('data_vencimento', fim);
-            }
+                if (mes && ano) {
+                    const mesNum = parseInt(mes, 10);
+                    const anoNum = parseInt(ano, 10);
+                    const inicio = `${anoNum}-${String(mesNum).padStart(2, '0')}-01`;
+                    const fimDate = new Date(anoNum, mesNum, 0); // último dia do mês
+                    const fim = fimDate.toISOString().split('T')[0];
+                    q = q.gte('data_vencimento', inicio).lte('data_vencimento', fim);
+                }
+                return q;
+            };
 
-            const { data, error } = await query;
-            if (error) throw error;
+            const data = await fetchAllContas(buildQuery);
             res.json(data);
         } catch (err) {
             console.error('[pagar] GET /contas:', err.message);
@@ -95,7 +115,7 @@ module.exports = function (supabase) {
         }
     });
 
-    // ─── PATCH /api/contas/:id (NOVO – resolve o erro 404 no toggle) ────────
+    // ─── PATCH /api/contas/:id ──────────────────────────────────────────────
     router.patch('/contas/:id', async (req, res) => {
         try {
             const updates = { ...req.body, updated_at: new Date().toISOString() };
