@@ -37,7 +37,7 @@ function detectResponsavelFromUser() {
         'pollyanna': 'Pollyanna',
         'isaque': 'Isaque',
         'gustavo': 'Gustavo',
-        'miguel': 'Miguel',
+        'Victor': 'Victor',
         'luiz': 'Luiz'
     };
     return map[firstName.toLowerCase()] || firstName;
