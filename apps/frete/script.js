@@ -941,7 +941,7 @@ window.showFormModal = function(editingId = null) {
                                         <option value="">Selecione...</option>
                                         <option value="ROBERTO" ${frete?.vendedor === 'ROBERTO' ? 'selected' : ''}>ROBERTO</option>
                                         <option value="ISAQUE" ${frete?.vendedor === 'ISAQUE' ? 'selected' : ''}>ISAQUE</option>
-                                        <option value="MIGUEL" ${frete?.vendedor === 'MIGUEL' ? 'selected' : ''}>MIGUEL</option>
+                                        <option value="VICTOR" ${frete?.vendedor === 'VICTOR' ? 'selected' : ''}>VICTOR</option>
                                     </select>
                                 </div>
                             </div>
