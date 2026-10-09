@@ -13,7 +13,7 @@ let fornecedoresCache = {};
 let ultimoNumeroGlobal = 0;
 let currentFetchController = null;
 let currentUserName = null;
-const KNOWN_RESPONSAVEIS = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
+const KNOWN_RESPONSAVEIS = ['ROBERTO', 'ISAQUE', 'VICTOR'];
 
 const tabs = ['tab-geral', 'tab-fornecedor', 'tab-pedido', 'tab-entrega', 'tab-pagamento'];
 
