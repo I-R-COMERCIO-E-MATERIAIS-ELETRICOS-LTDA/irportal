@@ -1,7 +1,7 @@
 const DEVELOPMENT_MODE = false;
 const API_URL = window.location.origin + '/api';
-const VENDEDORES_VALIDOS = ['ROBERTO', 'ISAQUE', 'MIGUEL'];
-const VENDEDORES_RESTRITOS = ['ISAQUE', 'MIGUEL'];
+const VENDEDORES_VALIDOS = ['ROBERTO', 'ISAQUE', 'VICTOR'];
+const VENDEDORES_RESTRITOS = ['ISAQUE', 'VICTOR'];
 const PAGE_SIZE = 5;
 
 let isOnline = false;
